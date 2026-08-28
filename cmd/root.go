@@ -15,6 +15,7 @@ func newRootCmd() *cobra.Command {
 	root.SilenceUsage = true
 
 	root.AddCommand(newListCmd())
+	root.AddCommand(newUpCmd())
 
 	return root
 }
