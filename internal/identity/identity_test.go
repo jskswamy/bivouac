@@ -143,3 +143,74 @@ func TestDeriveName_NoOriginFallsBackToFolderName(t *testing.T) {
 		t.Errorf("DeriveName() = %q, want %q", got, want)
 	}
 }
+
+func TestInstanceName_PositionalWins(t *testing.T) {
+	got, err := InstanceName(t.TempDir(), "", "explicit-name", "flag-name")
+	if err != nil {
+		t.Fatalf("InstanceName() error = %v", err)
+	}
+	if got != "explicit-name" {
+		t.Errorf("InstanceName() = %q, want %q", got, "explicit-name")
+	}
+}
+
+func TestInstanceName_NameFlagWinsOverCwd(t *testing.T) {
+	root := initRepo(t)
+	got, err := InstanceName(root, "", "", "flag-name")
+	if err != nil {
+		t.Fatalf("InstanceName() error = %v", err)
+	}
+	if got != "flag-name" {
+		t.Errorf("InstanceName() = %q, want %q", got, "flag-name")
+	}
+}
+
+func TestInstanceName_DerivedFromCwdRepo(t *testing.T) {
+	root := initRepo(t)
+	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+
+	got, err := InstanceName(root, "", "", "")
+	if err != nil {
+		t.Fatalf("InstanceName() error = %v", err)
+	}
+	if got != "jskswamy-cloudlab" {
+		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-cloudlab")
+	}
+}
+
+func TestInstanceName_DerivedFromRepoFlagOutsideAnyRepo(t *testing.T) {
+	other := initRepo(t)
+	runGit(t, other, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+
+	got, err := InstanceName(t.TempDir(), other, "", "")
+	if err != nil {
+		t.Fatalf("InstanceName() error = %v", err)
+	}
+	if got != "jskswamy-cloudlab" {
+		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-cloudlab")
+	}
+}
+
+func TestInstanceName_BadRepoFlagPropagatesRealError(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "nope")
+	_, err := InstanceName(t.TempDir(), bad, "", "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), bad) {
+		t.Errorf("error = %q, want it to name %q", err.Error(), bad)
+	}
+	if strings.Contains(err.Error(), "no instance name given") {
+		t.Errorf("error = %q, want the real RepoRoot error, not the generic fallback", err.Error())
+	}
+}
+
+func TestInstanceName_ErrorsWithNothingAvailable(t *testing.T) {
+	_, err := InstanceName(t.TempDir(), "", "", "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no instance name given") {
+		t.Errorf("error = %q, want mention of 'no instance name given'", err.Error())
+	}
+}

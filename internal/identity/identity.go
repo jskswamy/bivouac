@@ -51,3 +51,27 @@ func slugify(remoteURL string) string {
 	last := tokens[len(tokens)-2:]
 	return strings.ToLower(strings.Join(last, "-"))
 }
+
+// InstanceName resolves a name for lookup-only commands (everything
+// except up): positional arg, then --name, then (if cwd or repoFlag is
+// inside a git repo) that repo's derived name. Unlike RepoRoot, it
+// succeeds without any git repo present as long as positional or
+// nameFlag is given — lookup commands only need a name to find an
+// already-existing instance in state, they never touch repo content.
+func InstanceName(cwd, repoFlag, positional, nameFlag string) (string, error) {
+	if positional != "" {
+		return positional, nil
+	}
+	if nameFlag != "" {
+		return nameFlag, nil
+	}
+
+	root, err := RepoRoot(cwd, repoFlag)
+	if err != nil {
+		if repoFlag != "" {
+			return "", err
+		}
+		return "", fmt.Errorf("no instance name given; use --name or run from inside a repo")
+	}
+	return DeriveName(root)
+}
