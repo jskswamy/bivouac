@@ -105,3 +105,41 @@ func TestRepoRoot_NotAGitRepoWithFlag(t *testing.T) {
 		t.Errorf("error = %q, want it to name %q", err.Error(), bad)
 	}
 }
+
+func TestDeriveName_FromHTTPSOrigin(t *testing.T) {
+	root := initRepo(t)
+	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+
+	got, err := DeriveName(root)
+	if err != nil {
+		t.Fatalf("DeriveName() error = %v", err)
+	}
+	if got != "jskswamy-cloudlab" {
+		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-cloudlab")
+	}
+}
+
+func TestDeriveName_FromSSHOrigin(t *testing.T) {
+	root := initRepo(t)
+	runGit(t, root, "remote", "add", "origin", "git@github.com:jskswamy/cloudlab.git")
+
+	got, err := DeriveName(root)
+	if err != nil {
+		t.Fatalf("DeriveName() error = %v", err)
+	}
+	if got != "jskswamy-cloudlab" {
+		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-cloudlab")
+	}
+}
+
+func TestDeriveName_NoOriginFallsBackToFolderName(t *testing.T) {
+	root := initRepo(t)
+
+	got, err := DeriveName(root)
+	if err != nil {
+		t.Fatalf("DeriveName() error = %v", err)
+	}
+	if want := filepath.Base(root); got != want {
+		t.Errorf("DeriveName() = %q, want %q", got, want)
+	}
+}
