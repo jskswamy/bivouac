@@ -1091,13 +1091,21 @@ git commit -m "Add up command with repo-dependent identity"
 
 **Files:**
 - Create: `cmd/lookup.go`
-- Create: `cmd/shell.go`, `cmd/ssh.go`, `cmd/sync.go`, `cmd/download.go`, `cmd/watch.go`, `cmd/connect.go`, `cmd/status.go`, `cmd/down.go`
 - Modify: `cmd/root.go`
 - Test: `cmd/lookup_test.go`
 
 **Interfaces:**
 - Consumes: `identity.InstanceName` (Task 4); `newRootCmd()` (Task 1); `chdir` test helper (Task 7)
-- Produces: `resolveLookupIdentity(cmd *cobra.Command, positional string) (string, error)`; `stubErr(verb, name string) error`; `newShellCmd`, `newSSHCmd`, `newSyncCmd`, `newDownloadCmd`, `newWatchCmd`, `newConnectCmd`, `newStatusCmd`, `newDownCmd` (all `*cobra.Command`)
+- Produces: `resolveLookupIdentity(cmd *cobra.Command, positional string) (string, error)`; `stubErr(verb, name string) error`; `newLookupCommands() []*cobra.Command`
+
+All eight remaining commands (`shell`, `ssh`, `watch`, `connect`, `status`,
+`down`, `sync`, `download`) share identical flag handling, identity
+resolution, and stub/exit-code behavior — only their `Use`/`Short` text,
+`Args` validator, and whether their first positional arg is the instance
+name actually differ. Rather than eight near-identical command files, this
+task defines one data table (`lookupCommandSpecs`) and a single factory
+(`newLookupCommands`) that builds all eight `*cobra.Command`s from it, so
+that shared logic exists exactly once.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1201,10 +1209,106 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveLookupIdentity resolves an instance name for commands that only
-// need to look up an already-existing instance in state, never repo
-// content. positional is the instance-name positional arg if the command
-// has one ("" for sync/download, whose positionals are paths).
+// lookupCommandSpec describes one lookup-only command: one that only
+// needs to look up an already-existing instance in state, never repo
+// content. named is true when the command's first positional arg is the
+// instance name (false for sync/download, whose positionals are paths).
+type lookupCommandSpec struct {
+	use, short, verb string
+	args             cobra.PositionalArgs
+	named            bool
+}
+
+var lookupCommandSpecs = []lookupCommandSpec{
+	{
+		use:   "shell [name]",
+		short: "Reconcile home-manager, then open a local subshell with instance envs injected",
+		verb:  "shell",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "ssh [name]",
+		short: "Open an interactive remote shell on the instance",
+		verb:  "ssh",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "watch [name]",
+		short: "Restart continuous two-way repo sync if it's stopped or dead",
+		verb:  "watch",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "connect [name]",
+		short: "Open a Jupyter tunnel to the instance (python template only)",
+		verb:  "connect",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "status [name]",
+		short: "Show instance detail: IP, uptime, cost, sync/watch state",
+		verb:  "status",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "down [name]",
+		short: "Stop watch, destroy the VM, and clear state",
+		verb:  "down",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+	},
+	{
+		use:   "sync <local-dir> [remote-dir]",
+		short: "One-shot push of a directory outside the repo to the instance",
+		verb:  "sync",
+		args:  cobra.RangeArgs(1, 2),
+		named: false,
+	},
+	{
+		use:   "download <remote-dir> [local-dir]",
+		short: "One-shot pull of files back from the instance",
+		verb:  "download",
+		args:  cobra.RangeArgs(1, 2),
+		named: false,
+	},
+}
+
+// newLookupCommands builds every lookup-only command from
+// lookupCommandSpecs. Flag handling, identity resolution, and the
+// stub/exit-code behavior are shared across all eight — only Use/Short
+// text, the Args validator, and whether the first positional arg is the
+// instance name differ per spec.
+func newLookupCommands() []*cobra.Command {
+	cmds := make([]*cobra.Command, 0, len(lookupCommandSpecs))
+	for _, spec := range lookupCommandSpecs {
+		cmds = append(cmds, &cobra.Command{
+			Use:   spec.use,
+			Short: spec.short,
+			Args:  spec.args,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				positional := ""
+				if spec.named && len(args) > 0 {
+					positional = args[0]
+				}
+				name, err := resolveLookupIdentity(cmd, positional)
+				if err != nil {
+					return err
+				}
+				return stubErr(spec.verb, name)
+			},
+		})
+	}
+	return cmds
+}
+
+// resolveLookupIdentity resolves an instance name for lookup-only
+// commands: positional arg, then --name, then (if cwd or --repo is
+// inside a git repo) that repo's derived name.
 func resolveLookupIdentity(cmd *cobra.Command, positional string) (string, error) {
 	repoFlag, _ := cmd.Flags().GetString("repo")
 	nameFlag, _ := cmd.Flags().GetString("name")
@@ -1221,227 +1325,12 @@ func stubErr(verb, name string) error {
 }
 ```
 
-Create `cmd/shell.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newShellCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "shell [name]",
-		Short: "Reconcile home-manager, then open a local subshell with instance envs injected",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("shell", name)
-		},
-	}
-}
-```
-
-Create `cmd/ssh.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newSSHCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ssh [name]",
-		Short: "Open an interactive remote shell on the instance",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("ssh", name)
-		},
-	}
-}
-```
-
-Create `cmd/watch.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newWatchCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "watch [name]",
-		Short: "Restart continuous two-way repo sync if it's stopped or dead",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("watch", name)
-		},
-	}
-}
-```
-
-Create `cmd/connect.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newConnectCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "connect [name]",
-		Short: "Open a Jupyter tunnel to the instance (python template only)",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("connect", name)
-		},
-	}
-}
-```
-
-Create `cmd/status.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status [name]",
-		Short: "Show instance detail: IP, uptime, cost, sync/watch state",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("status", name)
-		},
-	}
-}
-```
-
-Create `cmd/down.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newDownCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "down [name]",
-		Short: "Stop watch, destroy the VM, and clear state",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			positional := ""
-			if len(args) > 0 {
-				positional = args[0]
-			}
-			name, err := resolveLookupIdentity(cmd, positional)
-			if err != nil {
-				return err
-			}
-			return stubErr("down", name)
-		},
-	}
-}
-```
-
-Create `cmd/sync.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newSyncCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "sync <local-dir> [remote-dir]",
-		Short: "One-shot push of a directory outside the repo to the instance",
-		Args:  cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := resolveLookupIdentity(cmd, "")
-			if err != nil {
-				return err
-			}
-			return stubErr("sync", name)
-		},
-	}
-}
-```
-
-Create `cmd/download.go`:
-
-```go
-package cmd
-
-import "github.com/spf13/cobra"
-
-func newDownloadCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "download <remote-dir> [local-dir]",
-		Short: "One-shot pull of files back from the instance",
-		Args:  cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := resolveLookupIdentity(cmd, "")
-			if err != nil {
-				return err
-			}
-			return stubErr("download", name)
-		},
-	}
-}
-```
-
-Modify `cmd/root.go` — register all eight in `newRootCmd()`:
+Modify `cmd/root.go` — register all eight in `newRootCmd()` in one call:
 
 ```go
 	root.AddCommand(newListCmd())
 	root.AddCommand(newUpCmd())
-	root.AddCommand(newShellCmd())
-	root.AddCommand(newSSHCmd())
-	root.AddCommand(newSyncCmd())
-	root.AddCommand(newDownloadCmd())
-	root.AddCommand(newWatchCmd())
-	root.AddCommand(newConnectCmd())
-	root.AddCommand(newStatusCmd())
-	root.AddCommand(newDownCmd())
+	root.AddCommand(newLookupCommands()...)
 
 	return root
 ```
@@ -1467,8 +1356,6 @@ Expected: `no instances` (fresh XDG state dir, nothing created yet).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add cmd/lookup.go cmd/shell.go cmd/ssh.go cmd/sync.go cmd/download.go \
-        cmd/watch.go cmd/connect.go cmd/status.go cmd/down.go \
-        cmd/root.go cmd/lookup_test.go
+git add cmd/lookup.go cmd/root.go cmd/lookup_test.go
 git commit -m "Add remaining lookup-only stub commands"
 ```
