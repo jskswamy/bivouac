@@ -83,8 +83,10 @@ cloudlab/
 ├── main.go                    # calls cmd.Execute()
 ├── cmd/                       # cobra command tree
 │   ├── root.go                # root command, persistent --repo/--name flags
-│   ├── up.go, shell.go, ssh.go, sync.go, download.go,
-│   │   watch.go, connect.go, status.go, down.go, list.go
+│   ├── up.go                  # repo-dependent command
+│   ├── list.go                # the one fully-real command
+│   ├── lookup.go              # table-driven: shell, ssh, sync, download,
+│   │                           # watch, connect, status, down
 ├── internal/
 │   ├── identity/               # ADR-0003: repo root + instance name resolution
 │   │   └── identity.go
@@ -106,9 +108,10 @@ filesystem:
 func RepoRoot(cwd, repoFlag string) (string, error)
 
 // InstanceName resolves a name for lookup-only commands: positional arg,
-// then --name, then (if cwd is inside a git repo) that repo's derived name.
-// Does not require a git repo to succeed if positional or --name is given.
-func InstanceName(cwd string, positional, nameFlag string) (string, error)
+// then --name, then (if cwd or repoFlag is inside a git repo) that repo's
+// derived name. Does not require a git repo to succeed if positional or
+// --name is given.
+func InstanceName(cwd, repoFlag, positional, nameFlag string) (string, error)
 ```
 
 Name derivation from a resolved repo root (shared by both paths): `--name`

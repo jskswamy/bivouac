@@ -49,3 +49,7 @@ Two follow-on questions came up during design:
   which reintroduces the collision risk that remote-derived naming was meant
   to avoid — accepted as an edge case, not worth solving further until it's
   an actual problem.
+- Similarly, a git worktree resolves `--show-toplevel` to the worktree's own
+  path, so the no-`origin` folder-name fallback names the instance after the
+  worktree directory rather than the main project — same accepted-edge-case
+  category as above.
