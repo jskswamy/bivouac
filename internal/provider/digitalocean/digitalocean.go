@@ -65,6 +65,21 @@ func isNotFound(err error) bool {
 	return false
 }
 
+// Destroy deletes the droplet identified by id.
+func (p *Provider) Destroy(ctx context.Context, id string) error {
+	n, err := parseID(id)
+	if err != nil {
+		return err
+	}
+	if _, err := p.client.Droplets.Delete(ctx, n); err != nil {
+		if isNotFound(err) {
+			return fmt.Errorf("destroying droplet %s: %w", id, provider.ErrNotFound)
+		}
+		return fmt.Errorf("destroying droplet %s: %w", id, err)
+	}
+	return nil
+}
+
 // toVM converts a godo.Droplet to a provider.VM. A droplet with no
 // network assigned yet (still booting) or no public IPv4 is a normal,
 // non-error state — PublicIPv4's error case (Networks == nil) and its

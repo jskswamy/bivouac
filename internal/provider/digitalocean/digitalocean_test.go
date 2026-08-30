@@ -82,3 +82,33 @@ func TestGet_InvalidID(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
+
+func TestDestroy_Found(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets/12345", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method = %s, want DELETE", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	if err := p.Destroy(context.Background(), "12345"); err != nil {
+		t.Fatalf("Destroy() error = %v", err)
+	}
+}
+
+func TestDestroy_NotFound(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets/99999", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"id":"not_found","message":"The resource you requested could not be found."}`))
+	})
+
+	err := p.Destroy(context.Background(), "99999")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, provider.ErrNotFound) {
+		t.Errorf("error = %v, want it to wrap provider.ErrNotFound", err)
+	}
+}
