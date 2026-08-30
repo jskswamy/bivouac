@@ -2,10 +2,12 @@ package digitalocean
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,5 +157,112 @@ func TestList_MultiplePages(t *testing.T) {
 	}
 	if vms[0].ID != "1" || vms[1].ID != "3" {
 		t.Errorf("List() = %+v, want IDs 1 and 3", vms)
+	}
+}
+
+func TestCreate_Success(t *testing.T) {
+	p, mux := newTestProvider(t)
+
+	getCalls := 0
+	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			return
+		}
+		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+	})
+	mux.HandleFunc("/v2/droplets/42", func(w http.ResponseWriter, r *http.Request) {
+		getCalls++
+		if getCalls < 3 {
+			// Not ready yet: active status but no network/IP assigned.
+			w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active"}}`))
+			return
+		}
+		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+	})
+
+	var progress []string
+	ctx := provider.WithProgress(context.Background(), func(status string) {
+		progress = append(progress, status)
+	})
+
+	vm, err := p.Create(ctx, provider.InstanceSpec{
+		Name:   "myrepo",
+		Region: "nyc3",
+		Size:   "s-1vcpu-1gb",
+		Image:  "ubuntu-22-04-x64",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if vm.ID != "42" || vm.IP != "203.0.113.5" || vm.Status != "active" {
+		t.Errorf("Create() = %+v, want ID 42, IP 203.0.113.5, status active", vm)
+	}
+	if getCalls < 3 {
+		t.Errorf("Get was polled %d times, want the loop to actually loop (>=3)", getCalls)
+	}
+	if len(progress) != 2 || progress[0] != "droplet created, waiting for network..." || progress[1] != "active" {
+		t.Errorf("progress = %v, want [\"droplet created, waiting for network...\", \"active\"]", progress)
+	}
+}
+
+func TestCreate_TimeoutNamesDropletID(t *testing.T) {
+	p, mux := newTestProvider(t)
+
+	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			return
+		}
+		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+	})
+	mux.HandleFunc("/v2/droplets/42", func(w http.ResponseWriter, r *http.Request) {
+		// Never becomes ready.
+		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	_, err := p.Create(ctx, provider.InstanceSpec{Name: "myrepo", Region: "nyc3", Size: "s-1vcpu-1gb", Image: "ubuntu-22-04-x64"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "42") {
+		t.Errorf("error = %q, want it to name droplet ID 42", err.Error())
+	}
+}
+
+func TestCreate_SSHKeysParsedAsIDOrFingerprint(t *testing.T) {
+	p, mux := newTestProvider(t)
+
+	var gotBody map[string]interface{}
+	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+	})
+	mux.HandleFunc("/v2/droplets/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+	})
+
+	_, err := p.Create(context.Background(), provider.InstanceSpec{
+		Name: "myrepo", Region: "nyc3", Size: "s-1vcpu-1gb", Image: "ubuntu-22-04-x64",
+		SSHKeys: []string{"12345", "aa:bb:cc:dd"},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	// DropletCreateSSHKey.MarshalJSON emits a bare scalar per key (the
+	// numeric ID or the fingerprint string), not an {"id": ...} object.
+	keys, ok := gotBody["ssh_keys"].([]interface{})
+	if !ok || len(keys) != 2 {
+		t.Fatalf("ssh_keys in request = %#v, want 2 entries", gotBody["ssh_keys"])
+	}
+	if id, ok := keys[0].(float64); !ok || id != 12345 {
+		t.Errorf("keys[0] = %#v, want 12345", keys[0])
+	}
+	if fp, ok := keys[1].(string); !ok || fp != "aa:bb:cc:dd" {
+		t.Errorf("keys[1] = %#v, want \"aa:bb:cc:dd\"", keys[1])
 	}
 }

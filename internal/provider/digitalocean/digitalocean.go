@@ -120,6 +120,61 @@ func paginate[T any](acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Respons
 	}
 }
 
+// Create creates a droplet from spec and blocks until it is active with
+// a public IPv4 assigned, or ctx is done.
+func (p *Provider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
+	req := &godo.DropletCreateRequest{
+		Name:     spec.Name,
+		Region:   spec.Region,
+		Size:     spec.Size,
+		Image:    godo.DropletCreateImage{Slug: spec.Image},
+		SSHKeys:  sshKeys(spec.SSHKeys),
+		UserData: spec.UserData,
+	}
+
+	d, _, err := p.client.Droplets.Create(ctx, req)
+	if err != nil {
+		return provider.VM{}, fmt.Errorf("creating droplet %q: %w", spec.Name, err)
+	}
+	id := d.ID
+
+	provider.ReportProgress(ctx, "droplet created, waiting for network...")
+
+	ticker := time.NewTicker(p.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		got, _, err := p.client.Droplets.Get(ctx, id)
+		if err != nil {
+			return provider.VM{}, fmt.Errorf("waiting for droplet %d: %w", id, err)
+		}
+		if vm := toVM(got); vm.Status == "active" && vm.IP != "" {
+			provider.ReportProgress(ctx, "active")
+			return vm, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return provider.VM{}, fmt.Errorf("timed out waiting for droplet %d to become active: %w", id, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+// sshKeys converts SSH key strings to godo's request shape: a numeric
+// string is treated as a key ID, anything else as a fingerprint.
+func sshKeys(ids []string) []godo.DropletCreateSSHKey {
+	keys := make([]godo.DropletCreateSSHKey, 0, len(ids))
+	for _, id := range ids {
+		if n, err := strconv.Atoi(id); err == nil {
+			keys = append(keys, godo.DropletCreateSSHKey{ID: n})
+			continue
+		}
+		keys = append(keys, godo.DropletCreateSSHKey{Fingerprint: id})
+	}
+	return keys
+}
+
 // toVM converts a godo.Droplet to a provider.VM. A droplet with no
 // network assigned yet (still booting) or no public IPv4 is a normal,
 // non-error state — PublicIPv4's error case (Networks == nil) and its
