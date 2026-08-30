@@ -80,6 +80,46 @@ func (p *Provider) Destroy(ctx context.Context, id string) error {
 	return nil
 }
 
+// List returns every droplet on the account.
+func (p *Provider) List(ctx context.Context) ([]provider.VM, error) {
+	var droplets []godo.Droplet
+	err := paginate(&droplets, func(opt *godo.ListOptions) ([]godo.Droplet, *godo.Response, error) {
+		return p.client.Droplets.List(ctx, opt)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing droplets: %w", err)
+	}
+
+	vms := make([]provider.VM, 0, len(droplets))
+	for i := range droplets {
+		vms = append(vms, toVM(&droplets[i]))
+	}
+	return vms, nil
+}
+
+// paginate loops through every page of a godo list call, appending each
+// page's results to acc. Shared by List and, later, the discovery
+// methods (ListRegions/ListSizes/ListImages).
+func paginate[T any](acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Response, error)) error {
+	opt := &godo.ListOptions{}
+	for {
+		page, resp, err := fetch(opt)
+		if err != nil {
+			return err
+		}
+		*acc = append(*acc, page...)
+
+		if resp.Links == nil || resp.Links.IsLastPage() {
+			return nil
+		}
+		current, err := resp.Links.CurrentPage()
+		if err != nil {
+			return err
+		}
+		opt.Page = current + 1
+	}
+}
+
 // toVM converts a godo.Droplet to a provider.VM. A droplet with no
 // network assigned yet (still booting) or no public IPv4 is a normal,
 // non-error state — PublicIPv4's error case (Networks == nil) and its

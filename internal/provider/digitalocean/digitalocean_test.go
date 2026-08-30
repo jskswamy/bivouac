@@ -112,3 +112,48 @@ func TestDestroy_NotFound(t *testing.T) {
 		t.Errorf("error = %v, want it to wrap provider.ErrNotFound", err)
 	}
 }
+
+func TestList_SinglePage(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"},{"id":2,"name":"two","status":"active"}],"links":{},"meta":{"total":2}}`))
+	})
+
+	vms, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(vms) != 2 {
+		t.Fatalf("List() returned %d VMs, want 2", len(vms))
+	}
+	if vms[0].ID != "1" || vms[1].ID != "2" {
+		t.Errorf("List() = %+v, want IDs 1 and 2", vms)
+	}
+}
+
+func TestList_MultiplePages(t *testing.T) {
+	p, mux := newTestProvider(t)
+	requests := 0
+	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Query().Get("page") == "2" {
+			w.Write([]byte(`{"droplets":[{"id":3,"name":"three","status":"active"}],"links":{}}`))
+			return
+		}
+		w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"}],"links":{"pages":{"next":"` + r.Host + `/v2/droplets/?page=2"}}}`))
+	})
+
+	vms, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("handler called %d times, want 2 (one per page)", requests)
+	}
+	if len(vms) != 2 {
+		t.Fatalf("List() returned %d VMs across 2 pages, want 2", len(vms))
+	}
+	if vms[0].ID != "1" || vms[1].ID != "3" {
+		t.Errorf("List() = %+v, want IDs 1 and 3", vms)
+	}
+}
