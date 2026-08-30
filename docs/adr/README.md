@@ -13,3 +13,4 @@ in the order they were made, not necessarily the order they're implemented.
 | [0006](0006-credentials-via-aide-secrets.md) | Claude Code credentials via aide's secrets system |
 | [0007](0007-command-surface.md) | Command surface — `up` owns the repo, `sync`/`download` are for everything else |
 | [0008](0008-provider-abstraction.md) | Provider abstraction — DigitalOcean first, not DigitalOcean-only |
+| [0009](0009-general-secrets-via-sops-nix.md) | General instance secrets via sops-nix, age key derived from the instance's own SSH host key |
