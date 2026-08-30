@@ -20,6 +20,8 @@ type Provider struct {
 	pollInterval time.Duration
 }
 
+var _ provider.Provider = (*Provider)(nil)
+
 // New builds a Provider authenticated with token. It makes no network
 // call and does not validate the token — auth failures surface on the
 // first real API call.
