@@ -28,6 +28,33 @@ func TestListRegions(t *testing.T) {
 	}
 }
 
+func TestListRegions_MultiplePages(t *testing.T) {
+	p, mux := newTestProvider(t)
+	requests := 0
+	mux.HandleFunc("/v2/regions", func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Query().Get("page") == "2" {
+			w.Write([]byte(`{"regions":[{"slug":"sfo3","name":"San Francisco 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{}}`))
+			return
+		}
+		w.Write([]byte(`{"regions":[{"slug":"nyc3","name":"New York 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{"pages":{"next":"` + r.Host + `/v2/regions/?page=2"}}}`))
+	})
+
+	regions, err := p.ListRegions(context.Background())
+	if err != nil {
+		t.Fatalf("ListRegions() error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("handler called %d times, want 2 (one per page)", requests)
+	}
+	if len(regions) != 2 {
+		t.Fatalf("ListRegions() returned %d regions across 2 pages, want 2", len(regions))
+	}
+	if regions[0].Slug != "nyc3" || regions[1].Slug != "sfo3" {
+		t.Errorf("ListRegions() = %+v, want slugs nyc3 and sfo3", regions)
+	}
+}
+
 func TestListSizes_MarksGPUSizes(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/sizes", func(w http.ResponseWriter, r *http.Request) {

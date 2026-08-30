@@ -42,7 +42,7 @@ func TestGet_Found(t *testing.T) {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"active"}}`))
+		w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"active","region":{"slug":"nyc3"},"size_slug":"s-1vcpu-1gb"}}`))
 	})
 
 	vm, err := p.Get(context.Background(), "12345")
@@ -57,6 +57,12 @@ func TestGet_Found(t *testing.T) {
 	}
 	if vm.Status != "active" {
 		t.Errorf("vm.Status = %q, want %q", vm.Status, "active")
+	}
+	if vm.Region != "nyc3" {
+		t.Errorf("vm.Region = %q, want %q", vm.Region, "nyc3")
+	}
+	if vm.Size != "s-1vcpu-1gb" {
+		t.Errorf("vm.Size = %q, want %q", vm.Size, "s-1vcpu-1gb")
 	}
 }
 
@@ -112,6 +118,22 @@ func TestDestroy_NotFound(t *testing.T) {
 	}
 	if !errors.Is(err, provider.ErrNotFound) {
 		t.Errorf("error = %v, want it to wrap provider.ErrNotFound", err)
+	}
+}
+
+func TestDestroy_NonNotFoundErrorNotMisclassified(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets/12345", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"id":"server_error","message":"Something went wrong on our end."}`))
+	})
+
+	err := p.Destroy(context.Background(), "12345")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, provider.ErrNotFound) {
+		t.Errorf("error = %v, want it NOT to wrap provider.ErrNotFound for a 500 response", err)
 	}
 }
 

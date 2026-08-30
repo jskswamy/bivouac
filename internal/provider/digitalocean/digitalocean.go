@@ -16,7 +16,9 @@ import (
 
 // Provider implements provider.Provider against the DigitalOcean API.
 type Provider struct {
-	client       *godo.Client
+	client *godo.Client
+	// pollInterval must be non-zero: Create's ticker panics on a zero
+	// duration. New() is the only sanctioned way to get a valid default.
 	pollInterval time.Duration
 }
 
