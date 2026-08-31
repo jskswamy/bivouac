@@ -22,9 +22,9 @@ validation. The imperative CLI commands are unaffected by this spec;
 this is purely about the declarative file's format and scope.
 
 **This sub-project produces a standalone, testable `internal/config`
-Go package with a `Load()` function, plus a foundational config-structure
+Go package with a `Resolve()` function, plus a foundational config-structure
 doc and worked examples — not wired into any CLI command.** Wiring
-`Load()`'s output into `up` (building a `provider.InstanceSpec` and a
+`Resolve()`'s output into `up` (building a `provider.InstanceSpec` and a
 Nix package list from it) is a later sub-project, matching how the
 Provider layer landed without CLI wiring.
 
@@ -93,7 +93,7 @@ absolute `file://` path to one specific machine (works, but breaks the
 moment a teammate reads the same committed file on a different
 machine — `cloudlab.pkl` is meant to be shared, matching how
 `cloudlab.yaml` worked), or move the reuse mechanism out of Pkl
-entirely. **This spec takes the second path**: `internal/config.Load`
+entirely. **This spec takes the second path**: `internal/config.Resolve`
 evaluates the project's `cloudlab.pkl` and, separately, a personal base
 file if one exists, then merges the two *in Go*. `amends` remains
 available within Pkl for anything a user wants to compose *inside*
@@ -129,7 +129,7 @@ string handling, not a language limitation to work around.
   `String?` (not bare `String`) specifically so a project file can
   validly omit them and rely on the base to supply them — Pkl would
   otherwise refuse to evaluate an incomplete file before Go ever gets a
-  chance to merge in the base's values. `Load` returns a clear error
+  chance to merge in the base's values. `Resolve` returns a clear error
   naming which field is still unset after merging both files, if any
   are.
 - **`cloudlab.pkl` must exist in the repo, even if trivial.** No
@@ -204,7 +204,7 @@ internal/config/
 ├── generate.go                # //go:generate directive only
 ├── Config.pkl.go              # generated: Config struct + Load/LoadFromPath (DO NOT EDIT)
 ├── init.pkl.go                 # generated: pkl.RegisterStrictMapping (DO NOT EDIT)
-├── config.go                   # hand-written: Load() wrapper — base resolution + merge
+├── config.go                   # hand-written: Resolve() wrapper — base resolution + merge
 └── config_test.go
 ```
 
@@ -278,14 +278,20 @@ rather than `nil`.
 **Hand-written wrapper** (`internal/config/config.go`):
 
 ```go
-// Load resolves the project's cloudlab.pkl at path, merges it with a
+// Resolve loads the project's cloudlab.pkl at path, merges it with a
 // personal base config if one is found (see basePath resolution
 // below), and returns the merged Config. Scalar fields take the
 // project's value if set, else the base's; list fields are additive
 // (base's entries first, then the project's). Returns an error naming
 // any of region/size/template still unset after merging.
-func Load(ctx context.Context, path string) (Config, error)
+func Resolve(ctx context.Context, path string) (Config, error)
 ```
+
+Named `Resolve`, not `Load`: the generated `Config.pkl.go` already
+defines a lower-level `Load(ctx, evaluator, source)` — discovered when
+a full end-to-end dry run of this exact code (part of writing the
+implementation plan) hit a `Load redeclared in this block` compile
+error. `Resolve` builds on the generated `LoadFromPath` instead.
 
 Internally: evaluate `path` via the generated `LoadFromPath`; resolve
 the base path — project's `BasePath` if set (`~`-prefixed expands via
@@ -311,11 +317,11 @@ co-located schema file) was confirmed to work end-to-end, both through
 
 1. A caller (a later phase) resolves the repo-root path to
    `cloudlab.pkl` (via `internal/identity`, unchanged) and calls
-   `config.Load(ctx, path)`.
-2. `Load` evaluates the project file via the generated `LoadFromPath`.
-3. `Load` resolves and checks for a personal base file; if present,
+   `config.Resolve(ctx, path)`.
+2. `Resolve` evaluates the project file via the generated `LoadFromPath`.
+3. `Resolve` resolves and checks for a personal base file; if present,
    evaluates it too and merges it under the project's values.
-4. `Load` validates that `region`/`size`/`template` are set after
+4. `Resolve` validates that `region`/`size`/`template` are set after
    merging; returns a clear error naming any that aren't.
 5. Out of scope here: turning the returned `Config` into a
    `provider.InstanceSpec` and a Nix package list for `up` to consume.
@@ -329,11 +335,11 @@ co-located schema file) was confirmed to work end-to-end, both through
 - Pkl evaluation/type errors (malformed file, wrong type) → Pkl's own
   descriptive error is wrapped with operation context
   (`"loading %s: %w"`), never swallowed.
-- No implicit defaults if `cloudlab.pkl` is missing entirely — `Load`
+- No implicit defaults if `cloudlab.pkl` is missing entirely — `Resolve`
   returns a clear "file not found" error; there is no fallback to
   reading the personal base directly.
 - A required field (`region`/`size`/`template`) still unset after
-  merging both files → `Load` returns an error naming exactly which
+  merging both files → `Resolve` returns an error naming exactly which
   field, not a generic "invalid config."
 
 ## Testing
@@ -388,9 +394,9 @@ inline Pkl doc-comments. This sub-project's deliverables include:
   cloudlab has tagged releases (see Out of scope), rather than implying
   the relative form is what a real, separate project repo would use.
 
-This lands alongside the schema and `Load()` implementation, not as a
+This lands alongside the schema and `Resolve()` implementation, not as a
 follow-up — the plan's tasks should include writing it, not defer it
-to whichever later sub-project wires `Load()` into `up`.
+to whichever later sub-project wires `Resolve()` into `up`.
 
 ## Out of scope (deferred to later sub-projects)
 
@@ -398,7 +404,7 @@ to whichever later sub-project wires `Load()` into `up`.
   coding-agent-harness templates, a notebook/uv template, etc. actually
   install/configure. This spec only needs `template` to be a valid,
   open-ended string.
-- Wiring `config.Load`'s output into `up` (building
+- Wiring `config.Resolve`'s output into `up` (building
   `provider.InstanceSpec` and the Nix package list from a `Config`).
 - SSH key sourcing (the paused SSH key management sub-project) — this
   schema's `sshKeys` field is just `Listing<String>` of already-resolved
@@ -418,7 +424,7 @@ to whichever later sub-project wires `Load()` into `up`.
   is a tag-pinned raw URL, e.g. `amends
   "https://raw.githubusercontent.com/jskswamy/cloudlab/v0.1.0/pkl/Config.pkl"`,
   once cloudlab has real tagged releases to pin against. Not resolved
-  here because it's a distribution/versioning concern, not a `Load()`
+  here because it's a distribution/versioning concern, not a `Resolve()`
   concern — worked examples in this sub-project use the relative,
   co-located form and say so explicitly, rather than presenting an
   unverified URL pattern as settled.
