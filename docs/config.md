@@ -1,0 +1,95 @@
+# Configuring cloudlab: `cloudlab.pkl`
+
+cloudlab reads a declarative config file, `cloudlab.pkl`, written in
+[Pkl](https://pkl-lang.org) — a typed, validated alternative to YAML.
+This doc explains every field, how personal defaults are reused across
+projects, and what happens when something's missing or wrong.
+
+If you've never used Pkl before: it looks like a typed config file
+(`key = value`), not a programming language. You don't need to learn
+Pkl deeply to write a `cloudlab.pkl` — the two worked examples in
+`docs/examples/` cover the common cases.
+
+## Fields
+
+| Field | Type | Required? | Default | Meaning |
+|---|---|---|---|---|
+| `region` | `String?` | Yes, after merge | none | DigitalOcean region slug, e.g. `"nyc3"`. Maps directly to the `Region` field `Provider.Create` sends. |
+| `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
+| `template` | `String?` | Yes, after merge | none | Provisioning template name. The template catalog itself (what each name actually installs) is a separate, later feature — for now this is just a name cloudlab passes through. |
+| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
+| `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
+| `flakes` | `Listing<Flake>` (`{url, packages}`) | No | empty | Nix flakes to install, each with its own package list. |
+| `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
+
+"Required, after merge" means: `region`/`size`/`template` don't have to
+be set in your project's `cloudlab.pkl` itself, as long as your
+personal base config supplies them (or vice versa) — see below. If
+neither file sets one, `Load` fails with an error naming exactly which
+field is still missing.
+
+## Personal base config and reuse across projects
+
+Most of your `cloudlab.pkl` settings — your SSH key, your usual droplet
+size, packages you always want — don't change per-project. Instead of
+repeating them in every repo, put them once in a personal base config:
+
+- Default location: `$XDG_CONFIG_HOME/cloudlab/base.pkl`, or
+  `~/.config/cloudlab/base.pkl` if `XDG_CONFIG_HOME` isn't set.
+- Not committed anywhere — it's yours, local to your machine.
+- Written exactly like a project `cloudlab.pkl` (same schema, same
+  `amends` line).
+
+When cloudlab loads a project's `cloudlab.pkl`, it also checks for your
+base config. If one exists, the two are merged:
+
+- **Scalars** (`region`, `size`, `template`): the project's value wins
+  if it set one; otherwise the base's value is used.
+- **Lists** (`sshKeys`, `packages`, `flakes`): additive — your base's
+  entries first, then the project's. Nothing is dropped from either
+  side.
+
+If your base config doesn't exist yet, this isn't an error — your
+project's `cloudlab.pkl` is used on its own, and any field it doesn't
+set is simply missing (which fails validation if it's one of the three
+required ones).
+
+### Pointing at a different base file
+
+Set `basePath` in your project's `cloudlab.pkl` to use something other
+than the default location:
+
+```pkl
+basePath = "~/.config/cloudlab/work-base.pkl"  // a different personal file
+basePath = "./team-base.pkl"                    // a file checked into this repo, next to cloudlab.pkl
+```
+
+A `~`-prefixed path expands to your home directory. An absolute path is
+used as-is. Anything else is resolved relative to the project file's
+own directory — not wherever you happen to run `cloudlab` from — so a
+relative `basePath` always means "the file next to this one."
+
+## Writing your `cloudlab.pkl`
+
+Every `cloudlab.pkl` must start with an `amends` line pointing at
+cloudlab's schema — this is what gives you typed fields and lets
+cloudlab validate the file. See `docs/examples/minimal/cloudlab.pkl`
+for the simplest possible file, and `docs/examples/with-base/` for the
+base-merge pattern (a `base.pkl` and a `cloudlab.pkl` that merges with
+it).
+
+> **A note on the `amends` path in these examples:** they point at
+> `pkl/Config.pkl` inside *this* repo (cloudlab's own source), because
+> that's where the examples live. A `cloudlab.pkl` in your own,
+> separate project repo can't use that same relative path — it needs a
+> stable reference to cloudlab's schema instead (for example, a
+> version-pinned URL once cloudlab has tagged releases). That
+> distribution mechanism isn't settled yet; treat the `amends` path in
+> your own repo's `cloudlab.pkl` as the one detail these examples don't
+> demonstrate correctly for you to copy verbatim.
+
+## Errors you might see
+
+- **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other.
+- **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on cloudlab itself.
+- A Pkl evaluation error (malformed file, wrong type for a field) is passed through with the file path it came from — Pkl's own error message names the exact line and problem.

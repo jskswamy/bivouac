@@ -1,0 +1,15 @@
+amends "../../../pkl/Config.pkl"
+
+// Points at the sibling base.pkl instead of the real XDG default, so
+// this example is self-contained and doesn't depend on anything
+// outside this directory. A real project typically omits basePath
+// entirely and relies on the XDG default.
+basePath = "./base.pkl"
+
+region = "nyc3"
+template = "python"
+// size comes from base.pkl (not overridden here).
+// packages merges additively: base's [git, ripgrep] + this file's [jq].
+packages {
+  "jq"
+}

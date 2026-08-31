@@ -1,0 +1,14 @@
+amends "../../../pkl/Config.pkl"
+
+// A personal base config — not committed to any individual project's
+// repo. Lives at $XDG_CONFIG_HOME/cloudlab/base.pkl (or
+// ~/.config/cloudlab/base.pkl) on a real machine; this copy exists
+// only to demonstrate the merge pattern.
+size = "s-1vcpu-1gb"
+sshKeys {
+  "AAAA...my-key-fingerprint"
+}
+packages {
+  "git"
+  "ripgrep"
+}
