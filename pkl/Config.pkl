@@ -1,0 +1,17 @@
+@go.Package { name = "github.com/jskswamy/cloudlab/internal/config" }
+module cloudlab.Config
+
+import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/go.pkl"
+
+basePath: String?
+region: String?
+size: String?
+template: String?
+sshKeys: Listing<String>?
+packages: Listing<String> = new Listing {}
+flakes: Listing<Flake> = new Listing {}
+
+class Flake {
+  url: String
+  packages: Listing<String>
+}
