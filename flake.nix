@@ -66,12 +66,15 @@
             # subdirectories of $HOME (observed: ~/go/pkg/mod, ~/.pkl both
             # blocked with "Operation not permitted" even though they're
             # owned by the current user). Route Go's module cache into the
-            # repo itself (gitignored) so `go build`/`go test`/`go generate`
-            # work regardless of that restriction.
+            # repo itself, and redirect HOME so Pkl's own package cache
+            # (~/.pkl/cache — pkl-go's generated LoadFromPath hardcodes
+            # this default, no override hook exposed) lands somewhere
+            # writable too. Everything under .gocache/ is gitignored.
             shellHook = ''
               export GOPATH="$PWD/.gocache/gopath"
               export GOMODCACHE="$GOPATH/pkg/mod"
-              mkdir -p "$GOMODCACHE"
+              export HOME="$PWD/.gocache/home"
+              mkdir -p "$GOMODCACHE" "$HOME"
             '';
           };
         }

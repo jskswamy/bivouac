@@ -12,7 +12,7 @@
 
 - Module path: `github.com/jskswamy/cloudlab`.
 - **Toolchain prerequisite: run everything in this plan inside `nix develop`** (from the repo root). It provides `go` and Pkl 0.32.1 — the Pkl CLI pkl-go 0.14.0's codegen requires (verified: pkl-go 0.14.0 needs Pkl >= 0.32.0; a bare `pkl` on `PATH` outside the flake may be older and will fail codegen with `Module 'pkl.go.gen' requires Pkl version 0.32.0 or higher`).
-- **Sandboxed shells and `~/.pkl`:** the first `pkl` invocation on a machine writes to `~/.pkl/cache` (fetching and caching the `pkl.golang` package used by the schema's `@go.Package` annotation — a one-time, then-fully-offline cost). If a sandboxed Bash tool blocks writes to the home directory (`FileSystemException: /Users/.../.pkl: Operation not permitted`), that is an environment restriction, not a code bug — rerun the specific blocked command with the sandbox disabled for that one invocation.
+- **`~/.pkl` and Go's module cache are already handled — do not add your own workarounds.** This repo's `flake.nix` `devShell` redirects `HOME` and `GOPATH`/`GOMODCACHE` into a gitignored `.gocache/` inside the repo, because this environment blocks writes to `~/go/pkg/mod` and `~/.pkl` with `Operation not permitted` even for files the current user owns — verified hands-on, and `dangerouslyDisableSandbox` does **not** fix it (also verified hands-on). The `HOME` redirect fixes Go-level Pkl evaluation (`LoadFromPath`, used by every test) because `pkl-go` resolves its cache directory via Go's own `os.UserHomeDir()`, which honors the override. It does **not** fix the raw `pkl` CLI (used only by `go generate`'s codegen step) — that native binary ignores the `HOME` env var entirely for its own cache-directory resolution (verified hands-on: identical failure with `HOME` redirected). That's why the codegen directive in Task 1 passes `--cache-dir` explicitly instead of relying on `HOME`. The cache at `.gocache/home/.pkl/cache` has already been pre-warmed with the `pkl.golang@0.14.0` package (fetched during planning, before this task list is dispatched) — codegen should succeed without any network access. If you still see a `pkl.golang` fetch or a timeout, the pre-warmed cache didn't carry over; retry once, and if it persists, report it rather than working around it — it likely means something upstream of this task changed.
 - **Schema** (`pkl/Config.pkl`) field set, exact and final for this plan — do not add/rename/remove fields:
   ```pkl
   @go.Package { name = "github.com/jskswamy/cloudlab/internal/config" }
@@ -86,8 +86,15 @@ Create `internal/config/generate.go`:
 // Package config loads and merges cloudlab.pkl declarative config files.
 package config
 
-//go:generate pkl run package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/gen.pkl ../../pkl/Config.pkl
+//go:generate pkl run --cache-dir=../../.gocache/home/.pkl/cache package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/gen.pkl ../../pkl/Config.pkl
 ```
+
+The `--cache-dir` flag is required in this repo, not optional — see the
+Global Constraints note above (the raw `pkl` CLI ignores `HOME`
+redirection, unlike Go-level Pkl evaluation). The path is relative to
+`internal/config/` (where `go generate` runs this directive from),
+pointing at the same repo-local, gitignored, pre-warmed cache the
+`flake.nix` devShell's `HOME` override uses.
 
 - [ ] **Step 3: Write the failing smoke test**
 
