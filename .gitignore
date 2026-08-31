@@ -2,3 +2,4 @@
 /dist/
 *.test
 .direnv/
+/.gocache/

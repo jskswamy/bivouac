@@ -62,6 +62,17 @@
               pkgs.go
               (pklFor system pkgs)
             ];
+            # Some sandboxed shells restrict writes to arbitrary
+            # subdirectories of $HOME (observed: ~/go/pkg/mod, ~/.pkl both
+            # blocked with "Operation not permitted" even though they're
+            # owned by the current user). Route Go's module cache into the
+            # repo itself (gitignored) so `go build`/`go test`/`go generate`
+            # work regardless of that restriction.
+            shellHook = ''
+              export GOPATH="$PWD/.gocache/gopath"
+              export GOMODCACHE="$GOPATH/pkg/mod"
+              mkdir -p "$GOMODCACHE"
+            '';
           };
         }
       );
