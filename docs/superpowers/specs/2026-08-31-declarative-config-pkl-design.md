@@ -145,7 +145,7 @@ string handling, not a language limitation to work around.
   provisioning content. This schema only needs to reference a template
   by name without ever needing to change when a new one is added.
 - **No `PklProject` manifest.** Codegen invokes the full package URL
-  form directly (`pkl run package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.13.2#/gen.pkl
+  form directly (`pkl run package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/gen.pkl
   pkl/Config.pkl`) rather than introducing a `PklProject` +
   `PklProject.deps.json` dependency-alias layer for a single
   dependency — one less file/lockfile pair to maintain for what a
@@ -155,18 +155,23 @@ string handling, not a language limitation to work around.
   because there is no project found") — the full `package://...#/go.pkl`
   URL is not a style preference, it's the only form that works without
   one.
-- **pkl-go pinned to v0.13.2, not the latest v0.14.0.** Verified
-  hands-on: `pkl.golang@0.14.0`'s `gen.pkl` requires Pkl CLI ≥ 0.32.0;
-  the Pkl CLI actually available in this environment (via nix,
-  `/Users/subramk/.nix-profile/bin/pkl`) is 0.31.1, and running codegen
-  against it fails with `Module 'pkl.go.gen' requires Pkl version
-  0.32.0 or higher`. v0.13.2 runs cleanly against 0.31.1 — confirmed by
-  actually generating code and running it against a real `.pkl` fixture
-  end-to-end. Revisit the pin once a Pkl CLI ≥ 0.32.0 is the
-  established baseline.
+- **pkl-go pinned to the latest v0.14.0, backed by a Nix flake pinning
+  Pkl CLI 0.32.1.** Verified hands-on: `pkl.golang@0.14.0`'s `gen.pkl`
+  requires Pkl CLI ≥ 0.32.0, and nixpkgs (checked via NixHub, both
+  `unstable` and stable channels) has never packaged Pkl past 0.31.1 —
+  running codegen against 0.31.1 fails outright (`Module 'pkl.go.gen'
+  requires Pkl version 0.32.0 or higher`). Rather than pin `pkl-go` down
+  to the older v0.13.2 (which does run against 0.31.1), this spec adds
+  a repo-root `flake.nix` that fetches Apple's prebuilt Pkl 0.32.1
+  binary directly (`github.com/apple/pkl` release assets — nixpkgs
+  doesn't have it yet) alongside `go`, so `nix develop` alone gives a
+  correct toolchain without relying on whatever `pkl` happens to be on
+  a developer's `PATH`. Confirmed end-to-end inside this flake's shell:
+  codegen with `pkl.golang@0.14.0` against Pkl 0.32.1, and the
+  generated `LoadFromPath` evaluating a real fixture correctly.
 - **Evaluating a project's `cloudlab.pkl` needs network access once,
   not just at codegen time.** Because the schema module itself contains
-  `import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.13.2#/go.pkl"`
+  `import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/go.pkl"`
   (needed for the `@go.Package` annotation), and every project file
   amends that schema, evaluating *any* project file — not just running
   codegen — requires Pkl to resolve that package. Verified hands-on:
@@ -192,6 +197,7 @@ string handling, not a language limitation to work around.
 ## Architecture
 
 ```
+flake.nix                       # nix devShell: go + Pkl 0.32.1 (fetched, not from nixpkgs)
 pkl/
 └── Config.pkl                # versioned schema source, with @go.Package annotation
 internal/config/
@@ -218,7 +224,7 @@ sub-package.
 @go.Package { name = "github.com/jskswamy/cloudlab/internal/config" }
 module cloudlab.Config
 
-import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.13.2#/go.pkl"
+import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/go.pkl"
 
 /// Optional override for the personal base config's path (supports ~
 /// expansion, resolved by cloudlab in Go, not by Pkl). Defaults to
@@ -253,7 +259,7 @@ actually running codegen against this exact schema, not assumed.
 ```go
 package config
 
-//go:generate pkl run package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.13.2#/gen.pkl ../../pkl/Config.pkl
+//go:generate pkl run package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/gen.pkl ../../pkl/Config.pkl
 ```
 
 Running `go generate ./internal/config/...` produces `Config.pkl.go`
@@ -282,10 +288,13 @@ func Load(ctx context.Context, path string) (Config, error)
 ```
 
 Internally: evaluate `path` via the generated `LoadFromPath`; resolve
-the base path (project's `BasePath` if set, expanding `~` via
-`os.UserHomeDir()`, else `$XDG_CONFIG_HOME/cloudlab/base.pkl` /
-`~/.config/cloudlab/base.pkl`); if that file exists, evaluate it too
-and merge per the rules above; validate the merged result; return it.
+the base path — project's `BasePath` if set (`~`-prefixed expands via
+`os.UserHomeDir()`; absolute is used as-is; anything else is resolved
+relative to `path`'s own directory, not the process's CWD, so a
+project can point at a sibling file with `basePath = "./base.pkl"`) —
+else `$XDG_CONFIG_HOME/cloudlab/base.pkl` / `~/.config/cloudlab/base.pkl`;
+if that file exists, evaluate it too and merge per the rules above;
+validate the merged result; return it.
 
 A project's `cloudlab.pkl` must `amends` the schema module to evaluate
 correctly through the generated `LoadFromPath`/`EvaluateModule` path —
