@@ -52,6 +52,10 @@ func Resolve(ctx context.Context, path string) (Config, error) {
 
 // mergeConfig layers project over base: scalars use project's value if
 // set, else base's; lists are additive, base's entries first.
+//
+// BasePath is intentionally not carried into the returned Config — it's
+// only meaningful for deciding which base file to merge, not as part of
+// the merged output.
 func mergeConfig(base, project Config) Config {
 	return Config{
 		Region:   coalesce(project.Region, base.Region),

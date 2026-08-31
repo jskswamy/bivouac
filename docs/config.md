@@ -10,6 +10,15 @@ If you've never used Pkl before: it looks like a typed config file
 Pkl deeply to write a `cloudlab.pkl` — the two worked examples in
 `docs/examples/` cover the common cases.
 
+You'll need the `pkl` CLI installed to evaluate these files (or just use
+this repo's `nix develop`, which provides it). The very first time `pkl`
+evaluates anything using cloudlab's schema on a given machine, it needs
+network access once to fetch and cache the `pkl.golang` package the
+schema depends on; every evaluation after that is fully offline.
+
+Note also that a `cloudlab.pkl` file is *executed*, not just parsed —
+see "A note on trust" near the end of this doc.
+
 ## Fields
 
 | Field | Type | Required? | Default | Meaning |
@@ -25,7 +34,7 @@ Pkl deeply to write a `cloudlab.pkl` — the two worked examples in
 "Required, after merge" means: `region`/`size`/`template` don't have to
 be set in your project's `cloudlab.pkl` itself, as long as your
 personal base config supplies them (or vice versa) — see below. If
-neither file sets one, `Load` fails with an error naming exactly which
+neither file sets one, `Resolve` fails with an error naming exactly which
 field is still missing.
 
 ## Personal base config and reuse across projects
@@ -53,6 +62,10 @@ If your base config doesn't exist yet, this isn't an error — your
 project's `cloudlab.pkl` is used on its own, and any field it doesn't
 set is simply missing (which fails validation if it's one of the three
 required ones).
+
+The merge is exactly one level deep: if your base config itself sets a
+`basePath` field, that's ignored — there's no recursive/chained
+resolution beyond the project-plus-one-base merge described above.
 
 ### Pointing at a different base file
 
@@ -87,6 +100,19 @@ it).
 > distribution mechanism isn't settled yet; treat the `amends` path in
 > your own repo's `cloudlab.pkl` as the one detail these examples don't
 > demonstrate correctly for you to copy verbatim.
+
+## A note on trust
+
+`cloudlab.pkl` and any base config it merges with are evaluated by the
+`pkl` CLI, not just parsed as inert data — Pkl is a real language, and
+evaluating a file can read other files, make HTTP requests, and read
+environment variables as part of producing its result, the same way
+running a build script can. Treat a `cloudlab.pkl` from a source you
+don't trust the same way you'd treat an untrusted script, not the same
+way you'd treat a YAML file. For future work that wires this into a
+live `up` command that might run against arbitrary repos, configuring a
+more restrictive Pkl evaluator (limiting what a `cloudlab.pkl` file is
+allowed to read or fetch) is a natural hardening step.
 
 ## Errors you might see
 

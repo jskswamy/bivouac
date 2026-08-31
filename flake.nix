@@ -66,15 +66,21 @@
             # subdirectories of $HOME (observed: ~/go/pkg/mod, ~/.pkl both
             # blocked with "Operation not permitted" even though they're
             # owned by the current user). Route Go's module cache into the
-            # repo itself, and redirect HOME so Pkl's own package cache
-            # (~/.pkl/cache — pkl-go's generated LoadFromPath hardcodes
-            # this default, no override hook exposed) lands somewhere
-            # writable too. Everything under .gocache/ is gitignored.
+            # repo itself unconditionally. HOME itself is only redirected
+            # if creating Pkl's own package cache (~/.pkl/cache —
+            # pkl-go's generated LoadFromPath hardcodes this default, no
+            # override hook exposed) fails on the real HOME — on a normal,
+            # unsandboxed machine this never triggers, so ~/.gitconfig,
+            # ~/.ssh, etc. keep working. Everything under .gocache/ is
+            # gitignored.
             shellHook = ''
               export GOPATH="$PWD/.gocache/gopath"
               export GOMODCACHE="$GOPATH/pkg/mod"
-              export HOME="$PWD/.gocache/home"
-              mkdir -p "$GOMODCACHE" "$HOME"
+              mkdir -p "$GOMODCACHE"
+              if ! mkdir -p "$HOME/.pkl/cache" 2>/dev/null; then
+                export HOME="$PWD/.gocache/home"
+                mkdir -p "$HOME"
+              fi
             '';
           };
         }

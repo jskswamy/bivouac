@@ -123,6 +123,22 @@ func TestLoad_MissingRequiredFieldAfterMerge_ReturnsClearError(t *testing.T) {
 	}
 }
 
+func TestLoad_PklNotOnPATH_ReturnsClearError(t *testing.T) {
+	dir := t.TempDir()
+	// An empty temp dir has no pkl binary in it, so the PATH lookup
+	// fails before the project file is even read — it doesn't need to
+	// exist.
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := Resolve(context.Background(), filepath.Join(dir, "cloudlab.pkl"))
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want error naming pkl CLI not found")
+	}
+	if !strings.Contains(err.Error(), "pkl CLI not found on PATH") {
+		t.Errorf("error %q does not mention pkl CLI not found on PATH", err.Error())
+	}
+}
+
 func TestLoad_MissingProjectFile_ReturnsNotFoundError(t *testing.T) {
 	dir := t.TempDir()
 	_, err := Resolve(context.Background(), filepath.Join(dir, "no-such-file.pkl"))

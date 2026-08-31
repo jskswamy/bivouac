@@ -19,6 +19,11 @@ func repoRoot(t *testing.T) string {
 func TestExamples_Minimal_LoadsCleanly(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "docs", "examples", "minimal", "cloudlab.pkl")
 
+	// Isolate from any real user's machine-local base config — this
+	// example must load cleanly on its own, not merged with whatever
+	// happens to live at $XDG_CONFIG_HOME/cloudlab/base.pkl.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
 	cfg, err := Resolve(context.Background(), path)
 	if err != nil {
 		t.Fatalf("Resolve(%s) error = %v", path, err)
