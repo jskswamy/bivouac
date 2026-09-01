@@ -3,3 +3,6 @@
 *.test
 .direnv/
 /.gocache/
+.pre-commit-config.yaml
+.env
+.env.*
