@@ -38,7 +38,16 @@ most convenient to develop on.
   `flake.nix`. The alternative (`actions/setup-go` + a separately
   installed Pkl binary) would mean two toolchain definitions to keep in
   sync, and a version bump in one that's forgotten in the other
-  silently diverges CI from local dev.
+  silently diverges CI from local dev. This choice has one real cost,
+  not discovered until implementation: `nix flake check`'s build
+  sandbox has no network access, and on Linux (unlike macOS, where the
+  sandbox defaults off) that blocks `golangci-lint`'s hook from
+  resolving this repo's Go module dependencies (`pkl-go`, `godo`,
+  `cobra`, etc.), since `HOME`/`GOMODCACHE` start empty on every
+  sandboxed build. The fix is `sandbox = false` via `extra-conf` on the
+  Nix installer action — worth documenting here because it's a direct
+  consequence of reusing the local flake as-is in CI, not an unrelated
+  workaround.
 - **Platform matrix: `ubuntu-latest` and `macos-latest`, not just
   one.** cloudlab's own CLI is meant to run on both Linux and macOS end
   users' machines — this isn't about developer convenience, it's
@@ -145,13 +154,23 @@ directly, not just a bare "check failed."
 
 There's no unit-testable "test" for a CI workflow definition beyond
 watching it actually run. Verification is: push this file, open the
-resulting Action run, and confirm both matrix legs go green — including
-`TestLoadFromPath_MinimalFixture` (internal/config), which has been
-failing on the primary dev machine all session because Santa/SentinelOne
-blocks that one raw-codegen smoke test's access to the real
-`~/.pkl/cache`. A clean CI run on both platforms is also confirmation
-that failure really was that one machine's local restriction, not a
-latent bug.
+resulting Action run, and confirm both matrix legs go green.
+
+That original prediction turned out to be only half right, caught
+during review rather than by an actual CI run: the `ubuntu-latest`
+leg was going to fail `nix flake check` on the very first push,
+because the sandboxed build's lack of network access blocks
+`golangci-lint`'s Go module resolution (see Decisions) — a gap this
+spec didn't anticipate. `sandbox = false` on the Nix installer step
+fixes it; `macos-latest` was never going to hit this, since its
+sandbox defaults off. This was verified locally as far as this
+machine (macOS) can: `nix flake check` passes here both before and
+after the fix, which only proves the YAML and hook config are sound,
+not that the Linux leg itself goes green — that still needs an actual
+push and a real Action run to confirm, same as the original plan
+called for. `TestLoadFromPath_MinimalFixture` (internal/config) is
+still expected to pass cleanly in CI on both platforms, for the
+reason already stated above — that part hasn't changed.
 
 ## Out of scope
 

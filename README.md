@@ -1,5 +1,7 @@
 # cloudlab
 
+[![CI](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml)
+
 Ephemeral, declarative dev instances in the cloud — named instances, started
 from a template, `shell`/`ssh` in when you need them, torn down when you
 don't. The backend is a cloud VM, not a process running on your Mac, so

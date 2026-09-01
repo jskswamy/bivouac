@@ -79,7 +79,12 @@
 
               # Go
               gofmt.enable = true;
-              golangci-lint.enable = true;
+              golangci-lint = {
+                enable = true;
+                # golangci-lint shells out to go; nix flake check's sandbox
+                # has no PATH go otherwise.
+                extraPackages = [ pkgs.go ];
+              };
 
               # Secrets
               trufflehog.enable = true;
