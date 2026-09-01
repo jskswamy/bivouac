@@ -10,7 +10,7 @@ import (
 
 func writeFixture(t *testing.T, path, body string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte("amends "+quotePklString(schemaPath(t))+"\n\n"+body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("writing fixture %s: %v", path, err)
 	}
 }
@@ -178,6 +178,22 @@ func TestLoad_BasePathOverride_PointsAtNonDefaultLocation(t *testing.T) {
 	}
 	if cfg.Region == nil || *cfg.Region != "sfo3" {
 		t.Errorf("Region = %v, want sfo3 (from custom base)", cfg.Region)
+	}
+}
+
+func TestLoad_ProjectFileDeclaresOwnAmends_ReturnsClearError(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	if err := os.WriteFile(project, []byte(`amends "whatever.pkl"`+"\n\n"+`region = "nyc3"`+"\n"), 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	_, err := Resolve(context.Background(), project)
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want error naming the amends line")
+	}
+	if !strings.Contains(err.Error(), "amends") {
+		t.Errorf("error %q does not mention amends", err.Error())
 	}
 }
 

@@ -8,15 +8,15 @@ import (
 	"testing"
 )
 
-// schemaPath returns the absolute path to pkl/Config.pkl regardless of
-// the test binary's working directory.
+// schemaPath returns the absolute path to internal/config/Config.pkl
+// regardless of the test binary's working directory.
 func schemaPath(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine this test file's own path")
 	}
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "pkl", "Config.pkl")
+	return filepath.Join(filepath.Dir(thisFile), "Config.pkl")
 }
 
 func TestLoadFromPath_MinimalFixture(t *testing.T) {
@@ -46,11 +46,4 @@ func TestLoadFromPath_MinimalFixture(t *testing.T) {
 	if cfg.Flakes == nil || len(cfg.Flakes) != 0 {
 		t.Errorf("Flakes = %v, want empty non-nil slice", cfg.Flakes)
 	}
-}
-
-// quotePklString renders s as a Pkl double-quoted string literal. Test
-// fixture paths are plain filesystem paths (no quotes/backslashes to
-// escape), so a bare wrap is sufficient here.
-func quotePklString(s string) string {
-	return "\"" + s + "\""
 }

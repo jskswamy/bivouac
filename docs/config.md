@@ -46,8 +46,8 @@ repeating them in every repo, put them once in a personal base config:
 - Default location: `$XDG_CONFIG_HOME/cloudlab/base.pkl`, or
   `~/.config/cloudlab/base.pkl` if `XDG_CONFIG_HOME` isn't set.
 - Not committed anywhere — it's yours, local to your machine.
-- Written exactly like a project `cloudlab.pkl` (same schema, same
-  `amends` line).
+- Written exactly like a project `cloudlab.pkl` — same schema, same
+  rule that it never declares its own `amends` (see below).
 
 When cloudlab loads a project's `cloudlab.pkl`, it also checks for your
 base config. If one exists, the two are merged:
@@ -84,22 +84,30 @@ relative `basePath` always means "the file next to this one."
 
 ## Writing your `cloudlab.pkl`
 
-Every `cloudlab.pkl` must start with an `amends` line pointing at
-cloudlab's schema — this is what gives you typed fields and lets
-cloudlab validate the file. See `docs/examples/minimal/cloudlab.pkl`
-for the simplest possible file, and `docs/examples/with-base/` for the
-base-merge pattern (a `base.pkl` and a `cloudlab.pkl` that merges with
-it).
+Your `cloudlab.pkl` is just field values — no `amends` line, no path to
+cloudlab's schema, nothing to reference at all:
 
-> **A note on the `amends` path in these examples:** they point at
-> `pkl/Config.pkl` inside *this* repo (cloudlab's own source), because
-> that's where the examples live. A `cloudlab.pkl` in your own,
-> separate project repo can't use that same relative path — it needs a
-> stable reference to cloudlab's schema instead (for example, a
-> version-pinned URL once cloudlab has tagged releases). That
-> distribution mechanism isn't settled yet; treat the `amends` path in
-> your own repo's `cloudlab.pkl` as the one detail these examples don't
-> demonstrate correctly for you to copy verbatim.
+```pkl
+region = "nyc3"
+size = "s-1vcpu-1gb"
+template = "python"
+```
+
+cloudlab carries its own copy of the schema (embedded in the `cloudlab`
+binary itself) and points your file at it automatically before
+evaluating it — you never need to know where that schema lives, and
+there's no version of it to keep in sync with, since it's always
+exactly the one built into whichever `cloudlab` you're running.
+
+If your file *does* start with its own `amends` line (for example,
+copied from an older doc or another Pkl project), `Resolve` rejects it
+with a clear error rather than silently ignoring or honoring it —
+there's no supported case where a `cloudlab.pkl` should reference a
+different schema than the one its own `cloudlab` binary carries.
+
+See `docs/examples/minimal/cloudlab.pkl` for the simplest possible
+file, and `docs/examples/with-base/` for the base-merge pattern (a
+`base.pkl` and a `cloudlab.pkl` that merges with it).
 
 ## A note on trust
 
@@ -118,4 +126,5 @@ allowed to read or fetch) is a natural hardening step.
 
 - **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other.
 - **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on cloudlab itself.
+- **"must not declare its own `amends` — cloudlab manages the schema reference automatically; remove that line"** — your `cloudlab.pkl` or base config starts with its own `amends`. Delete that line; cloudlab points your file at its own embedded schema automatically.
 - A Pkl evaluation error (malformed file, wrong type for a field) is passed through with the file path it came from — Pkl's own error message names the exact line and problem.
