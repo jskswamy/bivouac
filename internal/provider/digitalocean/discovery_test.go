@@ -9,7 +9,7 @@ import (
 func TestListRegions(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/regions", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"regions":[{"slug":"nyc3","name":"New York 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{}}`))
+		_, _ = w.Write([]byte(`{"regions":[{"slug":"nyc3","name":"New York 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{}}`))
 	})
 
 	regions, err := p.ListRegions(context.Background())
@@ -34,10 +34,10 @@ func TestListRegions_MultiplePages(t *testing.T) {
 	mux.HandleFunc("/v2/regions", func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		if r.URL.Query().Get("page") == "2" {
-			w.Write([]byte(`{"regions":[{"slug":"sfo3","name":"San Francisco 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{}}`))
+			_, _ = w.Write([]byte(`{"regions":[{"slug":"sfo3","name":"San Francisco 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{}}`))
 			return
 		}
-		w.Write([]byte(`{"regions":[{"slug":"nyc3","name":"New York 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{"pages":{"next":"` + r.Host + `/v2/regions/?page=2"}}}`))
+		_, _ = w.Write([]byte(`{"regions":[{"slug":"nyc3","name":"New York 3","sizes":["s-1vcpu-1gb"],"available":true}],"links":{"pages":{"next":"` + r.Host + `/v2/regions/?page=2"}}}`))
 	})
 
 	regions, err := p.ListRegions(context.Background())
@@ -58,7 +58,7 @@ func TestListRegions_MultiplePages(t *testing.T) {
 func TestListSizes_MarksGPUSizes(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/sizes", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"sizes":[
+		_, _ = w.Write([]byte(`{"sizes":[
 			{"slug":"s-1vcpu-1gb","memory":1024,"vcpus":1,"disk":25,"price_monthly":6,"regions":["nyc3"],"available":true,"description":"Basic"},
 			{"slug":"gpu-h100x1-80gb","memory":245760,"vcpus":20,"disk":720,"price_monthly":2699.2,"regions":["nyc2"],"available":true,"description":"GPU","gpu_info":{"count":1,"model":"h100"}}
 		],"links":{}}`))
@@ -90,7 +90,7 @@ func TestListImages_UsesDistributionEndpoint(t *testing.T) {
 		if r.URL.Query().Get("type") != "distribution" {
 			t.Errorf("query type = %q, want distribution", r.URL.Query().Get("type"))
 		}
-		w.Write([]byte(`{"images":[{"slug":"ubuntu-22-04-x64","name":"Ubuntu 22.04","distribution":"Ubuntu","public":true,"regions":["nyc3"]}],"links":{}}`))
+		_, _ = w.Write([]byte(`{"images":[{"slug":"ubuntu-22-04-x64","name":"Ubuntu 22.04","distribution":"Ubuntu","public":true,"regions":["nyc3"]}],"links":{}}`))
 	})
 
 	images, err := p.ListImages(context.Background())

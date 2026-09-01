@@ -26,7 +26,7 @@ func injectSchema(path string, raw []byte) (tmpPath string, cleanup func(), err 
 	if err != nil {
 		return "", nil, fmt.Errorf("preparing schema for %s: %w", path, err)
 	}
-	cleanup = func() { os.RemoveAll(dir) }
+	cleanup = func() { _ = os.RemoveAll(dir) }
 
 	schemaPath := filepath.Join(dir, "Config.pkl")
 	if err := os.WriteFile(schemaPath, embeddedSchema, 0o644); err != nil {

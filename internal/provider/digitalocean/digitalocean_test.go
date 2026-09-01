@@ -42,7 +42,7 @@ func TestGet_Found(t *testing.T) {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"active","region":{"slug":"nyc3"},"size_slug":"s-1vcpu-1gb"}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"active","region":{"slug":"nyc3"},"size_slug":"s-1vcpu-1gb"}}`))
 	})
 
 	vm, err := p.Get(context.Background(), "12345")
@@ -70,7 +70,7 @@ func TestGet_NotFound(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/droplets/99999", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"id":"not_found","message":"The resource you requested could not be found."}`))
+		_, _ = w.Write([]byte(`{"id":"not_found","message":"The resource you requested could not be found."}`))
 	})
 
 	_, err := p.Get(context.Background(), "99999")
@@ -109,7 +109,7 @@ func TestDestroy_NotFound(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/droplets/99999", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"id":"not_found","message":"The resource you requested could not be found."}`))
+		_, _ = w.Write([]byte(`{"id":"not_found","message":"The resource you requested could not be found."}`))
 	})
 
 	err := p.Destroy(context.Background(), "99999")
@@ -125,7 +125,7 @@ func TestDestroy_NonNotFoundErrorNotMisclassified(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/droplets/12345", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"id":"server_error","message":"Something went wrong on our end."}`))
+		_, _ = w.Write([]byte(`{"id":"server_error","message":"Something went wrong on our end."}`))
 	})
 
 	err := p.Destroy(context.Background(), "12345")
@@ -140,7 +140,7 @@ func TestDestroy_NonNotFoundErrorNotMisclassified(t *testing.T) {
 func TestList_SinglePage(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"},{"id":2,"name":"two","status":"active"}],"links":{},"meta":{"total":2}}`))
+		_, _ = w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"},{"id":2,"name":"two","status":"active"}],"links":{},"meta":{"total":2}}`))
 	})
 
 	vms, err := p.List(context.Background())
@@ -161,10 +161,10 @@ func TestList_MultiplePages(t *testing.T) {
 	mux.HandleFunc("/v2/droplets", func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		if r.URL.Query().Get("page") == "2" {
-			w.Write([]byte(`{"droplets":[{"id":3,"name":"three","status":"active"}],"links":{}}`))
+			_, _ = w.Write([]byte(`{"droplets":[{"id":3,"name":"three","status":"active"}],"links":{}}`))
 			return
 		}
-		w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"}],"links":{"pages":{"next":"` + r.Host + `/v2/droplets/?page=2"}}}`))
+		_, _ = w.Write([]byte(`{"droplets":[{"id":1,"name":"one","status":"active"}],"links":{"pages":{"next":"` + r.Host + `/v2/droplets/?page=2"}}}`))
 	})
 
 	vms, err := p.List(context.Background())
@@ -190,16 +190,16 @@ func TestCreate_Success(t *testing.T) {
 		if r.Method != http.MethodPost {
 			return
 		}
-		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
 	})
 	mux.HandleFunc("/v2/droplets/42", func(w http.ResponseWriter, r *http.Request) {
 		getCalls++
 		if getCalls < 3 {
 			// Not ready yet: active status but no network/IP assigned.
-			w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active"}}`))
+			_, _ = w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active"}}`))
 			return
 		}
-		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
 	})
 
 	var progress []string
@@ -234,11 +234,11 @@ func TestCreate_TimeoutNamesDropletID(t *testing.T) {
 		if r.Method != http.MethodPost {
 			return
 		}
-		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
 	})
 	mux.HandleFunc("/v2/droplets/42", func(w http.ResponseWriter, r *http.Request) {
 		// Never becomes ready.
-		w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":42,"name":"myrepo","status":"new"}}`))
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -261,10 +261,10 @@ func TestCreate_SSHKeysParsedAsIDOrFingerprint(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
-		w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
 	})
 	mux.HandleFunc("/v2/droplets/1", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
+		_, _ = w.Write([]byte(`{"droplet":{"id":1,"name":"myrepo","status":"active","networks":{"v4":[{"ip_address":"203.0.113.5","type":"public"}]}}}`))
 	})
 
 	_, err := p.Create(context.Background(), provider.InstanceSpec{

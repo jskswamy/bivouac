@@ -21,11 +21,13 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 			if len(records) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no instances")
-				return nil
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "no instances")
+				return err
 			}
 			for _, r := range records {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", r.Name, r.Provider, r.IP)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", r.Name, r.Provider, r.IP); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
