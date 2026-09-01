@@ -74,6 +74,7 @@ resolves package lists.
 
 - [`docs/architecture.md`](docs/architecture.md) — components, data flow, instance lifecycle
 - [`docs/adr/`](docs/adr/) — why things are shaped the way they are, one decision per file
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev environment setup, pre-commit hooks
 
 ## License
 
