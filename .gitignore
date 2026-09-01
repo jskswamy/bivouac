@@ -6,3 +6,4 @@
 .pre-commit-config.yaml
 .env
 .env.*
+.claude/*.local.md
