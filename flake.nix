@@ -104,6 +104,7 @@
               pkgs.go
               pkgs.gopls
               pkgs.rsync
+              pkgs.mutagen
               (pklFor system pkgs)
               direnv-instant.packages.${system}.default
             ]
