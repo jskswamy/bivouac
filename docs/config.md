@@ -27,6 +27,7 @@ see "A note on trust" near the end of this doc.
 | `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
 | `template` | `String?` | Yes, after merge | none | Provisioning template name. The template catalog itself (what each name actually installs) is a separate, later feature — for now this is just a name cloudlab passes through. |
 | `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
+| `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |

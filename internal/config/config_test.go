@@ -260,6 +260,71 @@ func TestLoad_ArchInvalid_ReturnsClearError(t *testing.T) {
 	}
 }
 
+func TestLoad_ImageDefaultsToUbuntu2404(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Image != "ubuntu-24-04-x64" {
+		t.Errorf("Image = %q, want %q", cfg.Image, "ubuntu-24-04-x64")
+	}
+}
+
+func TestLoad_ImageOverride(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`image = "ubuntu-22-04-x64"`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Image != "ubuntu-22-04-x64" {
+		t.Errorf("Image = %q, want %q", cfg.Image, "ubuntu-22-04-x64")
+	}
+}
+
+func TestLoad_ImageSurvivesBaseMerge(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.pkl")
+	writeFixture(t, base, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+	}, "\n")+"\n")
+
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`basePath = "./base.pkl"`,
+		`template = "python"`,
+		`image = "ubuntu-22-04-x64"`,
+	}, "\n")+"\n")
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Image != "ubuntu-22-04-x64" {
+		t.Errorf("Image = %q, want %q (project overrides base)", cfg.Image, "ubuntu-22-04-x64")
+	}
+}
+
 func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
 	dir := t.TempDir()
 	project := filepath.Join(dir, "cloudlab.pkl")
