@@ -16,6 +16,8 @@ type Config struct {
 
 	Template *string `pkl:"template"`
 
+	Arch string `pkl:"arch"`
+
 	SshKeys *[]string `pkl:"sshKeys"`
 
 	Packages []string `pkl:"packages"`

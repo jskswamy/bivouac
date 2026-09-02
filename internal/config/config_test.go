@@ -197,6 +197,120 @@ func TestLoad_ProjectFileDeclaresOwnAmends_ReturnsClearError(t *testing.T) {
 	}
 }
 
+func TestLoad_ArchDefaultsToX86_64(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Arch != "x86_64" {
+		t.Errorf("Arch = %q, want %q", cfg.Arch, "x86_64")
+	}
+}
+
+func TestLoad_ArchOverride(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`arch = "arm64"`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Arch != "arm64" {
+		t.Errorf("Arch = %q, want %q", cfg.Arch, "arm64")
+	}
+}
+
+func TestLoad_ArchInvalid_ReturnsClearError(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`arch = "sparc64"`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	if _, err := Resolve(context.Background(), project); err == nil {
+		t.Error("Resolve() error = nil, want error for invalid arch value")
+	}
+}
+
+func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`flakes {`,
+		`  new Flake {`,
+		`    url = "github:someorg/custom-tool"`,
+		`    packages { "cli" }`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(cfg.Flakes) != 1 {
+		t.Fatalf("Flakes = %v, want 1 entry", cfg.Flakes)
+	}
+	if cfg.Flakes[0].Modules != false {
+		t.Errorf("Flakes[0].Modules = %v, want false", cfg.Flakes[0].Modules)
+	}
+}
+
+func TestLoad_FlakeModulesTrue(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`flakes {`,
+		`  new Flake {`,
+		`    url = "github:someorg/custom-tool"`,
+		`    packages { "cli" }`,
+		`    modules = true`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(cfg.Flakes) != 1 || !cfg.Flakes[0].Modules {
+		t.Errorf("Flakes = %v, want one entry with Modules = true", cfg.Flakes)
+	}
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

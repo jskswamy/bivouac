@@ -5,4 +5,6 @@ type Flake struct {
 	Url string `pkl:"url"`
 
 	Packages []string `pkl:"packages"`
+
+	Modules bool `pkl:"modules"`
 }

@@ -26,9 +26,10 @@ see "A note on trust" near the end of this doc.
 | `region` | `String?` | Yes, after merge | none | DigitalOcean region slug, e.g. `"nyc3"`. Maps directly to the `Region` field `Provider.Create` sends. |
 | `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
 | `template` | `String?` | Yes, after merge | none | Provisioning template name. The template catalog itself (what each name actually installs) is a separate, later feature — for now this is just a name cloudlab passes through. |
+| `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
-| `flakes` | `Listing<Flake>` (`{url, packages}`) | No | empty | Nix flakes to install, each with its own package list. |
+| `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
 | `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
 
 "Required, after merge" means: `region`/`size`/`template` don't have to

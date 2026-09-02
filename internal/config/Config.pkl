@@ -7,6 +7,7 @@ basePath: String?
 region: String?
 size: String?
 template: String?
+arch: "x86_64"|"arm64" = "x86_64"
 sshKeys: Listing<String>?
 packages: Listing<String> = new Listing {}
 flakes: Listing<Flake> = new Listing {}
@@ -14,4 +15,5 @@ flakes: Listing<Flake> = new Listing {}
 class Flake {
   url: String
   packages: Listing<String>
+  modules: Boolean = false
 }
