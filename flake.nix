@@ -103,6 +103,7 @@
             packages = [
               pkgs.go
               pkgs.gopls
+              pkgs.rsync
               (pklFor system pkgs)
               direnv-instant.packages.${system}.default
             ]
