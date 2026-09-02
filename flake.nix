@@ -121,6 +121,7 @@
               export GOPATH="$PWD/.gocache/gopath"
               export GOMODCACHE="$GOPATH/pkg/mod"
               export XDG_CACHE_HOME="$PWD/.gocache/xdg-cache"
+              export GOFLAGS="-modcacherw"
               mkdir -p "$GOMODCACHE" "$XDG_CACHE_HOME"
             '';
           };
