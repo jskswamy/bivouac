@@ -53,6 +53,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		`basePath = "./base.pkl"`,
 		`size = "s-2vcpu-4gb"`, // overrides base
 		`template = "python"`,
+		`arch = "arm64"`,
 		`sshKeys { "project-key" }`,
 		`packages { "ripgrep" }`,
 	}, "\n")+"\n")
@@ -80,6 +81,10 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 	wantPackages := []string{"git", "ripgrep"}
 	if !equalStrings(cfg.Packages, wantPackages) {
 		t.Errorf("Packages = %v, want %v (base then project)", cfg.Packages, wantPackages)
+	}
+
+	if cfg.Arch != "arm64" {
+		t.Errorf("Arch = %q, want %q (project overrides base)", cfg.Arch, "arm64")
 	}
 }
 

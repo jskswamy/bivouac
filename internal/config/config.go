@@ -111,6 +111,7 @@ func mergeConfig(base, project Config) Config {
 		Region:   coalesce(project.Region, base.Region),
 		Size:     coalesce(project.Size, base.Size),
 		Template: coalesce(project.Template, base.Template),
+		Arch:     project.Arch,
 		SshKeys:  mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
 		Packages: append(append([]string{}, base.Packages...), project.Packages...),
 		Flakes:   append(append([]Flake{}, base.Flakes...), project.Flakes...),
