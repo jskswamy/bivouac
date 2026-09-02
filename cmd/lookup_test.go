@@ -15,7 +15,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 	}{
 		{[]string{"shell", "--name", "myrepo"}, "shell", "shell: not implemented yet"},
 		{[]string{"ssh", "--name", "myrepo"}, "ssh", "ssh: not implemented yet"},
-		{[]string{"watch", "--name", "myrepo"}, "watch", "watch: not implemented yet"},
+		{[]string{"watch", "--name", "myrepo"}, "watch", `no instance named "myrepo"`},
 		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
 		{[]string{"down", "--name", "myrepo"}, "down", `no instance named "myrepo"`},

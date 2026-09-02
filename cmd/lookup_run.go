@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
@@ -79,5 +80,28 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	} else {
 		cmd.Printf("Status:   %s\n", st.LiveStatus)
 	}
+	return nil
+}
+
+func runWatch(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	repoFlag, _ := cmd.Flags().GetString("repo")
+	root, err := identity.RepoRoot(cwd, repoFlag)
+	if err != nil {
+		return err
+	}
+
+	if err := lifecycle.StartWatch(cmd.Context(), record.IP, name, root); err != nil {
+		return err
+	}
+	cmd.Printf("Watch restarted for %s\n", name)
 	return nil
 }

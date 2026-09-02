@@ -40,6 +40,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "watch",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
+		run:   runWatch,
 	},
 	{
 		use:   "connect [name]",
