@@ -24,6 +24,8 @@ type fakeProvider struct {
 	gotSpec     provider.InstanceSpec
 	destroyedID string
 	destroyErr  error
+	getVM       provider.VM
+	getErr      error
 }
 
 func (f *fakeProvider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
@@ -36,7 +38,7 @@ func (f *fakeProvider) Destroy(ctx context.Context, id string) error {
 	return f.destroyErr
 }
 func (f *fakeProvider) Get(ctx context.Context, id string) (provider.VM, error) {
-	return provider.VM{}, nil
+	return f.getVM, f.getErr
 }
 func (f *fakeProvider) List(ctx context.Context) ([]provider.VM, error) { return nil, nil }
 

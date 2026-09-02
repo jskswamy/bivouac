@@ -54,6 +54,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "status",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
+		run:   runStatus,
 	},
 	{
 		use:   "down [name]",

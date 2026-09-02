@@ -56,3 +56,28 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Instance %s is down\n", name)
 	return nil
 }
+
+func runStatus(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	p, err := resolveProvider()
+	if err != nil {
+		return err
+	}
+
+	st := lifecycle.Status(cmd.Context(), p, record)
+	cmd.Printf("Name:     %s\n", st.Record.Name)
+	cmd.Printf("Provider: %s\n", st.Record.Provider)
+	cmd.Printf("Region:   %s\n", st.Record.Region)
+	cmd.Printf("Size:     %s\n", st.Record.Size)
+	cmd.Printf("Template: %s\n", st.Record.Template)
+	cmd.Printf("IP:       %s\n", st.Record.IP)
+	if st.LiveErr != nil {
+		cmd.Printf("Status:   unknown (live check failed: %v)\n", st.LiveErr)
+	} else {
+		cmd.Printf("Status:   %s\n", st.LiveStatus)
+	}
+	return nil
+}
