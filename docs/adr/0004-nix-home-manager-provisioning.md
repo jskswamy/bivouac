@@ -21,8 +21,11 @@ language instead of ad hoc `runcmd` lists.
 ## Decision
 
 - Cloud-init's job shrinks to a template-agnostic bootstrap: install Nix
-  (Determinate Systems installer — non-interactive, flakes enabled), then
-  run `nix run home-manager -- switch --flake <ref>#<template>`.
+  (Determinate Systems installer — non-interactive, flakes enabled) and
+  nothing else. `home-manager switch` is not run by cloud-init — it runs
+  over SSH from the CLI side, as part of `Reconcile` (see ADR-0007's
+  `provision` addition), so the exact same code path handles both the
+  instance's first activation and every later reconcile.
 - All actual differentiation (Python toolchain vs. Docker+minikube, plus
   packages shared across every template: git, age, aide, Claude Code) lives
   in Nix flake outputs — a `python` and a `docker` home-manager profile in
@@ -38,7 +41,8 @@ language instead of ad hoc `runcmd` lists.
   not writing a new cloud-init script.
 - Reconciling packages later (ADR-0005) becomes "re-run home-manager switch"
   rather than "re-run arbitrary shell commands," which is what makes
-  idempotent, safe-to-repeat reconciliation from `up`/`shell` practical.
+  idempotent, safe-to-repeat reconciliation from `up`/`shell`/`provision`
+  practical — all three call the same `Reconcile` function.
 - GPU instances keep using the provider's GPU-ready base images (CUDA
   drivers pre-installed); the Nix layer is independent of and doesn't touch
   driver setup.

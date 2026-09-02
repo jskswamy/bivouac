@@ -25,10 +25,15 @@ because multi-instance (ADR-0002) exists.
 
 ## Decision
 
-- **`up`** does the full bring-up in one command: create the VM, run
-  cloud-init/home-manager, rsync the repo to `~/reponame`, reconcile
-  home-manager again with the repo's `cloudlab.yaml`, start `watch`. On
-  return, the instance is fully live — no separate step required.
+- **`up`** does the full bring-up in one command: create the VM, wait for
+  it to be reachable, reconcile home-manager with the project's
+  `cloudlab.pkl` exactly once (not twice — see ADR-0004), rsync the repo
+  to `~/reponame` (independent of reconcile), start `watch`. On return,
+  the instance is fully live — no separate step required.
+- **`provision [name]`** reconciles home-manager with the current
+  `cloudlab.pkl` and does nothing else — no VM creation, no subshell, no
+  repo rsync. For the common case of "I only changed `cloudlab.pkl`,
+  apply it now" without either of `up`'s or `shell`'s side effects.
 - **`shell`** is distinct from `ssh`: it never opens a remote session. It
   reconciles home-manager (idempotent — ADR-0005) then drops you into a
   **local** subshell with instance-specific env vars injected
@@ -52,10 +57,11 @@ because multi-instance (ADR-0002) exists.
 - `[name]` is optional on every per-instance command, defaulting to the
   current repo's derived instance name (ADR-0003); `list` is the one
   global, no-name command.
-- Reconciliation triggers narrow to `{up, shell}` — `sync`/`download` are
-  fully orthogonal to `cloudlab.yaml`/home-manager, which is a deliberate
-  simplification: they're a plain file-transfer utility, not a provisioning
-  hook.
+- Reconciliation triggers narrow to `{up, shell, provision}` — `sync`/
+  `download` are fully orthogonal to `cloudlab.pkl`/home-manager, which is
+  a deliberate simplification: they're a plain file-transfer utility, not
+  a provisioning hook. All three reconciliation triggers share the exact
+  same `Reconcile` function, never duplicated per command.
 - No command forces a full repo re-sync short of `watch` (restart the
   session) or `down` + `up` (recreate outright) — accepted, since a
   from-scratch instance is cheap.
