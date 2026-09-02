@@ -6,27 +6,31 @@ import (
 	"os/exec"
 )
 
-// rsyncArgs builds the argv Rsync passes to the rsync binary: sync
-// ip's remote ~/<remoteName> directory from localRepoRoot's contents,
+// rsyncPushArgs builds the argv for copying local's contents to ip's
+// remote directory remote (already the full path, e.g. "~/myrepo" or
+// "~/dataset" -- callers resolve any default before calling this),
 // using the system ssh binary as rsync's remote shell.
-func rsyncArgs(ip, localRepoRoot, remoteName string) []string {
-	src := localRepoRoot + "/"
-	dst := fmt.Sprintf("root@%s:~/%s/", ip, remoteName)
+func rsyncPushArgs(ip, local, remote string) []string {
+	src := local + "/"
+	dst := fmt.Sprintf("root@%s:%s/", ip, remote)
 	return []string{"-az", "-e", "ssh", src, dst}
 }
 
-// Rsync copies localRepoRoot's contents to ~/<remoteName> on the
-// instance at ip. Relies on WaitReady's Connect call having already
-// completed trust-on-first-connect against ~/.ssh/known_hosts, since
-// rsync -e ssh spawns the system ssh binary, not this project's Go SSH
-// client.
-func Rsync(ctx context.Context, ip, localRepoRoot, remoteName string) error {
+// Push copies local's contents to ip's remote directory remote.
+func Push(ctx context.Context, ip, local, remote string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "rsync", rsyncArgs(ip, localRepoRoot, remoteName)...)
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("rsync to %s failed: %w\n%s", ip, err, out)
 	}
 	return nil
+}
+
+// Rsync copies localRepoRoot's contents to ~/<remoteName> on the
+// instance at ip -- up's one-shot initial seed of the repo. A thin
+// wrapper over Push with up's own path convention.
+func Rsync(ctx context.Context, ip, localRepoRoot, remoteName string) error {
+	return Push(ctx, ip, localRepoRoot, "~/"+remoteName)
 }

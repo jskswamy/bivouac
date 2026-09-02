@@ -19,7 +19,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
 		{[]string{"down", "--name", "myrepo"}, "down", `no instance named "myrepo"`},
-		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", "sync: not implemented yet"},
+		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", `no instance named "myrepo"`},
 		{[]string{"download", "./results", "--name", "myrepo"}, "download", "download: not implemented yet"},
 	}
 	for _, tc := range cases {
@@ -46,12 +46,14 @@ func TestLookupCommands_NameFlagWinsOverLeadingPathArg(t *testing.T) {
 	cases := []struct {
 		args []string
 		verb string
+		want string
 	}{
-		{[]string{"sync", "./data", "--name", "myrepo"}, "sync"},
-		{[]string{"download", "./results", "--name", "myrepo"}, "download"},
+		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", `no instance named "myrepo"`},
+		{[]string{"download", "./results", "--name", "myrepo"}, "download", `instance "myrepo"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.verb, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
 			root := newRootCmd()
 			root.SetArgs(tc.args)
 			var out bytes.Buffer
@@ -62,8 +64,8 @@ func TestLookupCommands_NameFlagWinsOverLeadingPathArg(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if !strings.Contains(err.Error(), `instance "myrepo"`) {
-				t.Errorf("error = %q, want it to name instance %q (from --name, not the leading path arg)", err.Error(), "myrepo")
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to contain %q", err.Error(), tc.want)
 			}
 		})
 	}

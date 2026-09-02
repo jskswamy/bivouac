@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
@@ -103,5 +104,30 @@ func runWatch(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 	cmd.Printf("Watch restarted for %s\n", name)
+	return nil
+}
+
+// defaultRemoteDir returns the instance-side directory sync uses when
+// no remote-dir is given: ~/<basename(local)>.
+func defaultRemoteDir(local string) string {
+	return "~/" + filepath.Base(filepath.Clean(local))
+}
+
+func runSync(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+
+	local := args[0]
+	remote := defaultRemoteDir(local)
+	if len(args) > 1 {
+		remote = args[1]
+	}
+
+	if err := lifecycle.Push(cmd.Context(), record.IP, local, remote); err != nil {
+		return err
+	}
+	cmd.Printf("Synced %s to %s:%s\n", local, name, remote)
 	return nil
 }

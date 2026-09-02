@@ -8,15 +8,15 @@ import (
 	"testing"
 )
 
-func TestRsyncArgs_BuildsExpectedCommand(t *testing.T) {
-	got := rsyncArgs("203.0.113.5", "/home/user/myrepo", "myrepo")
+func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
+	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo")
 	want := []string{"-az", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
-		t.Fatalf("rsyncArgs() = %v, want %v", got, want)
+		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("rsyncArgs()[%d] = %q, want %q", i, got[i], want[i])
+			t.Errorf("rsyncPushArgs()[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
 }

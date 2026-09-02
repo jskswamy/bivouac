@@ -71,6 +71,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "sync",
 		args:  cobra.RangeArgs(1, 2),
 		named: false,
+		run:   runSync,
 	},
 	{
 		use:   "download <remote-dir> [local-dir]",
