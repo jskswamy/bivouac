@@ -3,8 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
+	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
 	"github.com/spf13/cobra"
 )
 
@@ -37,9 +40,19 @@ func newUpCmd() *cobra.Command {
 				}
 			}
 
-			return fmt.Errorf("up: not implemented yet (instance %q, repo %q)", name, root)
+			token := os.Getenv("DIGITALOCEAN_TOKEN")
+			if token == "" {
+				return fmt.Errorf("DIGITALOCEAN_TOKEN not set (needed to create instance %q)", name)
+			}
+			p := digitalocean.New(token)
+
+			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
+			if err := lifecycle.Up(cmd.Context(), p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
+				return err
+			}
+			cmd.Printf("Instance %s is up\n", name)
+			return nil
 		},
 	}
-	cmd.Flags().String("template", "python", "provisioning template (python or docker)")
 	return cmd
 }

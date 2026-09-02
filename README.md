@@ -10,17 +10,18 @@ is the first (and for now, only) supported provider; the provider boundary
 is designed to add others without touching the rest of the tool — see
 [ADR-0008](docs/adr/0008-provider-abstraction.md).
 
-> **Status:** foundation phase implemented — CLI scaffold, git-derived
-> identity, and the JSON state store are working, with `list` fully
-> functional; the other commands are stubbed pending the provider and
-> provisioning phases. See [`docs/architecture.md`](docs/architecture.md)
-> and [`docs/adr/`](docs/adr/) for the full design.
+> **Status:** `up` and `provision` are fully working end to end (VM
+> creation, cloud-init, home-manager reconcile, repo rsync, continuous
+> Mutagen watch); `shell`, `ssh`, `status`, `down`, `sync`, `download`,
+> `watch`, and `connect` are still stubbed. See
+> [`docs/architecture.md`](docs/architecture.md) and
+> [`docs/adr/`](docs/adr/) for the full design.
 
 ## What it does
 
 ```bash
 cd myproject                  # any git repo
-cloudlab up                   # boots a VM (template = python by default), seeds the
+cloudlab up                   # boots a VM (template from cloudlab.pkl), seeds the
                                # repo, reconciles the Nix environment, starts
                                # continuous two-way watch — one command, repo is live
 cloudlab shell                # local subshell with envs pointing at the instance

@@ -56,6 +56,10 @@ base config. If one exists, the two are merged:
 
 - **Scalars** (`region`, `size`, `template`): the project's value wins
   if it set one; otherwise the base's value is used.
+- **`arch` and `image`**: always the project's resolved value (each has
+  its own schema-level default) -- unlike the scalars above, a personal
+  base config's `arch`/`image` is never consulted, even if the project
+  doesn't set one explicitly.
 - **Lists** (`sshKeys`, `packages`, `flakes`): additive — your base's
   entries first, then the project's. Nothing is dropped from either
   side.

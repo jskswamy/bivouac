@@ -50,8 +50,9 @@ func TestUpCommand_NotInRepoErrors(t *testing.T) {
 	}
 }
 
-func TestUpCommand_StubsInsideRepo(t *testing.T) {
+func TestUpCommand_MissingTokenErrors(t *testing.T) {
 	chdir(t, initTestRepo(t))
+	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()
 	root.SetArgs([]string{"up"})
@@ -63,16 +64,17 @@ func TestUpCommand_StubsInsideRepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "up: not implemented yet") {
-		t.Errorf("error = %q, want 'up: not implemented yet'", err.Error())
+	if !strings.Contains(err.Error(), "DIGITALOCEAN_TOKEN") {
+		t.Errorf("error = %q, want mention of DIGITALOCEAN_TOKEN", err.Error())
 	}
 }
 
 func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 	chdir(t, initTestRepo(t))
+	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()
-	root.SetArgs([]string{"up", "somename", "--template", "docker"})
+	root.SetArgs([]string{"up", "somename"})
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
