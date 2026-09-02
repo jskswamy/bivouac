@@ -18,10 +18,12 @@ import (
 // returns a canned VM (or err, if set); the other three methods are
 // unused by Up but must exist to satisfy the interface.
 type fakeProvider struct {
-	vm      provider.VM
-	err     error
-	created bool
-	gotSpec provider.InstanceSpec
+	vm          provider.VM
+	err         error
+	created     bool
+	gotSpec     provider.InstanceSpec
+	destroyedID string
+	destroyErr  error
 }
 
 func (f *fakeProvider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
@@ -29,7 +31,10 @@ func (f *fakeProvider) Create(ctx context.Context, spec provider.InstanceSpec) (
 	f.gotSpec = spec
 	return f.vm, f.err
 }
-func (f *fakeProvider) Destroy(ctx context.Context, id string) error { return nil }
+func (f *fakeProvider) Destroy(ctx context.Context, id string) error {
+	f.destroyedID = id
+	return f.destroyErr
+}
 func (f *fakeProvider) Get(ctx context.Context, id string) (provider.VM, error) {
 	return provider.VM{}, nil
 }

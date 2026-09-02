@@ -16,6 +16,7 @@ type lookupCommandSpec struct {
 	use, short, verb string
 	args             cobra.PositionalArgs
 	named            bool
+	run              func(cmd *cobra.Command, name string, args []string) error
 }
 
 var lookupCommandSpecs = []lookupCommandSpec{
@@ -60,6 +61,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "down",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
+		run:   runDown,
 	},
 	{
 		use:   "sync <local-dir> [remote-dir]",
@@ -97,6 +99,9 @@ func newLookupCommands() []*cobra.Command {
 				name, err := resolveLookupIdentity(cmd, positional)
 				if err != nil {
 					return err
+				}
+				if spec.run != nil {
+					return spec.run(cmd, name, args)
 				}
 				return stubErr(spec.verb, name)
 			},
