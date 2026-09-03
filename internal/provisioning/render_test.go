@@ -189,3 +189,35 @@ func TestRender_Output_EvaluatesInNix(t *testing.T) {
 		t.Fatalf("rendered flake failed to evaluate:\n%s", out)
 	}
 }
+
+// TestTemplates_AllBuildCleanly actually *builds* every built-in
+// template's own homeConfiguration directly (not through Render's
+// wrapper flake, and not just `nix eval ...drvPath`, which only
+// resolves the derivation path without realizing it). Catches
+// package-set problems -- like two packages providing the same file
+// path (a buildEnv conflict) -- that only surface when the derivation
+// is actually built, which only the *template's* own package list can
+// have, independent of any user packages/flakes.
+func TestTemplates_AllBuildCleanly(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("templates target x86_64-linux; building one requires a Linux nix builder")
+	}
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not determine this test file's own path")
+	}
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	templatesDir := filepath.Join(repoRoot, "templates")
+
+	for name := range builtinTemplates {
+		t.Run(name, func(t *testing.T) {
+			attr := name + "-" + NixSystem("x86_64")
+			cmd := exec.Command("nix", "build", "--no-link",
+				"path:"+templatesDir+"#homeConfigurations."+attr+".activationPackage")
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("template %q failed to build:\n%s", name, out)
+			}
+		})
+	}
+}
