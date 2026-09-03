@@ -10,8 +10,21 @@ import (
 )
 
 func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
-	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo")
-	want := []string{"-az", "--info=progress2", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
+	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo", nil)
+	want := []string{"-az", "--info=progress2", "--exclude=.git", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
+	if len(got) != len(want) {
+		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("rsyncPushArgs()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRsyncPushArgs_IncludesGivenExcludes(t *testing.T) {
+	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo", []string{".gocache/", ".envrc"})
+	want := []string{"-az", "--info=progress2", "--exclude=.git", "--exclude=.gocache/", "--exclude=.envrc", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
@@ -50,6 +63,109 @@ func TestPush_FailureIncludesRsyncOutputInError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rsync to 127.0.0.1 failed") {
 		t.Errorf("error = %q, want it to name the failure", err.Error())
+	}
+}
+
+// gitInit makes dir a real git repo so gitIgnoredExcludes has
+// something to query -- `git ls-files --others --ignored` requires an
+// actual repository, not just a file named .gitignore lying around.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{{"init"}, {"config", "user.email", "test@example.com"}, {"config", "user.name", "test"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func TestGitIgnoredExcludes_ListsIgnoredPathsAsDirectories(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	dir := t.TempDir()
+	gitInit(t, dir)
+	write := func(rel, content string) {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".gitignore", "ignored.txt\n/.gocache/\n")
+	write("tracked.txt", "keep me")
+	write("ignored.txt", "drop me")
+	write(".gocache/nested/deep.bin", "drop me too")
+
+	got := gitIgnoredExcludes(dir)
+
+	want := map[string]bool{"ignored.txt": true, ".gocache/": true}
+	if len(got) != len(want) {
+		t.Fatalf("gitIgnoredExcludes() = %v, want entries for %v", got, want)
+	}
+	for _, g := range got {
+		if !want[g] {
+			t.Errorf("gitIgnoredExcludes() contains unexpected entry %q", g)
+		}
+	}
+}
+
+func TestGitIgnoredExcludes_NonGitDir_ReturnsNil(t *testing.T) {
+	if got := gitIgnoredExcludes(t.TempDir()); got != nil {
+		t.Errorf("gitIgnoredExcludes() on a non-git dir = %v, want nil", got)
+	}
+}
+
+func TestPush_RespectsGitignoreAndExcludesGitDir(t *testing.T) {
+	if _, err := exec.LookPath("rsync"); err != nil {
+		t.Skip("rsync not on PATH")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	src := t.TempDir()
+	gitInit(t, src)
+	write := func(rel, content string) {
+		full := filepath.Join(src, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".gitignore", "ignored.txt\n/.gocache/\n")
+	write("tracked.txt", "keep me")
+	write("ignored.txt", "drop me")
+	write(".gocache/nested/deep.bin", "drop me too")
+
+	dst := t.TempDir()
+
+	// Exercises the real argv rsyncPushArgs builds (via the same
+	// gitIgnoredExcludes computation Push uses), locally -- bypassing
+	// -e ssh/the remote target, same pattern as
+	// TestRsync_CopiesFilesBetweenLocalDirs -- to prove the exclusion
+	// actually works end to end, not just that the argv contains flags.
+	full := rsyncPushArgs("unused", src, "unused", gitIgnoredExcludes(src))
+	flags := full[:len(full)-4] // drop the trailing "-e", "ssh", <src>, <remote dst>
+	args := append(append([]string{}, flags...), src+"/", dst+"/")
+	cmd := exec.CommandContext(context.Background(), "rsync", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("rsync error = %v\n%s", err, out)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, "tracked.txt")); err != nil {
+		t.Errorf("tracked.txt was not synced: %v", err)
+	}
+	for _, excluded := range []string{"ignored.txt", ".gocache", ".git"} {
+		if _, err := os.Stat(filepath.Join(dst, excluded)); !os.IsNotExist(err) {
+			t.Errorf("%s should have been excluded, but exists at dst (err = %v)", excluded, err)
+		}
 	}
 }
 

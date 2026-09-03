@@ -7,18 +7,47 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
+
+// gitIgnoredExcludes returns local's ignored paths -- per git's own
+// ignore rules (.gitignore, .git/info/exclude, global excludes), which
+// correctly handles anchored patterns and local-only excludes that a
+// naive rsync --filter=':- .gitignore' can't see -- each suitable for
+// rsync's --exclude. Directories are returned as single entries (e.g.
+// ".gocache/"), not descended into. Returns nil if local isn't a git
+// repository or git itself is unavailable: callers then sync
+// everything, same as if this didn't exist.
+func gitIgnoredExcludes(local string) []string {
+	// #nosec G204 -- argv-array exec.Command, no shell; local is the
+	// user's own path arg, never attacker-controlled.
+	out, err := exec.Command("git", "-C", local, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory").Output()
+	if err != nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
+}
 
 // rsyncPushArgs builds the argv for copying local's contents to ip's
 // remote directory remote (already the full path, e.g. "~/myrepo" or
 // "~/dataset" -- callers resolve any default before calling this),
 // using the system ssh binary as rsync's remote shell. --info=progress2
 // gives one continuously-updating overall-transfer line rather than
-// spamming a line per file.
-func rsyncPushArgs(ip, local, remote string) []string {
+// spamming a line per file. --exclude=.git plus one --exclude per
+// entry in excludes (see gitIgnoredExcludes) keep local's full history
+// and build caches off an ephemeral instance that never needed them.
+func rsyncPushArgs(ip, local, remote string, excludes []string) []string {
+	args := []string{"-az", "--info=progress2", "--exclude=.git"}
+	for _, e := range excludes {
+		args = append(args, "--exclude="+e)
+	}
 	src := local + "/"
 	dst := fmt.Sprintf("root@%s:%s/", ip, remote)
-	return []string{"-az", "--info=progress2", "-e", "ssh", src, dst}
+	return append(args, "-e", "ssh", src, dst)
 }
 
 // Push copies local's contents to ip's remote directory remote,
@@ -30,7 +59,7 @@ func Push(ctx context.Context, ip, local, remote string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, local/remote are the user's own path args,
 	// none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote)...)
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote, gitIgnoredExcludes(local))...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
