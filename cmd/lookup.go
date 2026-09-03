@@ -33,6 +33,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "ssh",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
+		run:   runSSH,
 	},
 	{
 		use:   "watch [name]",

@@ -159,3 +159,11 @@ func runDownload(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Downloaded %s:%s to %s\n", name, remote, local)
 	return nil
 }
+
+func runSSH(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	return lifecycle.SSH(cmd.Context(), record.IP)
+}

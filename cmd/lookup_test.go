@@ -14,7 +14,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		want string
 	}{
 		{[]string{"shell", "--name", "myrepo"}, "shell", "shell: not implemented yet"},
-		{[]string{"ssh", "--name", "myrepo"}, "ssh", "ssh: not implemented yet"},
+		{[]string{"ssh", "--name", "myrepo"}, "ssh", `no instance named "myrepo"`},
 		{[]string{"watch", "--name", "myrepo"}, "watch", `no instance named "myrepo"`},
 		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
@@ -72,6 +72,8 @@ func TestLookupCommands_NameFlagWinsOverLeadingPathArg(t *testing.T) {
 }
 
 func TestLookupCommands_PositionalNameResolves(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
 	root := newRootCmd()
 	root.SetArgs([]string{"ssh", "myrepo"})
 	var out bytes.Buffer
@@ -82,7 +84,7 @@ func TestLookupCommands_PositionalNameResolves(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), `instance "myrepo"`) {
+	if !strings.Contains(err.Error(), `no instance named "myrepo"`) {
 		t.Errorf("error = %q, want it to name instance %q", err.Error(), "myrepo")
 	}
 }
