@@ -12,6 +12,7 @@ func TestCloudInitUserData_InstallsNixNonInteractively(t *testing.T) {
 	for _, want := range []string{
 		"install.determinate.systems/nix",
 		"install --no-confirm",
+		"loginctl enable-linger root",
 	} {
 		if !containsString(CloudInitUserData, want) {
 			t.Errorf("CloudInitUserData does not contain %q", want)
