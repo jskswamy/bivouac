@@ -66,7 +66,9 @@
             src = ./.;
             hooks = {
               # Nix
-              nixfmt-rfc-style.enable = true;
+              # nixfmt (not nixfmt-rfc-style, now an alias of the same
+              # thing since nixfmt 1.0 made RFC 166 style the default).
+              nixfmt.enable = true;
               # statix.enable disabled: nixpkgs-unstable's statix 0.5.8
               # currently fails its own build (broken upstream snapshot
               # test in bool_comparison, unrelated to this repo) — retry
