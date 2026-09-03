@@ -6,7 +6,7 @@ require (
 	github.com/apple/pkl-go v0.14.0
 	github.com/digitalocean/godo v1.205.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/crypto v0.48.0
+	golang.org/x/crypto v0.56.0
 )
 
 require (
@@ -18,6 +18,6 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 )
