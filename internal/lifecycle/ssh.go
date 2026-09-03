@@ -22,6 +22,8 @@ func SSH(ctx context.Context, ip string) error {
 	if _, err := exec.LookPath("ssh"); err != nil {
 		return fmt.Errorf("ssh not found on PATH: %w", err)
 	}
+	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// provider-assigned, never attacker-controlled.
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(ip)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

@@ -16,6 +16,8 @@ func RepoRoot(cwd, repoFlag string) (string, error) {
 		start = repoFlag
 	}
 
+	// #nosec G204 -- argv-array exec.Command, no shell; start is a local
+	// filesystem path (cwd or --repo), never attacker-controlled.
 	out, err := exec.Command("git", "-C", start, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		if repoFlag != "" {
@@ -30,6 +32,8 @@ func RepoRoot(cwd, repoFlag string) (string, error) {
 // slugified owner/repo from its origin remote, or the root folder's name
 // if there's no origin remote configured.
 func DeriveName(root string) (string, error) {
+	// #nosec G204 -- argv-array exec.Command, no shell; root is a
+	// resolved local repo path, never attacker-controlled.
 	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
 	if err != nil {
 		return filepath.Base(root), nil

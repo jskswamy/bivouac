@@ -59,6 +59,9 @@ func Validate(ctx context.Context, cfg config.Config) error {
 // without trying to print a value that might not be representable
 // (a home-manager module, a function).
 func evalExists(ctx context.Context, ref, attr string) error {
+	// #nosec G204 -- argv-array exec.Command, no shell; ref/attr come
+	// from cloudlab.pkl, already treated as trusted input (see
+	// docs/config.md's "A note on trust").
 	out, err := exec.CommandContext(ctx, "nix", "eval", ref+"#"+attr, "--apply", `x: "ok"`).CombinedOutput()
 	if err != nil {
 		if reason := lastNixError(string(out)); reason != "" {

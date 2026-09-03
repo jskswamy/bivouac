@@ -42,6 +42,9 @@ func Connect(ctx context.Context, ip string) (*Client, error) {
 	if sock == "" {
 		return nil, fmt.Errorf("SSH_AUTH_SOCK not set — is ssh-agent running?")
 	}
+	// #nosec G704 -- sock is SSH_AUTH_SOCK, a local unix-domain-socket
+	// path the user's own ssh-agent set in their own environment; this
+	// is local IPC, not a network request, so SSRF doesn't apply.
 	agentConn, err := net.Dial("unix", sock)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to ssh-agent: %w", err)
@@ -103,6 +106,8 @@ func defaultKnownHostsPath() (string, error) {
 // touchFile creates path if it doesn't already exist, leaving any
 // existing content untouched.
 func touchFile(path string) error {
+	// #nosec G304 -- path is always ~/.ssh/known_hosts, built from
+	// os.UserHomeDir() in defaultKnownHostsPath, never external input.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o600)
 	if err != nil {
 		return err
@@ -133,6 +138,8 @@ func trustOnFirstConnectCallback(path string) (ssh.HostKeyCallback, error) {
 }
 
 func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
+	// #nosec G304 -- path is always ~/.ssh/known_hosts, built from
+	// os.UserHomeDir() in defaultKnownHostsPath, never external input.
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err

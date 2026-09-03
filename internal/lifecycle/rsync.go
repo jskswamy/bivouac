@@ -21,6 +21,9 @@ func Push(ctx context.Context, ip, local, remote string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
 	}
+	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// provider-assigned, local/remote are the user's own path args,
+	// none attacker-controlled.
 	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("rsync to %s failed: %w\n%s", ip, err, out)
@@ -41,6 +44,9 @@ func Pull(ctx context.Context, ip, remote, local string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
 	}
+	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// provider-assigned, remote/local are the user's own path args,
+	// none attacker-controlled.
 	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, remote, local)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("rsync from %s failed: %w\n%s", ip, err, out)

@@ -15,6 +15,8 @@ import (
 // swallowed: the absence of a session to terminate isn't a failure
 // for Down or for a Watch restart, both of which call this first.
 func terminateWatch(ctx context.Context, name string) {
+	// #nosec G204 -- argv-array exec.Command, no shell; name is the
+	// instance name, a local identifier never attacker-controlled.
 	_ = exec.CommandContext(ctx, "mutagen", "sync", "terminate", name).Run()
 }
 

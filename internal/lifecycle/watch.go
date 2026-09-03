@@ -27,6 +27,9 @@ func StartWatch(ctx context.Context, ip, name, localRepoRoot string) error {
 		return fmt.Errorf("mutagen not found on PATH (run inside `nix develop`, or install it: https://mutagen.io/documentation/introduction/installation): %w", err)
 	}
 	terminateWatch(ctx, name)
+	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// provider-assigned, name/localRepoRoot are local identifiers, none
+	// attacker-controlled.
 	cmd := exec.CommandContext(ctx, "mutagen", mutagenCreateArgs(ip, name, localRepoRoot)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("starting watch for %s failed: %w\n%s", name, err, out)

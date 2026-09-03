@@ -61,6 +61,10 @@ func Resolve(ctx context.Context, path string) (Config, error) {
 // one), and evaluates the result with an evaluator pointed at
 // pklCacheDir() for its package cache.
 func loadResolved(ctx context.Context, path string) (ret Config, err error) {
+	// #nosec G304 -- path is the intended cloudlab.pkl/base.pkl to load;
+	// reading a caller-supplied config path is this function's entire
+	// job (see docs/config.md's "A note on trust" -- such a file is
+	// already treated as trusted, script-equivalent input).
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("loading %s: %w", path, err)

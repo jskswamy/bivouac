@@ -29,14 +29,19 @@ func injectSchema(path string, raw []byte) (tmpPath string, cleanup func(), err 
 	cleanup = func() { _ = os.RemoveAll(dir) }
 
 	schemaPath := filepath.Join(dir, "Config.pkl")
-	if err := os.WriteFile(schemaPath, embeddedSchema, 0o644); err != nil {
+	if err := os.WriteFile(schemaPath, embeddedSchema, 0o600); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("preparing schema for %s: %w", path, err)
 	}
 
+	// tmpPath is dir (our own fresh os.MkdirTemp) joined with
+	// filepath.Base(path), which strips any directory components from
+	// path, so no traversal outside dir is possible regardless of what
+	// path contains.
 	tmpPath = filepath.Join(dir, filepath.Base(path))
 	content := "amends " + quotePklString(schemaPath) + "\n\n" + string(raw)
-	if err := os.WriteFile(tmpPath, []byte(content), 0o644); err != nil {
+	// #nosec G703 -- see tmpPath's construction above.
+	if err := os.WriteFile(tmpPath, []byte(content), 0o600); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("preparing %s: %w", path, err)
 	}
