@@ -1,22 +1,28 @@
 package lifecycle
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 )
 
 // rsyncPushArgs builds the argv for copying local's contents to ip's
 // remote directory remote (already the full path, e.g. "~/myrepo" or
 // "~/dataset" -- callers resolve any default before calling this),
-// using the system ssh binary as rsync's remote shell.
+// using the system ssh binary as rsync's remote shell. --info=progress2
+// gives one continuously-updating overall-transfer line rather than
+// spamming a line per file.
 func rsyncPushArgs(ip, local, remote string) []string {
 	src := local + "/"
 	dst := fmt.Sprintf("root@%s:%s/", ip, remote)
-	return []string{"-az", "-e", "ssh", src, dst}
+	return []string{"-az", "--info=progress2", "-e", "ssh", src, dst}
 }
 
-// Push copies local's contents to ip's remote directory remote.
+// Push copies local's contents to ip's remote directory remote,
+// streaming rsync's own progress output live to the terminal.
 func Push(ctx context.Context, ip, local, remote string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
@@ -25,21 +31,26 @@ func Push(ctx context.Context, ip, local, remote string) error {
 	// provider-assigned, local/remote are the user's own path args,
 	// none attacker-controlled.
 	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("rsync to %s failed: %w\n%s", ip, err, out)
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rsync to %s failed: %w\n%s", ip, err, buf.String())
 	}
 	return nil
 }
 
 // rsyncPullArgs builds the argv for copying ip's remote directory
-// remote (already the full path) back to local.
+// remote (already the full path) back to local. See rsyncPushArgs for
+// why --info=progress2 is used.
 func rsyncPullArgs(ip, remote, local string) []string {
 	src := fmt.Sprintf("root@%s:%s/", ip, remote)
 	dst := local + "/"
-	return []string{"-az", "-e", "ssh", src, dst}
+	return []string{"-az", "--info=progress2", "-e", "ssh", src, dst}
 }
 
-// Pull copies ip's remote directory remote back to local.
+// Pull copies ip's remote directory remote back to local, streaming
+// rsync's own progress output live to the terminal.
 func Pull(ctx context.Context, ip, remote, local string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
@@ -48,8 +59,11 @@ func Pull(ctx context.Context, ip, remote, local string) error {
 	// provider-assigned, remote/local are the user's own path args,
 	// none attacker-controlled.
 	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, remote, local)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("rsync from %s failed: %w\n%s", ip, err, out)
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rsync from %s failed: %w\n%s", ip, err, buf.String())
 	}
 	return nil
 }
