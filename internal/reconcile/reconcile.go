@@ -58,7 +58,11 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		flakeArg = "path:" + remoteFlakeDir + "#default"
 	}
 
-	innerCmd := "nix run home-manager -- switch --no-write-lock-file --flake " + shellQuote(flakeArg)
+	// --refresh forces Nix to re-fetch flake inputs rather than serve a
+	// floating github: ref from its tarball cache (default TTL: 1
+	// hour) -- without it, a just-pushed template fix wouldn't take
+	// effect on an existing instance for up to an hour.
+	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --flake " + shellQuote(flakeArg)
 	cmd := "bash -lc " + shellQuote(innerCmd)
 	output, err := client.Run(cmd)
 	if err != nil {

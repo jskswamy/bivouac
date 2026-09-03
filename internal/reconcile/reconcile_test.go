@@ -79,6 +79,9 @@ func TestReconcile_NoPackages_SwitchesBareTemplateRef_NoFileShipped(t *testing.T
 	if !strings.Contains(gotCmd, "--no-write-lock-file") {
 		t.Errorf("command = %q, want --no-write-lock-file so template/nixpkgs stay floating", gotCmd)
 	}
+	if !strings.Contains(gotCmd, "--refresh") {
+		t.Errorf("command = %q, want --refresh so a floating template ref isn't served stale from Nix's tarball cache", gotCmd)
+	}
 }
 
 func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
@@ -127,6 +130,9 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	}
 	if !strings.Contains(gotSwitchCmd, "--no-write-lock-file") {
 		t.Errorf("switch command = %q, want --no-write-lock-file so template/nixpkgs stay floating", gotSwitchCmd)
+	}
+	if !strings.Contains(gotSwitchCmd, "--refresh") {
+		t.Errorf("switch command = %q, want --refresh so a floating template ref isn't served stale from Nix's tarball cache", gotSwitchCmd)
 	}
 }
 
