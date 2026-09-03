@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
@@ -129,5 +130,32 @@ func runSync(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 	cmd.Printf("Synced %s to %s:%s\n", local, name, remote)
+	return nil
+}
+
+// defaultLocalDir returns the local directory download uses when no
+// local-dir is given: ./<basename(remote)>. remote is always a POSIX
+// path (the instance is always Linux), so path.Base is used rather
+// than filepath.Base.
+func defaultLocalDir(remote string) string {
+	return "./" + path.Base(path.Clean(remote))
+}
+
+func runDownload(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+
+	remote := args[0]
+	local := defaultLocalDir(remote)
+	if len(args) > 1 {
+		local = args[1]
+	}
+
+	if err := lifecycle.Pull(cmd.Context(), record.IP, remote, local); err != nil {
+		return err
+	}
+	cmd.Printf("Downloaded %s:%s to %s\n", name, remote, local)
 	return nil
 }

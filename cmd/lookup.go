@@ -79,6 +79,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "download",
 		args:  cobra.RangeArgs(1, 2),
 		named: false,
+		run:   runDownload,
 	},
 }
 

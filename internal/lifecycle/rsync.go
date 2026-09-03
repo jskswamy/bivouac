@@ -28,6 +28,26 @@ func Push(ctx context.Context, ip, local, remote string) error {
 	return nil
 }
 
+// rsyncPullArgs builds the argv for copying ip's remote directory
+// remote (already the full path) back to local.
+func rsyncPullArgs(ip, remote, local string) []string {
+	src := fmt.Sprintf("root@%s:%s/", ip, remote)
+	dst := local + "/"
+	return []string{"-az", "-e", "ssh", src, dst}
+}
+
+// Pull copies ip's remote directory remote back to local.
+func Pull(ctx context.Context, ip, remote, local string) error {
+	if _, err := exec.LookPath("rsync"); err != nil {
+		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, remote, local)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("rsync from %s failed: %w\n%s", ip, err, out)
+	}
+	return nil
+}
+
 // Rsync copies localRepoRoot's contents to ~/<remoteName> on the
 // instance at ip -- up's one-shot initial seed of the repo. A thin
 // wrapper over Push with up's own path convention.

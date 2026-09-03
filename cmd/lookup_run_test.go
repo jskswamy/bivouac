@@ -14,3 +14,16 @@ func TestDefaultRemoteDir_UsesBasenameUnderHome(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultLocalDir_UsesBasenameInCwd(t *testing.T) {
+	cases := map[string]string{
+		"~/results":       "./results",
+		"/root/dataset":   "./dataset",
+		"~/nested/output": "./output",
+	}
+	for remote, want := range cases {
+		if got := defaultLocalDir(remote); got != want {
+			t.Errorf("defaultLocalDir(%q) = %q, want %q", remote, got, want)
+		}
+	}
+}

@@ -20,7 +20,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
 		{[]string{"down", "--name", "myrepo"}, "down", `no instance named "myrepo"`},
 		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", `no instance named "myrepo"`},
-		{[]string{"download", "./results", "--name", "myrepo"}, "download", "download: not implemented yet"},
+		{[]string{"download", "./results", "--name", "myrepo"}, "download", `no instance named "myrepo"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.verb, func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestLookupCommands_NameFlagWinsOverLeadingPathArg(t *testing.T) {
 		want string
 	}{
 		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", `no instance named "myrepo"`},
-		{[]string{"download", "./results", "--name", "myrepo"}, "download", `instance "myrepo"`},
+		{[]string{"download", "./results", "--name", "myrepo"}, "download", `no instance named "myrepo"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.verb, func(t *testing.T) {
