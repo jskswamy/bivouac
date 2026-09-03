@@ -1,0 +1,63 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays at 06:00 UTC -- catches newly-disclosed CVEs against
+    # unchanged code, not just what push/pull_request would re-check.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+
+  dependency-and-sast-scan:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          extra-conf: sandbox = false
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - name: govulncheck + gosec
+        run: |
+          set +e
+          echo "## Security scan results" >> "$GITHUB_STEP_SUMMARY"
+
+          echo -e '### govulncheck\n```' >> "$GITHUB_STEP_SUMMARY"
+          nix develop --command bash -c 'nix shell nixpkgs#govulncheck --command govulncheck ./...' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          govulncheck_status=${PIPESTATUS[0]}
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          echo -e '### gosec\n```' >> "$GITHUB_STEP_SUMMARY"
+          nix develop --command bash -c 'nix shell nixpkgs#gosec --command gosec -exclude-dir=.gocache ./...' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          gosec_status=${PIPESTATUS[0]}
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$govulncheck_status" -ne 0 ] || [ "$gosec_status" -ne 0 ]; then
+            exit 1
+          fi

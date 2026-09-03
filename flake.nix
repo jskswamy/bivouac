@@ -86,8 +86,31 @@
                 extraPackages = [ pkgs.go ];
               };
 
-              # Secrets
+              # Security
               trufflehog.enable = true;
+              gosec = {
+                enable = true;
+                name = "gosec";
+                description = "Go security linter (SAST)";
+                # gosec shells out to go for package loading (same PATH gap
+                # as golangci-lint above); .gocache is our own local GOPATH,
+                # not project source, and inflates results if scanned.
+                entry = "env PATH=${pkgs.go}/bin:$PATH ${pkgs.gosec}/bin/gosec -exclude-dir=.gocache ./...";
+                files = "\\.go$";
+                pass_filenames = false;
+              };
+              govulncheck = {
+                enable = true;
+                name = "govulncheck";
+                description = "Go dependency vulnerability scanner";
+                # Needs network access to fetch the vuln DB from
+                # vuln.go.dev -- fine in CI (sandbox = false) and in a
+                # typical local `nix flake check`/pre-commit run, but will
+                # fail offline.
+                entry = "env PATH=${pkgs.go}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
+                files = "\\.go$";
+                pass_filenames = false;
+              };
 
               # General hygiene
               check-yaml.enable = true;
