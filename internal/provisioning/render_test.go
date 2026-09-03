@@ -95,6 +95,67 @@ func TestRender_FlakeWithoutModules_OmitsModuleReference(t *testing.T) {
 	}
 }
 
+func TestRender_PackageWithEmbeddedQuote_Rejected(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Packages: []string{`ripgrep"; malicious = true; "`}}
+	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	if err == nil {
+		t.Fatal("Render() error = nil, want error for package name with embedded quote")
+	}
+}
+
+func TestRender_PackageWithNixInterpolation_Rejected(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Packages: []string{"${builtins.trace \"pwned\" null}"}}
+	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	if err == nil {
+		t.Fatal("Render() error = nil, want error for package name with Nix string interpolation")
+	}
+}
+
+func TestRender_FlakeURLWithEmbeddedQuote_Rejected(t *testing.T) {
+	cfg := config.Config{
+		Arch:   "x86_64",
+		Flakes: []config.Flake{{Url: `github:someorg/tool"; malicious = true; "`}},
+	}
+	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	if err == nil {
+		t.Fatal("Render() error = nil, want error for flake url with embedded quote")
+	}
+}
+
+func TestRender_FlakePackageWithEmbeddedQuote_Rejected(t *testing.T) {
+	cfg := config.Config{
+		Arch: "x86_64",
+		Flakes: []config.Flake{
+			{Url: "github:someorg/custom-tool", Packages: []string{`cli"; malicious = true; "`}},
+		},
+	}
+	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	if err == nil {
+		t.Fatal("Render() error = nil, want error for flake package name with embedded quote")
+	}
+}
+
+func TestRender_TemplateNameWithEmbeddedQuote_Rejected(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64"}
+	_, err := Render(cfg, `github:jskswamy/cloudlab?dir=templates#python"; malicious = true; "`)
+	if err == nil {
+		t.Fatal("Render() error = nil, want error for template name with embedded quote")
+	}
+}
+
+func TestRender_ValidValues_StillRender(t *testing.T) {
+	cfg := config.Config{
+		Arch:     "x86_64",
+		Packages: []string{"ripgrep", "python3.11", "gcc-arm-embedded", "nodejs_22"},
+		Flakes: []config.Flake{
+			{Url: "github:someorg/custom-tool?ref=main", Packages: []string{"cli"}, Modules: true},
+		},
+	}
+	if _, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux"); err != nil {
+		t.Fatalf("Render() error = %v, want nil for legitimate values", err)
+	}
+}
+
 func TestRender_Output_EvaluatesInNix(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
