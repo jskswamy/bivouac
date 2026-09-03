@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/spf13/cobra"
 )
@@ -38,8 +39,11 @@ func newProvisionCmd() *cobra.Command {
 				}
 			}
 
+			ctx := provider.WithProgress(cmd.Context(), func(status string) {
+				cmd.Printf("→ %s\n", status)
+			})
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			if err := reconcile.Reconcile(cmd.Context(), name, cloudlabPath); err != nil {
+			if err := reconcile.Reconcile(ctx, name, cloudlabPath); err != nil {
 				return err
 			}
 			cmd.Printf("Provisioned %s\n", name)

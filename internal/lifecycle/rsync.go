@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 // gitIgnoredExcludes returns local's ignored paths -- per git's own
@@ -101,5 +103,6 @@ func Pull(ctx context.Context, ip, remote, local string) error {
 // instance at ip -- up's one-shot initial seed of the repo. A thin
 // wrapper over Push with up's own path convention.
 func Rsync(ctx context.Context, ip, localRepoRoot, remoteName string) error {
+	provider.ReportProgress(ctx, "syncing repo to instance")
 	return Push(ctx, ip, localRepoRoot, "~/"+remoteName)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
 	"github.com/spf13/cobra"
 )
@@ -46,8 +47,11 @@ func newUpCmd() *cobra.Command {
 			}
 			p := digitalocean.New(token)
 
+			ctx := provider.WithProgress(cmd.Context(), func(status string) {
+				cmd.Printf("→ %s\n", status)
+			})
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			if err := lifecycle.Up(cmd.Context(), p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
+			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
 				return err
 			}
 			cmd.Printf("Instance %s is up\n", name)

@@ -6,9 +6,11 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -180,6 +182,25 @@ func (c *Client) Run(cmd string) (output string, err error) {
 
 	out, runErr := session.CombinedOutput(cmd)
 	return string(out), runErr
+}
+
+// RunStreaming executes cmd on the instance, writing its stdout/stderr
+// to out/errOut live as they arrive rather than only once the command
+// exits, while still returning the combined output for the caller's
+// own error message -- for long-running commands (home-manager switch)
+// where silence until completion reads as a hang.
+func (c *Client) RunStreaming(cmd string, out, errOut io.Writer) (output string, err error) {
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("opening session: %w", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	var buf bytes.Buffer
+	session.Stdout = io.MultiWriter(out, &buf)
+	session.Stderr = io.MultiWriter(errOut, &buf)
+	runErr := session.Run(cmd)
+	return buf.String(), runErr
 }
 
 // Close closes the underlying SSH connection.

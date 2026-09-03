@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
@@ -166,6 +168,23 @@ func TestPush_RespectsGitignoreAndExcludesGitDir(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dst, excluded)); !os.IsNotExist(err) {
 			t.Errorf("%s should have been excluded, but exists at dst (err = %v)", excluded, err)
 		}
+	}
+}
+
+func TestRsync_ReportsProgressBeforeSyncing(t *testing.T) {
+	if _, err := exec.LookPath("rsync"); err != nil {
+		t.Skip("rsync not on PATH")
+	}
+
+	var got []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
+
+	// The rsync itself fails fast (no such local dir, no network
+	// needed) -- progress is reported before that attempt regardless.
+	_ = Rsync(ctx, "127.0.0.1", "/nonexistent/does-not-exist", "myrepo")
+
+	if len(got) == 0 || !strings.Contains(got[0], "repo") {
+		t.Errorf("progress = %v, want a first entry mentioning repo", got)
 	}
 }
 

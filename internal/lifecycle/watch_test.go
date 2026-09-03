@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 func TestMutagenCreateArgs_BuildsExpectedCommand(t *testing.T) {
@@ -59,6 +61,19 @@ func TestMutagenSync_RealLocalToLocalSession(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatal("file never synced to destination within 10s")
+}
+
+func TestStartWatch_ReportsProgressBeforeStarting(t *testing.T) {
+	var got []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
+
+	// mutagen need not be on PATH: progress is reported before
+	// exec.LookPath, so this assertion holds regardless.
+	_ = StartWatch(ctx, "203.0.113.5", "myrepo", t.TempDir())
+
+	if len(got) == 0 || !strings.Contains(got[0], "watch") {
+		t.Errorf("progress = %v, want a first entry mentioning watch", got)
+	}
 }
 
 func TestStartWatch_TerminatesExistingSessionFirst(t *testing.T) {

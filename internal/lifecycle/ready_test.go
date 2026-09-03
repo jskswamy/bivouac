@@ -12,6 +12,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 // startFakeAgent runs an in-process fake ssh-agent (a real
@@ -159,6 +161,25 @@ func TestWaitReady_SucceedsOnceCloudInitFinishes(t *testing.T) {
 
 	if err := WaitReady(context.Background(), addr, 5*time.Second); err != nil {
 		t.Fatalf("WaitReady() error = %v", err)
+	}
+}
+
+func TestWaitReady_ReportsProgressBeforeWaiting(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "status: done\n", 0
+	})
+
+	var got []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
+
+	if err := WaitReady(ctx, addr, 5*time.Second); err != nil {
+		t.Fatalf("WaitReady() error = %v", err)
+	}
+	if len(got) == 0 || !strings.Contains(got[0], "ready") {
+		t.Errorf("progress = %v, want a first entry mentioning ready", got)
 	}
 }
 

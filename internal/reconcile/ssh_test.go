@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -229,6 +230,57 @@ func TestClient_Run_ReturnsErrorOnNonZeroExit(t *testing.T) {
 	output, err := client.Run("false")
 	if err == nil {
 		t.Fatal("Run() error = nil, want non-nil for a non-zero exit")
+	}
+	if output != "boom\n" {
+		t.Errorf("output = %q, want %q even on error", output, "boom\n")
+	}
+}
+
+func TestClient_RunStreaming_WritesLiveAndReturnsSameOutput(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "building...\nswitch complete\n", 0
+	})
+
+	client, err := Connect(context.Background(), addr)
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	output, err := client.RunStreaming("nix run home-manager -- switch --flake x", &out, &errOut)
+	if err != nil {
+		t.Fatalf("RunStreaming() error = %v", err)
+	}
+	if output != "building...\nswitch complete\n" {
+		t.Errorf("output = %q, want %q", output, "building...\nswitch complete\n")
+	}
+	if out.String() != "building...\nswitch complete\n" {
+		t.Errorf("live stdout = %q, want the same content streamed live", out.String())
+	}
+}
+
+func TestClient_RunStreaming_ReturnsErrorOnNonZeroExit(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "boom\n", 1
+	})
+
+	client, err := Connect(context.Background(), addr)
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	output, err := client.RunStreaming("false", &out, &errOut)
+	if err == nil {
+		t.Fatal("RunStreaming() error = nil, want non-nil for a non-zero exit")
 	}
 	if output != "boom\n" {
 		t.Errorf("output = %q, want %q even on error", output, "boom\n")

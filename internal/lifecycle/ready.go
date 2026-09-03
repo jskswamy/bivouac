@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
 
@@ -24,6 +25,7 @@ const retryInterval = 500 * time.Millisecond
 // takes no context of its own, so a stalled remote command is unblocked
 // by forcibly closing the connection once the deadline passes.
 func WaitReady(ctx context.Context, ip string, timeout time.Duration) error {
+	provider.ReportProgress(ctx, "waiting for instance to be ready (SSH + cloud-init)")
 	deadline := time.Now().Add(timeout)
 	deadlineCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()

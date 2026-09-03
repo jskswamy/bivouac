@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 // mutagenCreateArgs builds the argv StartWatch passes to the mutagen
@@ -23,6 +25,7 @@ func mutagenCreateArgs(ip, name, localRepoRoot string) []string {
 // Mutagen's own SSH transport is a separate implementation from this
 // project's Go SSH client.
 func StartWatch(ctx context.Context, ip, name, localRepoRoot string) error {
+	provider.ReportProgress(ctx, "starting continuous watch")
 	if _, err := exec.LookPath("mutagen"); err != nil {
 		return fmt.Errorf("mutagen not found on PATH (run inside `nix develop`, or install it: https://mutagen.io/documentation/introduction/installation): %w", err)
 	}

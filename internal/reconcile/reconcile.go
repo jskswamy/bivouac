@@ -3,9 +3,11 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/provisioning"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
@@ -48,6 +50,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 
 	flakeArg := templateRef
 	if provisioning.NeedsRender(cfg) {
+		provider.ReportProgress(ctx, "shipping per-instance flake")
 		content, err := provisioning.Render(cfg, templateRef)
 		if err != nil {
 			return fmt.Errorf("rendering per-instance flake: %w", err)
@@ -58,13 +61,18 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		flakeArg = "path:" + remoteFlakeDir + "#default"
 	}
 
+	provider.ReportProgress(ctx, "reconciling environment (home-manager switch)")
+
 	// --refresh forces Nix to re-fetch flake inputs rather than serve a
 	// floating github: ref from its tarball cache (default TTL: 1
 	// hour) -- without it, a just-pushed template fix wouldn't take
 	// effect on an existing instance for up to an hour.
 	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --flake " + shellQuote(flakeArg)
 	cmd := "bash -lc " + shellQuote(innerCmd)
-	output, err := client.Run(cmd)
+	// Streamed live (not buffered until exit): home-manager switch can
+	// run for minutes fetching/building packages, and silence until
+	// completion is indistinguishable from a hang.
+	output, err := client.RunStreaming(cmd, os.Stdout, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("home-manager switch failed: %w\n%s", err, tail(output, 40))
 	}

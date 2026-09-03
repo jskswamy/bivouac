@@ -95,12 +95,18 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 		},
 	}
 
-	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+	var progress []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { progress = append(progress, status) })
+
+	if err := Up(ctx, p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 
 	if len(order) != 2 || order[0] != "rsync" || order[1] != "watch" {
 		t.Errorf("call order = %v, want [rsync watch]", order)
+	}
+	if len(progress) == 0 || !strings.Contains(progress[0], "creating") {
+		t.Errorf("progress = %v, want a first entry mentioning creating the instance", progress)
 	}
 
 	store, err := state.Open()

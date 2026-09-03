@@ -75,6 +75,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return err
 	}
 
+	provider.ReportProgress(ctx, "creating instance")
 	vm, err := p.Create(ctx, spec)
 	if err != nil {
 		return fmt.Errorf("creating instance: %w", err)
