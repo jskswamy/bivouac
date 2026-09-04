@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
@@ -147,10 +146,24 @@ func runWatch(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
-// defaultRemoteDir returns the instance-side directory sync uses when
-// no remote-dir is given: ~/<basename(local)>.
-func defaultRemoteDir(local string) string {
-	return "~/" + filepath.Base(filepath.Clean(local))
+// syncLocalDir returns the local directory sync should push: the
+// --dir flag's value if set, else the current working directory.
+func syncLocalDir(dirFlag string) (string, error) {
+	if dirFlag != "" {
+		return dirFlag, nil
+	}
+	return os.Getwd()
+}
+
+// syncRemoteDir returns the remote directory sync should target:
+// args[0] if given, else local's path mirrored under remoteUser's
+// home (or local itself, unchanged, if it isn't under the local
+// user's home) via lifecycle.RemotePath.
+func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	return lifecycle.RemotePath(local, remoteUser)
 }
 
 func runSync(cmd *cobra.Command, name string, args []string) error {
@@ -159,10 +172,17 @@ func runSync(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	local := args[0]
-	remote := defaultRemoteDir(local)
-	if len(args) > 1 {
-		remote = args[1]
+	dirFlag, err := cmd.Flags().GetString("dir")
+	if err != nil {
+		return err
+	}
+	local, err := syncLocalDir(dirFlag)
+	if err != nil {
+		return err
+	}
+	remote, err := syncRemoteDir(args, local, record.User)
+	if err != nil {
+		return err
 	}
 
 	if err := lifecycle.Push(cmd.Context(), record.IP, record.User, local, remote); err != nil {

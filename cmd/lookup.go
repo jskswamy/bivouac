@@ -16,6 +16,7 @@ type lookupCommandSpec struct {
 	use, short, verb string
 	args             cobra.PositionalArgs
 	named            bool
+	flags            func(c *cobra.Command)
 	run              func(cmd *cobra.Command, name string, args []string) error
 }
 
@@ -83,12 +84,15 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runDown,
 	},
 	{
-		use:   "sync <local-dir> [remote-dir]",
+		use:   "sync [remote-dir]",
 		short: "One-shot push of a directory outside the repo to the instance",
 		verb:  "sync",
-		args:  cobra.RangeArgs(1, 2),
+		args:  cobra.MaximumNArgs(1),
 		named: false,
-		run:   runSync,
+		flags: func(c *cobra.Command) {
+			c.Flags().String("dir", "", "local directory to sync (defaults to the current directory)")
+		},
+		run: runSync,
 	},
 	{
 		use:   "download <remote-dir> [local-dir]",
@@ -108,7 +112,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 func newLookupCommands() []*cobra.Command {
 	cmds := make([]*cobra.Command, 0, len(lookupCommandSpecs))
 	for _, spec := range lookupCommandSpecs {
-		cmds = append(cmds, &cobra.Command{
+		c := &cobra.Command{
 			Use:   spec.use,
 			Short: spec.short,
 			Args:  spec.args,
@@ -126,7 +130,11 @@ func newLookupCommands() []*cobra.Command {
 				}
 				return stubErr(spec.verb, name)
 			},
-		})
+		}
+		if spec.flags != nil {
+			spec.flags(c)
+		}
+		cmds = append(cmds, c)
 	}
 	return cmds
 }

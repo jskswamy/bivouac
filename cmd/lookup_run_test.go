@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,16 +24,34 @@ func TestDownSummary_WarnsDestructionIsUnrecoverable(t *testing.T) {
 	}
 }
 
-func TestDefaultRemoteDir_UsesBasenameUnderHome(t *testing.T) {
-	cases := map[string]string{
-		"./dataset":        "~/dataset",
-		"/abs/path/models": "~/models",
-		"relative/nested":  "~/nested",
+func TestSyncLocalDir_UsesDirFlagOrCwd(t *testing.T) {
+	if got, err := syncLocalDir("/explicit/path"); err != nil || got != "/explicit/path" {
+		t.Errorf("syncLocalDir(%q) = (%q, %v), want (%q, nil)", "/explicit/path", got, err, "/explicit/path")
 	}
-	for local, want := range cases {
-		if got := defaultRemoteDir(local); got != want {
-			t.Errorf("defaultRemoteDir(%q) = %q, want %q", local, got, want)
-		}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := syncLocalDir(""); err != nil || got != cwd {
+		t.Errorf("syncLocalDir(\"\") = (%q, %v), want (%q, nil)", got, err, cwd)
+	}
+}
+
+func TestSyncRemoteDir_UsesFirstArgOrRemotePath(t *testing.T) {
+	if got, err := syncRemoteDir([]string{"~/custom"}, "/whatever", "devuser"); err != nil || got != "~/custom" {
+		t.Errorf("syncRemoteDir([\"~/custom\"], ...) = (%q, %v), want (%q, nil)", got, err, "~/custom")
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	local := filepath.Join(home, "project")
+	got, err := syncRemoteDir(nil, local, "devuser")
+	if err != nil {
+		t.Fatalf("syncRemoteDir(nil, ...) error = %v", err)
+	}
+	want := "/home/devuser/project"
+	if got != want {
+		t.Errorf("syncRemoteDir(nil, ...) = %q, want %q", got, want)
 	}
 }
 
