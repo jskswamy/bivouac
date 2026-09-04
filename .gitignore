@@ -1,6 +1,7 @@
 /bin/
 /dist/
 /out/
+/.worktrees/
 *.test
 .direnv/
 /.gocache/
