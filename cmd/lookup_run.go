@@ -103,6 +103,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Region:   %s\n", st.Record.Region)
 	cmd.Printf("Size:     %s\n", st.Record.Size)
 	cmd.Printf("Template: %s\n", st.Record.Template)
+	cmd.Printf("User:     %s\n", st.Record.User)
 	cmd.Printf("IP:       %s\n", st.Record.IP)
 	if st.LiveErr != nil {
 		cmd.Printf("Status:   unknown (live check failed: %v)\n", st.LiveErr)
@@ -128,7 +129,7 @@ func runWatch(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	if err := lifecycle.StartWatch(cmd.Context(), record.IP, name, root); err != nil {
+	if err := lifecycle.StartWatch(cmd.Context(), record.IP, record.User, name, root); err != nil {
 		return err
 	}
 	cmd.Printf("Watch restarted for %s\n", name)
@@ -153,7 +154,7 @@ func runSync(cmd *cobra.Command, name string, args []string) error {
 		remote = args[1]
 	}
 
-	if err := lifecycle.Push(cmd.Context(), record.IP, local, remote); err != nil {
+	if err := lifecycle.Push(cmd.Context(), record.IP, record.User, local, remote); err != nil {
 		return err
 	}
 	cmd.Printf("Synced %s to %s:%s\n", local, name, remote)
@@ -180,7 +181,7 @@ func runDownload(cmd *cobra.Command, name string, args []string) error {
 		local = args[1]
 	}
 
-	if err := lifecycle.Pull(cmd.Context(), record.IP, remote, local); err != nil {
+	if err := lifecycle.Pull(cmd.Context(), record.IP, record.User, remote, local); err != nil {
 		return err
 	}
 	cmd.Printf("Downloaded %s:%s to %s\n", name, remote, local)
@@ -192,5 +193,5 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.SSH(cmd.Context(), record.IP)
+	return lifecycle.SSH(cmd.Context(), record.IP, record.User)
 }

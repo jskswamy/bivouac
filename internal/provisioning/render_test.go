@@ -184,7 +184,14 @@ func TestRender_Output_EvaluatesInNix(t *testing.T) {
 		}
 	}
 
-	cmd := exec.Command("nix", "eval", "path:"+dir+"#homeConfigurations.default.activationPackage.drvPath")
+	// --impure: common.nix reads $USER/$HOME via builtins.getEnv for
+	// home.username/homeDirectory, since the actual instance user
+	// varies per instance (see internal/reconcile/reconcile.go for the
+	// same flag on the real switch invocation). Left at the ambient
+	// environment's real values -- Nix's own tooling needs a real,
+	// existing $HOME for its own git/cache lookups while fetching
+	// flake inputs, so this can't be overridden to a fake path.
+	cmd := exec.Command("nix", "eval", "--impure", "path:"+dir+"#homeConfigurations.default.activationPackage.drvPath")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rendered flake failed to evaluate:\n%s", out)
 	}
@@ -210,10 +217,14 @@ func TestTemplates_AllBuildCleanly(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
 	templatesDir := filepath.Join(repoRoot, "templates")
 
+	// --impure: common.nix reads $USER/$HOME via builtins.getEnv for
+	// home.username/homeDirectory, since the actual instance user
+	// varies per instance. Left at the ambient environment's real
+	// values -- see TestRender_Output_EvaluatesInNix.
 	for name := range builtinTemplates {
 		t.Run(name, func(t *testing.T) {
 			attr := name + "-" + NixSystem("x86_64")
-			cmd := exec.Command("nix", "build", "--no-link",
+			cmd := exec.Command("nix", "build", "--impure", "--no-link",
 				"path:"+templatesDir+"#homeConfigurations."+attr+".activationPackage")
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("template %q failed to build:\n%s", name, out)

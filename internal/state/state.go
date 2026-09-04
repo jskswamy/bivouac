@@ -18,6 +18,7 @@ type Record struct {
 	Region    string `json:"region"`
 	Size      string `json:"size"`
 	Template  string `json:"template"`
+	User      string `json:"user"`
 	WatchPID  int    `json:"watch_pid"`
 	TunnelPID int    `json:"tunnel_pid"`
 }

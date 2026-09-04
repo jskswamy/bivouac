@@ -36,32 +36,33 @@ func gitIgnoredExcludes(local string) []string {
 
 // rsyncPushArgs builds the argv for copying local's contents to ip's
 // remote directory remote (already the full path, e.g. "~/myrepo" or
-// "~/dataset" -- callers resolve any default before calling this),
-// using the system ssh binary as rsync's remote shell. --info=progress2
-// gives one continuously-updating overall-transfer line rather than
-// spamming a line per file. --exclude=.git plus one --exclude per
-// entry in excludes (see gitIgnoredExcludes) keep local's full history
-// and build caches off an ephemeral instance that never needed them.
-func rsyncPushArgs(ip, local, remote string, excludes []string) []string {
+// "~/dataset" -- callers resolve any default before calling this) as
+// user, using the system ssh binary as rsync's remote shell.
+// --info=progress2 gives one continuously-updating overall-transfer
+// line rather than spamming a line per file. --exclude=.git plus one
+// --exclude per entry in excludes (see gitIgnoredExcludes) keep
+// local's full history and build caches off an ephemeral instance that
+// never needed them.
+func rsyncPushArgs(ip, user, local, remote string, excludes []string) []string {
 	args := []string{"-az", "--info=progress2", "--exclude=.git"}
 	for _, e := range excludes {
 		args = append(args, "--exclude="+e)
 	}
 	src := local + "/"
-	dst := fmt.Sprintf("root@%s:%s/", ip, remote)
+	dst := fmt.Sprintf("%s@%s:%s/", user, ip, remote)
 	return append(args, "-e", "ssh", src, dst)
 }
 
-// Push copies local's contents to ip's remote directory remote,
-// streaming rsync's own progress output live to the terminal.
-func Push(ctx context.Context, ip, local, remote string) error {
+// Push copies local's contents to ip's remote directory remote as
+// user, streaming rsync's own progress output live to the terminal.
+func Push(ctx context.Context, ip, user, local, remote string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
-	// provider-assigned, local/remote are the user's own path args,
-	// none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, local, remote, gitIgnoredExcludes(local))...)
+	// provider-assigned, user/local/remote are local identifiers/path
+	// args, none attacker-controlled.
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, user, local, remote, gitIgnoredExcludes(local))...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
@@ -72,24 +73,24 @@ func Push(ctx context.Context, ip, local, remote string) error {
 }
 
 // rsyncPullArgs builds the argv for copying ip's remote directory
-// remote (already the full path) back to local. See rsyncPushArgs for
-// why --info=progress2 is used.
-func rsyncPullArgs(ip, remote, local string) []string {
-	src := fmt.Sprintf("root@%s:%s/", ip, remote)
+// remote (already the full path) back to local as user. See
+// rsyncPushArgs for why --info=progress2 is used.
+func rsyncPullArgs(ip, user, remote, local string) []string {
+	src := fmt.Sprintf("%s@%s:%s/", user, ip, remote)
 	dst := local + "/"
 	return []string{"-az", "--info=progress2", "-e", "ssh", src, dst}
 }
 
-// Pull copies ip's remote directory remote back to local, streaming
-// rsync's own progress output live to the terminal.
-func Pull(ctx context.Context, ip, remote, local string) error {
+// Pull copies ip's remote directory remote back to local as user,
+// streaming rsync's own progress output live to the terminal.
+func Pull(ctx context.Context, ip, user, remote, local string) error {
 	if _, err := exec.LookPath("rsync"); err != nil {
 		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
-	// provider-assigned, remote/local are the user's own path args,
-	// none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, remote, local)...)
+	// provider-assigned, user/remote/local are local identifiers/path
+	// args, none attacker-controlled.
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, user, remote, local)...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
@@ -100,9 +101,9 @@ func Pull(ctx context.Context, ip, remote, local string) error {
 }
 
 // Rsync copies localRepoRoot's contents to ~/<remoteName> on the
-// instance at ip -- up's one-shot initial seed of the repo. A thin
-// wrapper over Push with up's own path convention.
-func Rsync(ctx context.Context, ip, localRepoRoot, remoteName string) error {
+// instance at ip as user -- up's one-shot initial seed of the repo. A
+// thin wrapper over Push with up's own path convention.
+func Rsync(ctx context.Context, ip, user, localRepoRoot, remoteName string) error {
 	provider.ReportProgress(ctx, "syncing repo to instance")
-	return Push(ctx, ip, localRepoRoot, "~/"+remoteName)
+	return Push(ctx, ip, user, localRepoRoot, "~/"+remoteName)
 }

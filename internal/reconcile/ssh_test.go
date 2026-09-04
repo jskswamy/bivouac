@@ -58,6 +58,12 @@ func startFakeAgent(t *testing.T) {
 	t.Setenv("SSH_AUTH_SOCK", sockPath)
 }
 
+// lastConnectedUsername records the SSH username of the most recent
+// connection any fake server started via startFakeSSHServer accepted,
+// for tests asserting Connect passed the right one. Tests in this
+// package run sequentially (no t.Parallel()), so a shared var is safe.
+var lastConnectedUsername string
+
 // sessionResult is what a fake SSH server's exec handler received.
 type sessionResult struct {
 	Command string
@@ -83,6 +89,7 @@ func startFakeSSHServer(t *testing.T, handler func(cmd string, stdin []byte) (ou
 
 	config := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			lastConnectedUsername = conn.User()
 			return &ssh.Permissions{}, nil
 		},
 	}
@@ -159,6 +166,22 @@ func readAllChannel(channel ssh.Channel) []byte {
 	}
 }
 
+func TestConnect_UsesGivenUsername(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if lastConnectedUsername != "devuser" {
+		t.Errorf("SSH username = %q, want %q", lastConnectedUsername, "devuser")
+	}
+}
+
 func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 	startFakeAgent(t)
 	t.Setenv("HOME", t.TempDir())
@@ -169,7 +192,7 @@ func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 		return "", 0
 	})
 
-	client, err := Connect(context.Background(), addr)
+	client, err := Connect(context.Background(), addr, "devuser")
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
@@ -198,7 +221,7 @@ func TestClient_Run_ReturnsOutputOnSuccess(t *testing.T) {
 		return "switch complete\n", 0
 	})
 
-	client, err := Connect(context.Background(), addr)
+	client, err := Connect(context.Background(), addr, "devuser")
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
@@ -221,7 +244,7 @@ func TestClient_Run_ReturnsErrorOnNonZeroExit(t *testing.T) {
 		return "boom\n", 1
 	})
 
-	client, err := Connect(context.Background(), addr)
+	client, err := Connect(context.Background(), addr, "devuser")
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
@@ -244,7 +267,7 @@ func TestClient_RunStreaming_WritesLiveAndReturnsSameOutput(t *testing.T) {
 		return "building...\nswitch complete\n", 0
 	})
 
-	client, err := Connect(context.Background(), addr)
+	client, err := Connect(context.Background(), addr, "devuser")
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
@@ -271,7 +294,7 @@ func TestClient_RunStreaming_ReturnsErrorOnNonZeroExit(t *testing.T) {
 		return "boom\n", 1
 	})
 
-	client, err := Connect(context.Background(), addr)
+	client, err := Connect(context.Background(), addr, "devuser")
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
@@ -361,7 +384,7 @@ func TestConnect_HostKeyMismatch_ErrorHasRecreateHint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = Connect(context.Background(), addr)
+	_, err = Connect(context.Background(), addr, "devuser")
 	if err == nil {
 		t.Fatal("Connect() error = nil, want rejection for a mismatched host key")
 	}

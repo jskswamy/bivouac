@@ -11,10 +11,16 @@ import (
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
-const (
-	remoteFlakeDir  = "/root/.cache/cloudlab"
-	remoteFlakePath = remoteFlakeDir + "/flake.nix"
-)
+// remoteFlakeDir is the per-instance wrapper flake's directory, under
+// the reconciling user's own home -- not a fixed path, since that user
+// varies per instance (see state.Record.User).
+func remoteFlakeDir(user string) string {
+	return "/home/" + user + "/.cache/cloudlab"
+}
+
+func remoteFlakePath(user string) string {
+	return remoteFlakeDir(user) + "/flake.nix"
+}
 
 // Reconcile brings name's home-manager environment up to date with its
 // local cloudlab.pkl at cloudlabPath: resolves the config, renders a
@@ -41,7 +47,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 
 	templateRef := provisioning.ResolveTemplateRef(*cfg.Template, cfg.Arch)
 
-	client, err := Connect(ctx, record.IP)
+	client, err := Connect(ctx, record.IP, record.User)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", record.IP, err)
 	}
@@ -54,10 +60,10 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		if err != nil {
 			return fmt.Errorf("rendering per-instance flake: %w", err)
 		}
-		if err := client.WriteFile(remoteFlakePath, content); err != nil {
+		if err := client.WriteFile(remoteFlakePath(record.User), content); err != nil {
 			return fmt.Errorf("shipping per-instance flake: %w", err)
 		}
-		flakeArg = "path:" + remoteFlakeDir + "#default"
+		flakeArg = "path:" + remoteFlakeDir(record.User) + "#default"
 	}
 
 	provider.ReportProgress(ctx, "reconciling environment (home-manager switch)")
@@ -65,8 +71,12 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// --refresh forces Nix to re-fetch flake inputs rather than serve a
 	// floating github: ref from its tarball cache (default TTL: 1
 	// hour) -- without it, a just-pushed template fix wouldn't take
-	// effect on an existing instance for up to an hour.
-	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --flake " + shellQuote(flakeArg)
+	// effect on an existing instance for up to an hour. --impure lets
+	// common.nix read $USER/$HOME via builtins.getEnv to set
+	// home.username/homeDirectory -- those vary per instance (see
+	// state.Record.User), so they can't be hardcoded in the shared,
+	// checked-in template.
+	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --impure --flake " + shellQuote(flakeArg)
 	cmd := "bash -lc " + shellQuote(innerCmd)
 	// Streamed live (not buffered until exit): home-manager switch can
 	// run for minutes fetching/building packages, and silence until

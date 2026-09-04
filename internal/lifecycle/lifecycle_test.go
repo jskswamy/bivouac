@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
@@ -75,21 +76,26 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: addr, Region: "nyc3", Size: "s-1vcpu-1gb"}}
 
+	wantUser, err := identity.RemoteUser()
+	if err != nil {
+		t.Fatalf("identity.RemoteUser() error = %v", err)
+	}
+
 	var order []string
 	steps := Steps{
 		WaitReady: WaitReady,
 		Reconcile: reconcile.Reconcile,
-		Rsync: func(ctx context.Context, ip, localRepoRoot, remoteName string) error {
+		Rsync: func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error {
 			order = append(order, "rsync")
-			if ip != addr || localRepoRoot != repoRoot || remoteName != "myinstance" {
-				t.Errorf("Rsync called with (%q, %q, %q)", ip, localRepoRoot, remoteName)
+			if ip != addr || user != wantUser || localRepoRoot != repoRoot || remoteName != "myinstance" {
+				t.Errorf("Rsync called with (%q, %q, %q, %q)", ip, user, localRepoRoot, remoteName)
 			}
 			return nil
 		},
-		StartWatch: func(ctx context.Context, ip, name, localRepoRoot string) error {
+		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot string) error {
 			order = append(order, "watch")
-			if ip != addr || name != "myinstance" || localRepoRoot != repoRoot {
-				t.Errorf("StartWatch called with (%q, %q, %q)", ip, name, localRepoRoot)
+			if ip != addr || user != wantUser || name != "myinstance" || localRepoRoot != repoRoot {
+				t.Errorf("StartWatch called with (%q, %q, %q, %q)", ip, user, name, localRepoRoot)
 			}
 			return nil
 		},
@@ -122,6 +128,9 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	}
 	if record.VMID != "vm-1" {
 		t.Errorf("record.VMID = %q, want %q", record.VMID, "vm-1")
+	}
+	if record.User != wantUser {
+		t.Errorf("record.User = %q, want %q", record.User, wantUser)
 	}
 
 	if p.gotSpec.Name != "myinstance" {
@@ -194,8 +203,8 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 			return errors.New("simulated unreachable")
 		},
 		Reconcile:  func(ctx context.Context, name, cloudlabPath string) error { return nil },
-		Rsync:      func(ctx context.Context, ip, localRepoRoot, remoteName string) error { return nil },
-		StartWatch: func(ctx context.Context, ip, name, localRepoRoot string) error { return nil },
+		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error { return nil },
+		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot string) error { return nil },
 	}
 
 	err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot)

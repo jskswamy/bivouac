@@ -12,8 +12,8 @@ import (
 )
 
 func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
-	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo", nil)
-	want := []string{"-az", "--info=progress2", "--exclude=.git", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
+	got := rsyncPushArgs("203.0.113.5", "devuser", "/home/user/myrepo", "~/myrepo", nil)
+	want := []string{"-az", "--info=progress2", "--exclude=.git", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
@@ -25,8 +25,8 @@ func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
 }
 
 func TestRsyncPushArgs_IncludesGivenExcludes(t *testing.T) {
-	got := rsyncPushArgs("203.0.113.5", "/home/user/myrepo", "~/myrepo", []string{".gocache/", ".envrc"})
-	want := []string{"-az", "--info=progress2", "--exclude=.git", "--exclude=.gocache/", "--exclude=.envrc", "-e", "ssh", "/home/user/myrepo/", "root@203.0.113.5:~/myrepo/"}
+	got := rsyncPushArgs("203.0.113.5", "devuser", "/home/user/myrepo", "~/myrepo", []string{".gocache/", ".envrc"})
+	want := []string{"-az", "--info=progress2", "--exclude=.git", "--exclude=.gocache/", "--exclude=.envrc", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
@@ -38,8 +38,8 @@ func TestRsyncPushArgs_IncludesGivenExcludes(t *testing.T) {
 }
 
 func TestRsyncPullArgs_BuildsExpectedCommand(t *testing.T) {
-	got := rsyncPullArgs("203.0.113.5", "~/results", "/home/user/results")
-	want := []string{"-az", "--info=progress2", "-e", "ssh", "root@203.0.113.5:~/results/", "/home/user/results/"}
+	got := rsyncPullArgs("203.0.113.5", "devuser", "~/results", "/home/user/results")
+	want := []string{"-az", "--info=progress2", "-e", "ssh", "devuser@203.0.113.5:~/results/", "/home/user/results/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPullArgs() = %v, want %v", got, want)
 	}
@@ -59,7 +59,7 @@ func TestPush_FailureIncludesRsyncOutputInError(t *testing.T) {
 	// (no network needed) while still writing a real error to stderr,
 	// proving Push still captures output for the error message even
 	// though it's now also streamed live to the terminal.
-	err := Push(context.Background(), "127.0.0.1", "/nonexistent/does-not-exist", "~/dest")
+	err := Push(context.Background(), "127.0.0.1", "devuser", "/nonexistent/does-not-exist", "~/dest")
 	if err == nil {
 		t.Fatal("Push() error = nil, want an error for a nonexistent local dir")
 	}
@@ -153,7 +153,7 @@ func TestPush_RespectsGitignoreAndExcludesGitDir(t *testing.T) {
 	// -e ssh/the remote target, same pattern as
 	// TestRsync_CopiesFilesBetweenLocalDirs -- to prove the exclusion
 	// actually works end to end, not just that the argv contains flags.
-	full := rsyncPushArgs("unused", src, "unused", gitIgnoredExcludes(src))
+	full := rsyncPushArgs("unused", "unused", src, "unused", gitIgnoredExcludes(src))
 	flags := full[:len(full)-4] // drop the trailing "-e", "ssh", <src>, <remote dst>
 	args := append(append([]string{}, flags...), src+"/", dst+"/")
 	cmd := exec.CommandContext(context.Background(), "rsync", args...)
@@ -181,7 +181,7 @@ func TestRsync_ReportsProgressBeforeSyncing(t *testing.T) {
 
 	// The rsync itself fails fast (no such local dir, no network
 	// needed) -- progress is reported before that attempt regardless.
-	_ = Rsync(ctx, "127.0.0.1", "/nonexistent/does-not-exist", "myrepo")
+	_ = Rsync(ctx, "127.0.0.1", "devuser", "/nonexistent/does-not-exist", "myrepo")
 
 	if len(got) == 0 || !strings.Contains(got[0], "repo") {
 		t.Errorf("progress = %v, want a first entry mentioning repo", got)

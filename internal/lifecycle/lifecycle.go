@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/provisioning"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
@@ -29,8 +30,8 @@ var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 type Steps struct {
 	WaitReady  func(ctx context.Context, ip string, timeout time.Duration) error
 	Reconcile  func(ctx context.Context, name, cloudlabPath string) error
-	Rsync      func(ctx context.Context, ip, localRepoRoot, remoteName string) error
-	StartWatch func(ctx context.Context, ip, name, localRepoRoot string) error
+	Rsync      func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error
+	StartWatch func(ctx context.Context, ip, user, name, localRepoRoot string) error
 }
 
 // DefaultSteps wires Steps to the real implementations. Reconcile is
@@ -69,13 +70,27 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		sshKeys = *cfg.SshKeys
 	}
 
+	// remoteUser is the instance's own non-root login, derived once
+	// here and stored in its state record -- not re-derived per
+	// command, since a later command may run as a different local user
+	// or on a different machine and must keep talking to whichever
+	// user this instance was actually provisioned with.
+	remoteUser, err := identity.RemoteUser()
+	if err != nil {
+		return fmt.Errorf("deriving remote username: %w", err)
+	}
+	cloudInit, err := provisioning.RenderCloudInit(remoteUser)
+	if err != nil {
+		return fmt.Errorf("rendering cloud-init: %w", err)
+	}
+
 	spec := provider.InstanceSpec{
 		Name:     name,
 		Region:   *cfg.Region,
 		Size:     *cfg.Size,
 		Image:    cfg.Image,
 		SSHKeys:  sshKeys,
-		UserData: provisioning.CloudInitUserData,
+		UserData: cloudInit,
 	}
 
 	store, err := state.Open()
@@ -97,6 +112,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		Region:   vm.Region,
 		Size:     vm.Size,
 		Template: *cfg.Template,
+		User:     remoteUser,
 	}
 	if err := store.Put(record); err != nil {
 		if destroyErr := p.Destroy(ctx, vm.ID); destroyErr != nil {
@@ -105,6 +121,10 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return fmt.Errorf("recording instance state: %w", err)
 	}
 
+	// WaitReady always connects as root (see its own doc comment) --
+	// every step after it connects as remoteUser instead, once
+	// cloud-init has created that user and (as its last step) disabled
+	// root SSH login.
 	if err := steps.WaitReady(ctx, vm.IP, readyTimeout); err != nil {
 		return fmt.Errorf("waiting for %s to be ready: %w", name, err)
 	}
@@ -113,11 +133,11 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return err
 	}
 
-	if err := steps.Rsync(ctx, vm.IP, repoRoot, name); err != nil {
+	if err := steps.Rsync(ctx, vm.IP, remoteUser, repoRoot, name); err != nil {
 		return err
 	}
 
-	if err := steps.StartWatch(ctx, vm.IP, name, repoRoot); err != nil {
+	if err := steps.StartWatch(ctx, vm.IP, remoteUser, name, repoRoot); err != nil {
 		return err
 	}
 

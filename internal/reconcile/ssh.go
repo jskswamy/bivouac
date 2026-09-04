@@ -29,12 +29,12 @@ type Client struct {
 
 // Connect dials ip on port 22 (or, if ip already has an explicit port —
 // used by tests pointed at a fake server on an arbitrary port — that
-// port instead), authenticates via the running ssh-agent
+// port instead) as user, authenticates via the running ssh-agent
 // (SSH_AUTH_SOCK), and verifies the host key on a trust-on-first-connect
 // basis against the user's real ~/.ssh/known_hosts: an unknown host is
 // accepted and recorded; a host presenting a different key than what's
 // already recorded is rejected.
-func Connect(ctx context.Context, ip string) (*Client, error) {
+func Connect(ctx context.Context, ip, user string) (*Client, error) {
 	addr := ip
 	if _, _, err := net.SplitHostPort(ip); err != nil {
 		addr = net.JoinHostPort(ip, "22")
@@ -63,7 +63,7 @@ func Connect(ctx context.Context, ip string) (*Client, error) {
 	}
 
 	clientConfig := &ssh.ClientConfig{
-		User:            "root",
+		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeysCallback(agentClient.Signers)},
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         10 * time.Second,

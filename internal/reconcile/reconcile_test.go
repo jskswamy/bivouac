@@ -34,7 +34,7 @@ func seedInstance(t *testing.T, name, addr string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(state.Record{Name: name, IP: addr}); err != nil {
+	if err := store.Put(state.Record{Name: name, IP: addr, User: "devuser"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -84,6 +84,9 @@ func TestReconcile_NoPackages_SwitchesBareTemplateRef_NoFileShipped(t *testing.T
 	if !strings.Contains(gotCmd, "--refresh") {
 		t.Errorf("command = %q, want --refresh so a floating template ref isn't served stale from Nix's tarball cache", gotCmd)
 	}
+	if !strings.Contains(gotCmd, "--impure") {
+		t.Errorf("command = %q, want --impure so common.nix can read $USER/$HOME via builtins.getEnv", gotCmd)
+	}
 }
 
 func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
@@ -118,13 +121,13 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	if gotWriteCmd == "" {
 		t.Fatal("packages set, but no file was shipped")
 	}
-	if !strings.Contains(gotWriteCmd, "/root/.cache/cloudlab/flake.nix") {
-		t.Errorf("write command = %q, want it to target the fixed remote flake path", gotWriteCmd)
+	if !strings.Contains(gotWriteCmd, "/home/devuser/.cache/cloudlab/flake.nix") {
+		t.Errorf("write command = %q, want it to target the instance user's remote flake path", gotWriteCmd)
 	}
 	if !strings.Contains(gotWriteStdin, `pkgs."ripgrep"`) {
 		t.Errorf("shipped content = %q, want it to reference the configured package", gotWriteStdin)
 	}
-	if !strings.Contains(gotSwitchCmd, "path:/root/.cache/cloudlab#default") {
+	if !strings.Contains(gotSwitchCmd, "path:/home/devuser/.cache/cloudlab#default") {
 		t.Errorf("switch command = %q, want it to target the shipped flake's default output", gotSwitchCmd)
 	}
 	if !strings.Contains(gotSwitchCmd, "bash -lc") {

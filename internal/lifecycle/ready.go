@@ -24,6 +24,13 @@ const retryInterval = 500 * time.Millisecond
 // The cloud-init check itself is also bounded by timeout: Client.Run
 // takes no context of its own, so a stalled remote command is unblocked
 // by forcibly closing the connection once the deadline passes.
+//
+// Always connects as root, not the instance's own non-root user:
+// cloud-init.sh creates that user (and disables root SSH login) as
+// part of the very script this function is waiting on, so root is the
+// only login guaranteed to work while cloud-init is still running.
+// Every other remote call site connects as the instance's own user
+// once this returns successfully.
 func WaitReady(ctx context.Context, ip string, timeout time.Duration) error {
 	provider.ReportProgress(ctx, "waiting for instance to be ready (SSH + cloud-init)")
 	deadline := time.Now().Add(timeout)
@@ -36,7 +43,7 @@ func WaitReady(ctx context.Context, ip string, timeout time.Duration) error {
 			return fmt.Errorf("timed out after %s waiting for %s to become reachable: %w", timeout, ip, lastErr)
 		}
 
-		client, err := reconcile.Connect(ctx, ip)
+		client, err := reconcile.Connect(ctx, ip, "root")
 		if err != nil {
 			lastErr = err
 			select {

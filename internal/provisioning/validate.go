@@ -62,7 +62,15 @@ func evalExists(ctx context.Context, ref, attr string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ref/attr come
 	// from cloudlab.pkl, already treated as trusted input (see
 	// docs/config.md's "A note on trust").
-	out, err := exec.CommandContext(ctx, "nix", "eval", ref+"#"+attr, "--apply", `x: "ok"`).CombinedOutput()
+	//
+	// --impure: binding a homeConfigurations.<name> attribute already
+	// forces home-manager to type-check its full option set, including
+	// common.nix's home.username/homeDirectory, which read $USER/$HOME
+	// via builtins.getEnv (see internal/reconcile/reconcile.go for the
+	// same flag on the real switch invocation). Harmless for the
+	// homeManagerModules/packages attrs validated elsewhere in this
+	// file, which don't touch that impure builtin.
+	out, err := exec.CommandContext(ctx, "nix", "eval", "--impure", ref+"#"+attr, "--apply", `x: "ok"`).CombinedOutput()
 	if err != nil {
 		if reason := lastNixError(string(out)); reason != "" {
 			return fmt.Errorf("%s", reason)
