@@ -109,6 +109,18 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	} else {
 		cmd.Printf("Status:   %s\n", st.LiveStatus)
 	}
+
+	watch, err := lifecycle.GetWatchStatus(cmd.Context(), name)
+	if err != nil {
+		cmd.Printf("Watch:    unknown (check failed: %v)\n", err)
+	} else if !watch.Running {
+		cmd.Printf("Watch:    not running\n")
+	} else {
+		cmd.Printf("Watch:    %s (conflicts: %d)\n", watch.Status, watch.Conflicts)
+		if watch.LastError != "" {
+			cmd.Printf("LastError: %s\n", watch.LastError)
+		}
+	}
 	return nil
 }
 
