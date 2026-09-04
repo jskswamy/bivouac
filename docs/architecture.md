@@ -165,6 +165,8 @@ environment, never touching disk on the VM. See
 | `up [name]` | per-instance | Create the VM, run cloud-init/home-manager, rsync the repo in, reconcile, start `watch` — one command, instance is fully live on return |
 | `shell [name]` | per-instance | Reconcile home-manager, then open a **local** subshell with instance envs injected (`DOCKER_HOST`, `SOPS_AGE_KEY`, ...) |
 | `ssh [name]` | per-instance | Interactive **remote** shell on the VM itself |
+| `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) -- a background session that survives disconnects |
+| `tmux [session-name]` | per-instance | Interactive **remote** tmux session (create-or-attach), preconfigured via gpakosz/.tmux |
 | `sync <local-dir> [remote-dir]` | per-instance | One-shot rsync of an arbitrary local directory *outside the repo* to the instance (e.g. a dataset). `remote-dir` defaults to the local dir's basename under the instance home. Not involved in repo sync or reconciliation. |
 | `download <remote-dir> [local-dir]` | per-instance | One-shot rsync pulling files back from the instance. `local-dir` defaults to the current directory. |
 | `watch [name]` | per-instance | Restart continuous two-way repo sync if it's stopped/dead. Auto-started by `up`; rarely invoked directly. |

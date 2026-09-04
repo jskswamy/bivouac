@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 let
   # The instance's own non-root user (see internal/identity.RemoteUser
   # and cloud-init.sh, which creates it) -- read from the SSH session's
@@ -7,6 +7,19 @@ let
   # different user. Requires --impure on `home-manager switch` (see
   # internal/reconcile/reconcile.go).
   username = builtins.getEnv "USER";
+
+  # Pinned to gpakosz/.tmux's master branch HEAD at the time this was
+  # added (the repo has no tags/releases to pin to instead). sha256
+  # captured via `nix-prefetch-url --unpack
+  # https://github.com/gpakosz/.tmux/archive/<rev>.tar.gz` -- bump
+  # both rev and sha256 together the same way if a newer commit is
+  # ever wanted.
+  tmuxDotfiles = pkgs.fetchFromGitHub {
+    owner = "gpakosz";
+    repo = ".tmux";
+    rev = "58a3dcc0d718ec0fa1c0d5a2fddd640a1ad7a5b7";
+    sha256 = "0zky4qkndrs645xnxh6498zc8yj7y581sg72hh0h7b31a5jxng30";
+  };
 in
 {
   home.username = username;
@@ -21,10 +34,21 @@ in
     # tailscaled below.
     pkgs.herdr
     pkgs.tailscale
+    pkgs.tmux
   ];
 
   programs.fish.enable = true;
   programs.starship.enable = true;
+
+  # gpakosz/.tmux's own config, used exactly as upstream ships it --
+  # both files symlinked straight from the fetched repo, nothing
+  # hand-copied or reproduced. .tmux.conf.local is wrapped in
+  # mkDefault so a personal base.pkl-declared flake module can set
+  # its own home.file.".tmux.conf.local".source later and win -- the
+  # same personal-customization path packages/flakes already use (see
+  # docs/config.md), no new cloudlab.pkl field needed for this.
+  home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
+  home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
 
   # Same reasoning as the docker template's dockerd unit: a real
   # daemon needs to actually be running, not just installed. Requires

@@ -36,6 +36,22 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runSSH,
 	},
 	{
+		use:   "herdr [name]",
+		short: "Open an interactive herdr session on the instance (background session that survives disconnects)",
+		verb:  "herdr",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+		run:   runHerdr,
+	},
+	{
+		use:   "tmux [session-name]",
+		short: "Open a tmux session on the instance, creating it if needed (default session: \"main\")",
+		verb:  "tmux",
+		args:  cobra.MaximumNArgs(1),
+		named: false,
+		run:   runTmux,
+	},
+	{
 		use:   "watch [name]",
 		short: "Restart continuous two-way repo sync if it's stopped or dead",
 		verb:  "watch",
@@ -86,7 +102,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 
 // newLookupCommands builds every lookup-only command from
 // lookupCommandSpecs. Flag handling, identity resolution, and the
-// stub/exit-code behavior are shared across all eight — only Use/Short
+// stub/exit-code behavior are shared across all ten — only Use/Short
 // text, the Args validator, and whether the first positional arg is the
 // instance name differ per spec.
 func newLookupCommands() []*cobra.Command {

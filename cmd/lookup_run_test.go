@@ -47,3 +47,18 @@ func TestDefaultLocalDir_UsesBasenameInCwd(t *testing.T) {
 		}
 	}
 }
+
+func TestTmuxSession_UsesFirstArgOrDefault(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{nil, "main"},
+		{[]string{"myrepo"}, "myrepo"},
+	}
+	for _, tc := range cases {
+		if got := tmuxSession(tc.args); got != tc.want {
+			t.Errorf("tmuxSession(%v) = %q, want %q", tc.args, got, tc.want)
+		}
+	}
+}

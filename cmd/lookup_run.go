@@ -195,3 +195,32 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	}
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User)
 }
+
+func runHerdr(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	return lifecycle.Herdr(cmd.Context(), record.IP, record.User)
+}
+
+// defaultTmuxSession is the session cloudlab tmux creates-or-attaches
+// to when no session-name argument is given.
+const defaultTmuxSession = "main"
+
+// tmuxSession returns the session name cloudlab tmux should
+// create-or-attach: args[0] if given, else defaultTmuxSession.
+func tmuxSession(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return defaultTmuxSession
+}
+
+func runTmux(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, tmuxSession(args))
+}

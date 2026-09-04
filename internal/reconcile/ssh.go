@@ -163,7 +163,7 @@ func (c *Client) WriteFile(remotePath, content string) error {
 
 	session.Stdin = strings.NewReader(content)
 	dir := filepath.Dir(remotePath)
-	cmd := fmt.Sprintf("mkdir -p %s && cat > %s", shellQuote(dir), shellQuote(remotePath))
+	cmd := fmt.Sprintf("mkdir -p %s && cat > %s", ShellQuote(dir), ShellQuote(remotePath))
 	if out, err := session.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("writing %s: %w\n%s", remotePath, err, out)
 	}
@@ -208,9 +208,9 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// shellQuote wraps s in single quotes for safe inclusion in a remote
+// ShellQuote wraps s in single quotes for safe inclusion in a remote
 // shell command, escaping any embedded single quotes. Used for every
 // value that isn't a fixed constant string written in this package.
-func shellQuote(s string) string {
+func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

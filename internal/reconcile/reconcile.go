@@ -76,8 +76,8 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// home.username/homeDirectory -- those vary per instance (see
 	// state.Record.User), so they can't be hardcoded in the shared,
 	// checked-in template.
-	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --impure --flake " + shellQuote(flakeArg)
-	cmd := "bash -lc " + shellQuote(innerCmd)
+	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --impure --flake " + ShellQuote(flakeArg)
+	cmd := "bash -lc " + ShellQuote(innerCmd)
 	// Streamed live (not buffered until exit): home-manager switch can
 	// run for minutes fetching/building packages, and silence until
 	// completion is indistinguishable from a hang. Writers come from
