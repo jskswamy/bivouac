@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
@@ -53,11 +54,37 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	ok, err := confirm(cmd, downSummary(record))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		cmd.Println("Aborted.")
+		return nil
+	}
+
 	if err := lifecycle.Down(cmd.Context(), p, store, record); err != nil {
 		return err
 	}
 	cmd.Printf("Instance %s is down\n", name)
 	return nil
+}
+
+// downSummary describes the instance down is about to destroy, and
+// warns the destruction is unrecoverable, for confirmation before
+// anything irreversible happens.
+func downSummary(record state.Record) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "This will destroy instance %q -- this cannot be undone:\n", record.Name)
+	fmt.Fprintf(&b, "  Provider: %s\n", record.Provider)
+	fmt.Fprintf(&b, "  Region:   %s\n", record.Region)
+	fmt.Fprintf(&b, "  Size:     %s\n", record.Size)
+	fmt.Fprintf(&b, "  Template: %s\n", record.Template)
+	fmt.Fprintf(&b, "  IP:       %s\n", record.IP)
+	b.WriteString("Any unsaved work on the instance will be lost.\n")
+	b.WriteString("Proceed? [y/N]: ")
+	return b.String()
 }
 
 func runStatus(cmd *cobra.Command, name string, args []string) error {

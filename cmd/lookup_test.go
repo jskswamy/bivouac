@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/state"
 )
 
 func TestLookupCommands_NameFlagResolves(t *testing.T) {
@@ -86,6 +88,38 @@ func TestLookupCommands_PositionalNameResolves(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `no instance named "myrepo"`) {
 		t.Errorf("error = %q, want it to name instance %q", err.Error(), "myrepo")
+	}
+}
+
+func TestDownCommand_DeclinedConfirmation_AbortsWithoutDestroying(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatalf("state.Open() error = %v", err)
+	}
+	record := state.Record{Name: "myrepo", Provider: "digitalocean", Region: "nyc3", Size: "s-1vcpu-1gb", Template: "python", IP: "203.0.113.5"}
+	if err := store.Put(record); err != nil {
+		t.Fatalf("store.Put() error = %v", err)
+	}
+
+	root := newRootCmd()
+	root.SetArgs([]string{"down", "--name", "myrepo"})
+	root.SetIn(strings.NewReader("n\n"))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v, want nil (declining isn't an error)", err)
+	}
+	if !strings.Contains(out.String(), "Aborted") {
+		t.Errorf("output = %q, want it to mention the abort", out.String())
+	}
+
+	if _, ok, err := store.Get("myrepo"); err != nil || !ok {
+		t.Errorf("state after decline: ok=%v err=%v, want the record still present", ok, err)
 	}
 }
 

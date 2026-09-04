@@ -4,9 +4,25 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// minimalCloudlabPkl writes a valid cloudlab.pkl into dir, real enough
+// for config.Resolve to evaluate with the pkl CLI.
+func minimalCloudlabPkl(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "cloudlab.pkl")
+	body := strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
+	}
+}
 
 // chdir switches the process's working directory to dir for the
 // duration of the test, restoring it afterward.
@@ -66,6 +82,53 @@ func TestUpCommand_MissingTokenErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "DIGITALOCEAN_TOKEN") {
 		t.Errorf("error = %q, want mention of DIGITALOCEAN_TOKEN", err.Error())
+	}
+}
+
+func TestUpCommand_DeclinedConfirmation_AbortsWithoutCreating(t *testing.T) {
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	minimalCloudlabPkl(t, dir)
+	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
+
+	root := newRootCmd()
+	root.SetArgs([]string{"up"})
+	root.SetIn(strings.NewReader("n\n"))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v, want nil (declining isn't an error)", err)
+	}
+	if !strings.Contains(out.String(), "Aborted") {
+		t.Errorf("output = %q, want it to mention the abort", out.String())
+	}
+	if strings.Contains(out.String(), "is up") {
+		t.Errorf("output = %q, want no confirmation the instance was created", out.String())
+	}
+}
+
+func TestUpCommand_ConfirmationSummary_ShownBeforePrompt(t *testing.T) {
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	minimalCloudlabPkl(t, dir)
+	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
+
+	root := newRootCmd()
+	root.SetArgs([]string{"up"})
+	root.SetIn(strings.NewReader("n\n"))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	for _, want := range []string{"nyc3", "s-1vcpu-1gb", "python", "Proceed?"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output = %q, want it to contain %q", out.String(), want)
+		}
 	}
 }
 

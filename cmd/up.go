@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
@@ -45,12 +47,26 @@ func newUpCmd() *cobra.Command {
 			if token == "" {
 				return fmt.Errorf("DIGITALOCEAN_TOKEN not set (needed to create instance %q)", name)
 			}
-			p := digitalocean.New(token)
 
+			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
+			cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
+			if err != nil {
+				return err
+			}
+
+			ok, err := confirm(cmd, upSummary(name, cfg))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				cmd.Println("Aborted.")
+				return nil
+			}
+
+			p := digitalocean.New(token)
 			ctx := provider.WithProgress(cmd.Context(), func(status string) {
 				cmd.Printf("→ %s\n", status)
 			})
-			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
 			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
 				return err
 			}
@@ -59,4 +75,19 @@ func newUpCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// upSummary describes the instance up is about to create, for
+// confirmation before anything billable happens.
+func upSummary(name string, cfg config.Config) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "This will create instance %q:\n", name)
+	fmt.Fprintf(&b, "  Region:   %s\n", *cfg.Region)
+	fmt.Fprintf(&b, "  Size:     %s\n", *cfg.Size)
+	fmt.Fprintf(&b, "  Template: %s\n", *cfg.Template)
+	if cfg.Image != "" {
+		fmt.Fprintf(&b, "  Image:    %s\n", cfg.Image)
+	}
+	b.WriteString("Proceed? [y/N]: ")
+	return b.String()
 }

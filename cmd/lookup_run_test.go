@@ -1,6 +1,26 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/state"
+)
+
+func TestDownSummary_WarnsDestructionIsUnrecoverable(t *testing.T) {
+	record := state.Record{
+		Name: "myrepo", Provider: "digitalocean", Region: "nyc3",
+		Size: "s-1vcpu-1gb", Template: "python", IP: "203.0.113.5",
+	}
+
+	got := downSummary(record)
+
+	for _, want := range []string{`"myrepo"`, "nyc3", "s-1vcpu-1gb", "python", "203.0.113.5", "cannot be undone", "unsaved work", "Proceed?"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("downSummary() = %q, want it to contain %q", got, want)
+		}
+	}
+}
 
 func TestDefaultRemoteDir_UsesBasenameUnderHome(t *testing.T) {
 	cases := map[string]string{
