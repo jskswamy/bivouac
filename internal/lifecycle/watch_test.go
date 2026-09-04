@@ -13,8 +13,8 @@ import (
 )
 
 func TestMutagenCreateArgs_BuildsExpectedCommand(t *testing.T) {
-	got := mutagenCreateArgs("203.0.113.5", "devuser", "myrepo", "/home/user/myrepo")
-	want := []string{"sync", "create", "--name=myrepo", "/home/user/myrepo", "devuser@203.0.113.5:~/myrepo"}
+	got := mutagenCreateArgs("203.0.113.5", "devuser", "myrepo", "/home/user/myrepo", "/home/devuser/source/myrepo")
+	want := []string{"sync", "create", "--name=myrepo", "/home/user/myrepo", "devuser@203.0.113.5:/home/devuser/source/myrepo"}
 	if len(got) != len(want) {
 		t.Fatalf("mutagenCreateArgs() = %v, want %v", got, want)
 	}
@@ -69,7 +69,7 @@ func TestStartWatch_ReportsProgressBeforeStarting(t *testing.T) {
 
 	// mutagen need not be on PATH: progress is reported before
 	// exec.LookPath, so this assertion holds regardless.
-	_ = StartWatch(ctx, "203.0.113.5", "devuser", "myrepo", t.TempDir())
+	_ = StartWatch(ctx, "203.0.113.5", "devuser", "myrepo", t.TempDir(), "/home/devuser/myrepo")
 
 	if len(got) == 0 || !strings.Contains(got[0], "watch") {
 		t.Errorf("progress = %v, want a first entry mentioning watch", got)
@@ -99,13 +99,13 @@ func TestStartWatch_TerminatesExistingSessionFirst(t *testing.T) {
 		_ = exec.Command("mutagen", "daemon", "stop").Run()
 	})
 
-	// StartWatch's remote target (root@127.0.0.1) has no reachable
+	// StartWatch's remote target (devuser@127.0.0.1) has no reachable
 	// sshd in a test environment, so this call is expected to fail on
 	// the SSH connection -- but that failure must happen AFTER the
 	// pre-existing session was already terminated. A failed create
 	// leaves no new session behind (confirmed empirically), so zero
 	// remaining sessions named name proves the old one is gone.
-	_ = StartWatch(context.Background(), "127.0.0.1", "devuser", name, src)
+	_ = StartWatch(context.Background(), "127.0.0.1", "devuser", name, src, "/home/devuser/"+name)
 
 	out, err := exec.Command("mutagen", "sync", "list").CombinedOutput()
 	if err != nil {

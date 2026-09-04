@@ -104,10 +104,10 @@ func Pull(ctx context.Context, ip, user, remote, local string) error {
 	return nil
 }
 
-// Rsync copies localRepoRoot's contents to ~/<remoteName> on the
-// instance at ip as user -- up's one-shot initial seed of the repo. A
-// thin wrapper over Push with up's own path convention.
-func Rsync(ctx context.Context, ip, user, localRepoRoot, remoteName string) error {
+// Rsync copies localRepoRoot's contents to remotePath on the instance
+// at ip as user -- up's one-shot initial seed of the repo. A thin
+// wrapper over Push with up's own progress reporting.
+func Rsync(ctx context.Context, ip, user, localRepoRoot, remotePath string) error {
 	provider.ReportProgress(ctx, "syncing repo to instance")
-	return Push(ctx, ip, user, localRepoRoot, "~/"+remoteName)
+	return Push(ctx, ip, user, localRepoRoot, remotePath)
 }

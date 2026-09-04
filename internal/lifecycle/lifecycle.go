@@ -30,8 +30,8 @@ var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 type Steps struct {
 	WaitReady  func(ctx context.Context, ip string, timeout time.Duration) error
 	Reconcile  func(ctx context.Context, name, cloudlabPath string) error
-	Rsync      func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error
-	StartWatch func(ctx context.Context, ip, user, name, localRepoRoot string) error
+	Rsync      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error
+	StartWatch func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error
 }
 
 // DefaultSteps wires Steps to the real implementations. Reconcile is
@@ -79,6 +79,14 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 	if err != nil {
 		return fmt.Errorf("deriving remote username: %w", err)
 	}
+	// remotePath is likewise computed once and stored (state.Record.RepoPath)
+	// rather than re-derived: a later `cloudlab ssh` may run from
+	// somewhere that isn't this repo's checkout at all, and needs to
+	// know where THIS instance's repo actually landed.
+	remotePath, err := RemotePath(repoRoot, remoteUser)
+	if err != nil {
+		return fmt.Errorf("computing remote repo path: %w", err)
+	}
 	cloudInit, err := provisioning.RenderCloudInit(remoteUser)
 	if err != nil {
 		return fmt.Errorf("rendering cloud-init: %w", err)
@@ -113,6 +121,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		Size:     vm.Size,
 		Template: *cfg.Template,
 		User:     remoteUser,
+		RepoPath: remotePath,
 	}
 	if err := store.Put(record); err != nil {
 		if destroyErr := p.Destroy(ctx, vm.ID); destroyErr != nil {
@@ -133,11 +142,11 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return err
 	}
 
-	if err := steps.Rsync(ctx, vm.IP, remoteUser, repoRoot, name); err != nil {
+	if err := steps.Rsync(ctx, vm.IP, remoteUser, repoRoot, remotePath); err != nil {
 		return err
 	}
 
-	if err := steps.StartWatch(ctx, vm.IP, remoteUser, name, repoRoot); err != nil {
+	if err := steps.StartWatch(ctx, vm.IP, remoteUser, name, repoRoot, remotePath); err != nil {
 		return err
 	}
 

@@ -184,7 +184,7 @@ func TestRsync_ReportsProgressBeforeSyncing(t *testing.T) {
 
 	// The rsync itself fails fast (no such local dir, no network
 	// needed) -- progress is reported before that attempt regardless.
-	_ = Rsync(ctx, "127.0.0.1", "devuser", "/nonexistent/does-not-exist", "myrepo")
+	_ = Rsync(ctx, "127.0.0.1", "devuser", "/nonexistent/does-not-exist", "/home/devuser/myrepo")
 
 	if len(got) == 0 || !strings.Contains(got[0], "repo") {
 		t.Errorf("progress = %v, want a first entry mentioning repo", got)

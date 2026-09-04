@@ -80,22 +80,26 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("identity.RemoteUser() error = %v", err)
 	}
+	wantRemotePath, err := RemotePath(repoRoot, wantUser)
+	if err != nil {
+		t.Fatalf("RemotePath() error = %v", err)
+	}
 
 	var order []string
 	steps := Steps{
 		WaitReady: WaitReady,
 		Reconcile: reconcile.Reconcile,
-		Rsync: func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error {
+		Rsync: func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error {
 			order = append(order, "rsync")
-			if ip != addr || user != wantUser || localRepoRoot != repoRoot || remoteName != "myinstance" {
-				t.Errorf("Rsync called with (%q, %q, %q, %q)", ip, user, localRepoRoot, remoteName)
+			if ip != addr || user != wantUser || localRepoRoot != repoRoot || remotePath != wantRemotePath {
+				t.Errorf("Rsync called with (%q, %q, %q, %q)", ip, user, localRepoRoot, remotePath)
 			}
 			return nil
 		},
-		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot string) error {
+		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error {
 			order = append(order, "watch")
-			if ip != addr || user != wantUser || name != "myinstance" || localRepoRoot != repoRoot {
-				t.Errorf("StartWatch called with (%q, %q, %q, %q)", ip, user, name, localRepoRoot)
+			if ip != addr || user != wantUser || name != "myinstance" || localRepoRoot != repoRoot || remotePath != wantRemotePath {
+				t.Errorf("StartWatch called with (%q, %q, %q, %q, %q)", ip, user, name, localRepoRoot, remotePath)
 			}
 			return nil
 		},
@@ -131,6 +135,9 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	}
 	if record.User != wantUser {
 		t.Errorf("record.User = %q, want %q", record.User, wantUser)
+	}
+	if record.RepoPath != wantRemotePath {
+		t.Errorf("record.RepoPath = %q, want %q", record.RepoPath, wantRemotePath)
 	}
 
 	if p.gotSpec.Name != "myinstance" {
@@ -203,8 +210,8 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 			return errors.New("simulated unreachable")
 		},
 		Reconcile:  func(ctx context.Context, name, cloudlabPath string) error { return nil },
-		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remoteName string) error { return nil },
-		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot string) error { return nil },
+		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
+		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
 	}
 
 	err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot)

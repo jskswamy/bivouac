@@ -129,7 +129,18 @@ func runWatch(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	if err := lifecycle.StartWatch(cmd.Context(), record.IP, record.User, name, root); err != nil {
+	// record.RepoPath is unset for instances provisioned before this
+	// field existed (no migration, per the RemotePath rollout) --
+	// recompute the same way Up would for those.
+	remotePath := record.RepoPath
+	if remotePath == "" {
+		remotePath, err = lifecycle.RemotePath(root, record.User)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := lifecycle.StartWatch(cmd.Context(), record.IP, record.User, name, root, remotePath); err != nil {
 		return err
 	}
 	cmd.Printf("Watch restarted for %s\n", name)
