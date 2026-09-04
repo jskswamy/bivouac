@@ -30,6 +30,17 @@ func Run(ctx context.Context, label string, fn func(context.Context) error) erro
 
 	p := tea.NewProgram(newModel(label))
 	ctx = provider.WithOutput(ctx, &programWriter{p}, &programWriter{p})
+	// Without this, ReportProgress calls inside fn would still find
+	// whatever progress callback the caller attached before Run (e.g.
+	// cmd/up.go's cmd.Printf) and write straight to the raw terminal
+	// while the Program is actively redrawing it -- two writers fighting
+	// over the same screen region, which is what actually produced the
+	// garbled/duplicated output this was added to fix. Routing progress
+	// through the same outputMsg channel as Output reuses the model's
+	// existing line-accumulation/CR-handling instead of a second path.
+	ctx = provider.WithProgress(ctx, func(status string) {
+		p.Send(outputMsg("→ " + status + "\n"))
+	})
 
 	progDone := make(chan error, 1)
 	go func() {

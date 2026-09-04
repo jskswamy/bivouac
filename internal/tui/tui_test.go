@@ -53,6 +53,25 @@ func TestRun_NonTerminal_PropagatesFnError(t *testing.T) {
 	}
 }
 
+func TestRun_NonTerminal_DoesNotOverrideCallerProgress(t *testing.T) {
+	old := isTerminal
+	isTerminal = func() bool { return false }
+	t.Cleanup(func() { isTerminal = old })
+
+	// Mirrors TestRun_NonTerminal_DoesNotOverrideCallerOutput: with no
+	// TUI pane to route into, ReportProgress calls inside fn must still
+	// reach whatever progress callback the caller already attached.
+	var got []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
+	_ = Run(ctx, "label", func(ctx context.Context) error {
+		provider.ReportProgress(ctx, "hello")
+		return nil
+	})
+	if len(got) != 1 || got[0] != "hello" {
+		t.Errorf("progress = %v, want [%q] passed through unchanged in the non-TTY fallback", got, "hello")
+	}
+}
+
 func TestRun_NonTerminal_DoesNotOverrideCallerOutput(t *testing.T) {
 	old := isTerminal
 	isTerminal = func() bool { return false }
