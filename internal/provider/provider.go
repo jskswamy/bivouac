@@ -6,6 +6,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
 )
 
 // Provider creates, destroys, and inspects VMs. Only DigitalOcean is
@@ -61,4 +63,27 @@ func ReportProgress(ctx context.Context, status string) {
 	if fn, ok := ctx.Value(progressKey{}).(ProgressFunc); ok && fn != nil {
 		fn(status)
 	}
+}
+
+type outputKey struct{}
+
+type outputWriters struct {
+	out, errOut io.Writer
+}
+
+// WithOutput attaches out/errOut to ctx as the destination for a
+// subprocess's raw stdout/stderr (currently: Reconcile's home-manager
+// switch). Lets a caller redirect that output -- e.g. into a bubbletea
+// viewport -- without changing Reconcile's signature or logic.
+func WithOutput(ctx context.Context, out, errOut io.Writer) context.Context {
+	return context.WithValue(ctx, outputKey{}, outputWriters{out, errOut})
+}
+
+// Output returns the stdout/stderr writers attached to ctx via
+// WithOutput, or os.Stdout/os.Stderr if none were attached.
+func Output(ctx context.Context) (out, errOut io.Writer) {
+	if w, ok := ctx.Value(outputKey{}).(outputWriters); ok {
+		return w.out, w.errOut
+	}
+	return os.Stdout, os.Stderr
 }

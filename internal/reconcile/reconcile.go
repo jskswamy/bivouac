@@ -3,7 +3,6 @@ package reconcile
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/config"
@@ -71,8 +70,12 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	cmd := "bash -lc " + shellQuote(innerCmd)
 	// Streamed live (not buffered until exit): home-manager switch can
 	// run for minutes fetching/building packages, and silence until
-	// completion is indistinguishable from a hang.
-	output, err := client.RunStreaming(cmd, os.Stdout, os.Stderr)
+	// completion is indistinguishable from a hang. Writers come from
+	// ctx (provider.Output), defaulting to os.Stdout/os.Stderr -- a
+	// caller can redirect them (e.g. into a bubbletea viewport)
+	// without this function needing to know or care.
+	out, errOut := provider.Output(ctx)
+	output, err := client.RunStreaming(cmd, out, errOut)
 	if err != nil {
 		return fmt.Errorf("home-manager switch failed: %w\n%s", err, tail(output, 40))
 	}

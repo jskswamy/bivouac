@@ -11,6 +11,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provisioning"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/tui"
 )
 
 const readyTimeout = 5 * time.Minute
@@ -32,11 +33,18 @@ type Steps struct {
 	StartWatch func(ctx context.Context, ip, name, localRepoRoot string) error
 }
 
-// DefaultSteps wires Steps to the real implementations.
+// DefaultSteps wires Steps to the real implementations. Reconcile is
+// wrapped in tui.Run so home-manager switch's output renders in a
+// collapsible viewport (on a real terminal; plain streaming otherwise)
+// -- reconcile.Reconcile itself is unchanged either way.
 func DefaultSteps() Steps {
 	return Steps{
-		WaitReady:  WaitReady,
-		Reconcile:  reconcile.Reconcile,
+		WaitReady: WaitReady,
+		Reconcile: func(ctx context.Context, name, cloudlabPath string) error {
+			return tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error {
+				return reconcile.Reconcile(ctx, name, cloudlabPath)
+			})
+		},
 		Rsync:      Rsync,
 		StartWatch: StartWatch,
 	}

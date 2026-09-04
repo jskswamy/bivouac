@@ -1,12 +1,14 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -133,6 +135,35 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	}
 	if !strings.Contains(gotSwitchCmd, "--refresh") {
 		t.Errorf("switch command = %q, want --refresh so a floating template ref isn't served stale from Nix's tarball cache", gotSwitchCmd)
+	}
+}
+
+func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "building home-manager generation\n", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n")+"\n")
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	if err := Reconcile(ctx, "myinstance", cloudlabPath); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	if !strings.Contains(out.String(), "building home-manager generation") {
+		t.Errorf("attached writer = %q, want it to contain the switch command's live output", out.String())
 	}
 }
 

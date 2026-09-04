@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -43,8 +45,11 @@ func newProvisionCmd() *cobra.Command {
 				cmd.Printf("→ %s\n", status)
 			})
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			if err := reconcile.Reconcile(ctx, name, cloudlabPath); err != nil {
-				return err
+			reconcileErr := tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error {
+				return reconcile.Reconcile(ctx, name, cloudlabPath)
+			})
+			if reconcileErr != nil {
+				return reconcileErr
 			}
 			cmd.Printf("Provisioned %s\n", name)
 			return nil
