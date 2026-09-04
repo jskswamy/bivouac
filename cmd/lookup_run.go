@@ -103,6 +103,11 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Size:     %s\n", st.Record.Size)
 	cmd.Printf("Template: %s\n", st.Record.Template)
 	cmd.Printf("User:     %s\n", st.Record.User)
+	repoPath := st.Record.RepoPath
+	if repoPath == "" {
+		repoPath = "(unknown -- provisioned before this field existed)"
+	}
+	cmd.Printf("RepoPath: %s\n", repoPath)
 	cmd.Printf("IP:       %s\n", st.Record.IP)
 	if st.LiveErr != nil {
 		cmd.Printf("Status:   unknown (live check failed: %v)\n", st.LiveErr)
@@ -116,16 +121,16 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	} else if !watch.Running {
 		cmd.Printf("Watch:    not running\n")
 	} else {
-		cmd.Printf("Watch:    %s (conflicts: %d)\n", watch.Status, watch.Conflicts)
+		cmd.Printf("Watch:    %s (alpha connected: %v, beta connected: %v, conflicts: %d)\n", watch.Status, watch.AlphaConnected, watch.BetaConnected, watch.Conflicts)
 		if watch.LastError != "" {
-			cmd.Printf("LastError: %s\n", watch.LastError)
+			cmd.Printf("Error:    %s\n", watch.LastError)
 		}
 	}
 	return nil
 }
 
 func runWatch(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(name)
 	if err != nil {
 		return err
 	}
@@ -142,11 +147,17 @@ func runWatch(cmd *cobra.Command, name string, args []string) error {
 
 	// record.RepoPath is unset for instances provisioned before this
 	// field existed (no migration, per the RemotePath rollout) --
-	// recompute the same way Up would for those.
+	// recompute the same way Up would, and persist it so ssh's own
+	// RepoPath read (runSSH, below) agrees with where watch is
+	// actually syncing from now on instead of staying stuck at "".
 	remotePath := record.RepoPath
 	if remotePath == "" {
 		remotePath, err = lifecycle.RemotePath(root, record.User)
 		if err != nil {
+			return err
+		}
+		record.RepoPath = remotePath
+		if err := store.Put(record); err != nil {
 			return err
 		}
 	}
@@ -169,8 +180,9 @@ func syncLocalDir(dirFlag string) (string, error) {
 
 // syncRemoteDir returns the remote directory sync should target:
 // args[0] if given, else local's path mirrored under remoteUser's
-// home (or local itself, unchanged, if it isn't under the local
-// user's home) via lifecycle.RemotePath.
+// home via lifecycle.RemotePath (always a mirror -- under the home
+// path directly if local is under the local user's home, or under
+// the full absolute local path otherwise).
 func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
 	if len(args) > 0 {
 		return args[0], nil

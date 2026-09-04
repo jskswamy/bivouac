@@ -47,6 +47,10 @@ func gitIgnoredExcludes(local string) []string {
 // --exclude=.git plus one --exclude per entry in excludes (see
 // gitIgnoredExcludes) keep local's full history and build caches off
 // an ephemeral instance that never needed them.
+// Relies on rsync's default --protect-args (space-safe argv passing,
+// on by default since rsync 3.2.4) for local/remote paths that
+// contain spaces -- the same >=3.2.3 floor --mkpath already requires
+// in practice guarantees this too.
 func rsyncPushArgs(ip, user, local, remote string, excludes []string) []string {
 	args := []string{"-az", "--info=progress2", "--mkpath", "--exclude=.git"}
 	for _, e := range excludes {

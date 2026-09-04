@@ -21,7 +21,7 @@ boundary is deliberately not DO-specific — see
 │ cloudlab.yaml│ ──boot+bootstrap──▶│ Nix installed               │
 │ (optional)   │   (cloud-init)     │ home-manager switch runs    │
 └──────────────┘                    │  (template profile only)    │
-                                     │ repo rsynced to ~/reponame  │
+                                     │ repo mirrored under home    │
                                      │ home-manager switch re-runs │
                                      │  (template + cloudlab.yaml) │
                                      │ watch starts (mutagen)      │
@@ -97,7 +97,8 @@ flake outputs, not in per-template bash/YAML. See
 
 `up` runs `home-manager switch` twice: once immediately after cloud-init
 completes (template profile only — the repo isn't present yet), and again
-once the repo has been rsynced to `~/<reponame>`, this time with the repo's
+once the repo has been rsynced to a path mirrored under the remote home
+at a location matching the repo's local path, this time with the repo's
 `cloudlab.yaml` merged in — see
 [Package and flake composition](#package-and-flake-composition) below. Only
 after that second reconcile does `up` start `watch` (continuous two-way
@@ -167,7 +168,7 @@ environment, never touching disk on the VM. See
 | `ssh [name]` | per-instance | Interactive **remote** shell on the VM itself |
 | `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) -- a background session that survives disconnects |
 | `tmux [session-name]` | per-instance | Interactive **remote** tmux session (create-or-attach), preconfigured via gpakosz/.tmux |
-| `sync <local-dir> [remote-dir]` | per-instance | One-shot rsync of an arbitrary local directory *outside the repo* to the instance (e.g. a dataset). `remote-dir` defaults to the local dir's basename under the instance home. Not involved in repo sync or reconciliation. |
+| `sync [remote-dir] --dir <local-dir>` | per-instance | One-shot rsync of a local directory to the instance (e.g. a dataset). `--dir` defaults to the current directory. `remote-dir` when omitted resolves via the same `RemotePath` mirroring used for the main repo. Not involved in repo sync or reconciliation. |
 | `download <remote-dir> [local-dir]` | per-instance | One-shot rsync pulling files back from the instance. `local-dir` defaults to the current directory. |
 | `watch [name]` | per-instance | Restart continuous two-way repo sync if it's stopped/dead. Auto-started by `up`; rarely invoked directly. |
 | `connect [name]` | per-instance, python template | Jupyter tunnel |
@@ -177,8 +178,10 @@ environment, never touching disk on the VM. See
 
 `[name]` is optional everywhere and defaults to the current repo's derived
 instance name; see [Instance identity](#instance-identity). `sync` and
-`download` take an explicit path first since they no longer operate on the
-repo implicitly.
+`download` no longer operate on the repo implicitly: `sync` defaults its
+local side to the current directory via `--dir` and resolves its remote
+side the same way the main repo's location is resolved, while `download`
+takes an explicit remote path first.
 
 `shell` vs `ssh`: `shell` never touches the network to open an interactive
 session — it configures your **local** shell to talk to the remote instance

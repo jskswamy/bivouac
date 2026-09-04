@@ -88,7 +88,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:   "sync [remote-dir]",
-		short: "One-shot push of a directory outside the repo to the instance",
+		short: "One-shot push of a local directory to the instance (defaults to the current directory)",
 		verb:  "sync",
 		args:  cobra.MaximumNArgs(1),
 		named: false,

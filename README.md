@@ -26,7 +26,7 @@ cloudlab up                   # boots a VM (template from cloudlab.pkl), seeds t
                                # continuous two-way watch — one command, repo is live
 cloudlab shell                # local subshell with envs pointing at the instance
                                # (e.g. DOCKER_HOST=ssh://... for docker template)
-cloudlab sync ./dataset        # one-shot push of anything outside the repo
+cloudlab sync --dir ./dataset  # one-shot push of anything outside the repo
 cloudlab download ~/results    # one-shot pull back
 cloudlab down                  # tears the instance down
 ```

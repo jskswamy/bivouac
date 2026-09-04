@@ -34,7 +34,7 @@ func TestRemotePath_ExactlyHome_ReturnsRemoteHome(t *testing.T) {
 	}
 }
 
-func TestRemotePath_NotUnderHome_UsesAsIs(t *testing.T) {
+func TestRemotePath_NotUnderHome_MirrorsFullPathUnderRemoteHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	local := filepath.Join(t.TempDir(), "elsewhere")
@@ -43,8 +43,9 @@ func TestRemotePath_NotUnderHome_UsesAsIs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemotePath() error = %v", err)
 	}
-	if got != local {
-		t.Errorf("RemotePath() = %q, want %q (used as-is)", got, local)
+	want := "/home/devuser" + local
+	if got != want {
+		t.Errorf("RemotePath() = %q, want %q (mirrored under remote home)", got, want)
 	}
 }
 
@@ -52,7 +53,10 @@ func TestRemotePath_SiblingWithSharedPrefix_NotTreatedAsUnderHome(t *testing.T) 
 	// A directory like /tmp/xyz/home2/project must NOT be treated as
 	// "under" /tmp/xyz/home just because it shares a string prefix --
 	// proves the containment check is separator-bounded, not a naive
-	// strings.HasPrefix.
+	// strings.HasPrefix. It still gets mirrored under the remote home,
+	// but via the full-absolute-path branch, not the home-relative one
+	// (which would incorrectly strip a "home" prefix and produce a
+	// different, wrong path).
 	parent := t.TempDir()
 	home := filepath.Join(parent, "home")
 	sibling := filepath.Join(parent, "home2", "project")
@@ -65,7 +69,8 @@ func TestRemotePath_SiblingWithSharedPrefix_NotTreatedAsUnderHome(t *testing.T) 
 	if err != nil {
 		t.Fatalf("RemotePath() error = %v", err)
 	}
-	if got != sibling {
-		t.Errorf("RemotePath() = %q, want %q (sibling dir sharing a string prefix must not be mirrored)", got, sibling)
+	want := "/home/devuser" + sibling
+	if got != want {
+		t.Errorf("RemotePath() = %q, want %q (sibling dir sharing a string prefix must not be treated as under home)", got, want)
 	}
 }

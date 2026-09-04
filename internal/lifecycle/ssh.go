@@ -23,7 +23,7 @@ func sshArgs(ip, user, dir string) []string {
 	if dir == "" {
 		return []string{user + "@" + ip}
 	}
-	inner := "cd " + reconcile.ShellQuote(dir) + " && exec bash -l"
+	inner := "cd " + reconcile.ShellQuote(dir) + " && exec \"$SHELL\" -l"
 	return []string{"-t", user + "@" + ip, "bash -lc " + reconcile.ShellQuote(inner)}
 }
 
