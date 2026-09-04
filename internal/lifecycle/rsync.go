@@ -39,12 +39,16 @@ func gitIgnoredExcludes(local string) []string {
 // "~/dataset" -- callers resolve any default before calling this) as
 // user, using the system ssh binary as rsync's remote shell.
 // --info=progress2 gives one continuously-updating overall-transfer
-// line rather than spamming a line per file. --exclude=.git plus one
-// --exclude per entry in excludes (see gitIgnoredExcludes) keep
-// local's full history and build caches off an ephemeral instance that
-// never needed them.
+// line rather than spamming a line per file. --mkpath creates every
+// missing destination path component using rsync's own real
+// permission check -- correct whether remote is under the remote
+// user's home (always writable) or an arbitrary absolute path (only
+// writable if they already own something in that chain).
+// --exclude=.git plus one --exclude per entry in excludes (see
+// gitIgnoredExcludes) keep local's full history and build caches off
+// an ephemeral instance that never needed them.
 func rsyncPushArgs(ip, user, local, remote string, excludes []string) []string {
-	args := []string{"-az", "--info=progress2", "--exclude=.git"}
+	args := []string{"-az", "--info=progress2", "--mkpath", "--exclude=.git"}
 	for _, e := range excludes {
 		args = append(args, "--exclude="+e)
 	}
@@ -67,7 +71,7 @@ func Push(ctx context.Context, ip, user, local, remote string) error {
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("rsync to %s failed: %w\n%s", ip, err, buf.String())
+		return fmt.Errorf("rsync to %s failed: %w\n%s\nif %s doesn't exist or isn't writable, create it and chown it to %s on the instance, then retry", ip, err, buf.String(), remote, user)
 	}
 	return nil
 }

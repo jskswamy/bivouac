@@ -13,7 +13,7 @@ import (
 
 func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
 	got := rsyncPushArgs("203.0.113.5", "devuser", "/home/user/myrepo", "~/myrepo", nil)
-	want := []string{"-az", "--info=progress2", "--exclude=.git", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
+	want := []string{"-az", "--info=progress2", "--mkpath", "--exclude=.git", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
@@ -26,7 +26,7 @@ func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {
 
 func TestRsyncPushArgs_IncludesGivenExcludes(t *testing.T) {
 	got := rsyncPushArgs("203.0.113.5", "devuser", "/home/user/myrepo", "~/myrepo", []string{".gocache/", ".envrc"})
-	want := []string{"-az", "--info=progress2", "--exclude=.git", "--exclude=.gocache/", "--exclude=.envrc", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
+	want := []string{"-az", "--info=progress2", "--mkpath", "--exclude=.git", "--exclude=.gocache/", "--exclude=.envrc", "-e", "ssh", "/home/user/myrepo/", "devuser@203.0.113.5:~/myrepo/"}
 	if len(got) != len(want) {
 		t.Fatalf("rsyncPushArgs() = %v, want %v", got, want)
 	}
@@ -65,6 +65,9 @@ func TestPush_FailureIncludesRsyncOutputInError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rsync to 127.0.0.1 failed") {
 		t.Errorf("error = %q, want it to name the failure", err.Error())
+	}
+	if !strings.Contains(err.Error(), "create it and chown it to devuser") {
+		t.Errorf("error = %q, want the create-and-chown hint", err.Error())
 	}
 }
 
