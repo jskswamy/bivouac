@@ -20,6 +20,8 @@ let
     rev = "58a3dcc0d718ec0fa1c0d5a2fddd640a1ad7a5b7";
     sha256 = "0zky4qkndrs645xnxh6498zc8yj7y581sg72hh0h7b31a5jxng30";
   };
+
+  moshiHook = pkgs.callPackage ./moshi-hook-pkg.nix { };
 in
 {
   home.username = username;
@@ -29,10 +31,20 @@ in
   home.packages = [
     pkgs.git
     pkgs.age
+    pkgs.devbox
     # Self-manages its own server lifecycle (launches/attaches on
     # demand, per `herdr --help`) -- no systemd unit needed, unlike
     # tailscaled below.
     pkgs.herdr
+    # Lets the getmoshi.app mobile client (SSH & Mosh from iOS/Android)
+    # connect to this instance -- moshi itself is a client-side app,
+    # this host only needs the mosh server side it speaks to.
+    pkgs.mosh
+    # The `moshi`/`moshi-hook` binaries themselves (packaged in
+    # ./moshi-hook-pkg.nix). Unlike mosh above, this one *does* need a
+    # persistent daemon on the host -- see the activation script below --
+    # so Moshi's iOS/Android app can pair with it and drive agent hooks.
+    moshiHook
     pkgs.tailscale
     pkgs.tmux
   ];
@@ -68,4 +80,13 @@ in
     };
     Install.WantedBy = [ "default.target" ];
   };
+
+  # moshi-hook writes and enables its own systemd --user unit (see
+  # `moshi-hook service status` after this runs) -- no hand-written
+  # systemd.user.services entry needed, and no sudo either: unlike
+  # tailscaled/dockerd above it doesn't touch root-owned state. Re-running
+  # on every activation is fine, `service install` is idempotent.
+  home.activation.moshiHookService = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    $DRY_RUN_CMD ${moshiHook}/bin/moshi-hook service install
+  '';
 }
