@@ -34,7 +34,10 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "ssh",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
-		run:   runSSH,
+		flags: func(c *cobra.Command) {
+			c.Flags().String("dir", "", "remote directory to cd into (defaults to the synced repo's location)")
+		},
+		run: runSSH,
 	},
 	{
 		use:   "herdr [name]",

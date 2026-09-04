@@ -224,7 +224,14 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.SSH(cmd.Context(), record.IP, record.User)
+	dir, err := cmd.Flags().GetString("dir")
+	if err != nil {
+		return err
+	}
+	if dir == "" {
+		dir = record.RepoPath
+	}
+	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir)
 }
 
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
