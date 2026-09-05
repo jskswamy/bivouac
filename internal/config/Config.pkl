@@ -9,6 +9,7 @@ size: String?
 template: String?
 arch: "x86_64"|"arm64" = "x86_64"
 image: String = "ubuntu-24-04-x64"
+tailscale: Boolean = false
 sshKeys: Listing<String>?
 packages: Listing<String> = new Listing {}
 flakes: Listing<Flake> = new Listing {}

@@ -28,10 +28,17 @@ see "A note on trust" near the end of this doc.
 | `template` | `String?` | Yes, after merge | none | Provisioning template name. The template catalog itself (what each name actually installs) is a separate, later feature — for now this is just a name cloudlab passes through. |
 | `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
+| `tailscale` | `Boolean` | No | `false` | Auto-join the instance to your personal Tailscale network during `up` (see `cloudlab tailscale`). Requires `tailscale_authkey` in your personal secrets file — see `cloudlab secrets init`. |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
 | `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
+
+When generating the auth key for `tailscale_authkey` in the Tailscale admin
+console, mark it **Ephemeral**. Ephemeral keys make their devices
+self-remove from your tailnet once they disconnect, so a destroyed instance
+(cloudlab's VMs are destroy-and-recreate, not long-lived) doesn't linger as
+a dead device counting against your plan's device limit.
 
 "Required, after merge" means: `region`/`size`/`template` don't have to
 be set in your project's `cloudlab.pkl` itself, as long as your
@@ -56,10 +63,10 @@ base config. If one exists, the two are merged:
 
 - **Scalars** (`region`, `size`, `template`): the project's value wins
   if it set one; otherwise the base's value is used.
-- **`arch` and `image`**: always the project's resolved value (each has
-  its own schema-level default) -- unlike the scalars above, a personal
-  base config's `arch`/`image` is never consulted, even if the project
-  doesn't set one explicitly.
+- **`arch`, `image`, and `tailscale`**: always the project's resolved
+  value (each has its own schema-level default) -- unlike the scalars
+  above, a personal base config's `arch`/`image`/`tailscale` is never
+  consulted, even if the project doesn't set one explicitly.
 - **Lists** (`sshKeys`, `packages`, `flakes`): additive — your base's
   entries first, then the project's. Nothing is dropped from either
   side.

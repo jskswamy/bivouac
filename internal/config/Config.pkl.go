@@ -20,6 +20,8 @@ type Config struct {
 
 	Image string `pkl:"image"`
 
+	Tailscale bool `pkl:"tailscale"`
+
 	SshKeys *[]string `pkl:"sshKeys"`
 
 	Packages []string `pkl:"packages"`

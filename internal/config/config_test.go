@@ -54,6 +54,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		`size = "s-2vcpu-4gb"`, // overrides base
 		`template = "python"`,
 		`arch = "arm64"`,
+		`tailscale = true`,
 		`sshKeys { "project-key" }`,
 		`packages { "ripgrep" }`,
 	}, "\n")+"\n")
@@ -85,6 +86,9 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 
 	if cfg.Arch != "arm64" {
 		t.Errorf("Arch = %q, want %q (project overrides base)", cfg.Arch, "arm64")
+	}
+	if !cfg.Tailscale {
+		t.Error("Tailscale = false, want true (project overrides base)")
 	}
 }
 
