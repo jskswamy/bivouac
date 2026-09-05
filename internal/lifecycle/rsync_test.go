@@ -220,3 +220,41 @@ func TestRsync_CopiesFilesBetweenLocalDirs(t *testing.T) {
 		t.Errorf("synced content = %q, want %q", got, "hello")
 	}
 }
+
+// macOS ships openrsync as /usr/bin/rsync. It is 2.6.9-compatible and
+// supports neither --info=progress2 nor --mkpath, so it must be caught
+// up front rather than dumping rsync's usage text mid-transfer.
+func TestRsyncVersionError_RejectsOpenrsync(t *testing.T) {
+	out := "openrsync: protocol version 29\nrsync version 2.6.9 compatible\n"
+	err := rsyncVersionError(out, "/usr/bin/rsync")
+	if err == nil {
+		t.Fatal("rsyncVersionError() = nil, want an error for openrsync")
+	}
+	for _, want := range []string{"openrsync", "/usr/bin/rsync", "3.2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to mention %q", err.Error(), want)
+		}
+	}
+}
+
+func TestRsyncVersionError_AcceptsModernGNU(t *testing.T) {
+	out := "rsync  version 3.5.0  protocol version 32\n"
+	if err := rsyncVersionError(out, "/nix/store/x/bin/rsync"); err != nil {
+		t.Errorf("rsyncVersionError() = %v, want nil for rsync 3.5.0", err)
+	}
+}
+
+// 3.2.3 is the floor (--mkpath); 3.1.x predates it.
+func TestRsyncVersionError_RejectsPre32GNU(t *testing.T) {
+	if err := rsyncVersionError("rsync  version 3.1.3  protocol version 31\n", "/usr/bin/rsync"); err == nil {
+		t.Error("rsyncVersionError() = nil, want an error for rsync 3.1.3")
+	}
+}
+
+// An rsync whose output we cannot parse is let through: refusing to run
+// on an unrecognised-but-working rsync would be worse than trying.
+func TestRsyncVersionError_UnparseableOutputIsAccepted(t *testing.T) {
+	if err := rsyncVersionError("some future rsync\n", "/usr/bin/rsync"); err != nil {
+		t.Errorf("rsyncVersionError() = %v, want nil when the version cannot be parsed", err)
+	}
+}
