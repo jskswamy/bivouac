@@ -34,6 +34,29 @@ import (
 // non-interactive SSH command otherwise runs a non-login shell that
 // never sources the profile scripts putting ~/.nix-profile/bin on
 // PATH.
+// RemoteTailscaleBin returns the absolute path to tailscale on the
+// instance, resolved by a real remote round-trip for the same reason
+// JoinTailscale resolves $XDG_RUNTIME_DIR that way.
+//
+// The absolute path matters because every tailscale call here runs under
+// sudo (tailscaled's LocalAPI gates state-changing calls on
+// root-or-operator). sudo replaces PATH with its own secure_path --
+// system directories only -- and tailscale lives in the instance user's
+// home-manager profile, so a bare `sudo tailscale` fails with "command
+// not found" however the surrounding shell is invoked. Wrapping in
+// `bash -lc` fixes PATH for the shell, not for what sudo then execs.
+func RemoteTailscaleBin(client *reconcile.Client) (string, error) {
+	out, err := client.Run("bash -lc " + reconcile.ShellQuote("command -v tailscale"))
+	if err != nil {
+		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first:\n%s", out)
+	}
+	path := strings.TrimSpace(out)
+	if path == "" {
+		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first")
+	}
+	return path, nil
+}
+
 func JoinTailscale(ctx context.Context, ip, user string) error {
 	path, err := secrets.Path()
 	if err != nil {
@@ -70,6 +93,14 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	}
 	authKeyPath := runtimeDir + "/cloudlab-ts-authkey"
 
+	// Resolved before the key is shipped, so an instance without
+	// tailscale installed fails without a secret having been written to
+	// it first.
+	tailscaleBin, err := RemoteTailscaleBin(client)
+	if err != nil {
+		return err
+	}
+
 	provider.ReportProgress(ctx, "writing auth key to instance")
 	writeErr := client.WriteSecretFile(authKeyPath, key)
 	secrets.Zero(key)
@@ -82,10 +113,19 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	// gates state-changing client calls -- tailscale up included -- on
 	// root-or-operator. cloud-init grants the instance user passwordless
 	// sudo for exactly this kind of case.
-	innerCmd := fmt.Sprintf(`trap 'rm -f %s' EXIT; sudo tailscale up --auth-key=file:%s`,
-		reconcile.ShellQuote(authKeyPath), reconcile.ShellQuote(authKeyPath))
+	innerCmd := fmt.Sprintf(`trap 'rm -f %s' EXIT; sudo %s up --auth-key=file:%s`,
+		reconcile.ShellQuote(authKeyPath), reconcile.ShellQuote(tailscaleBin), reconcile.ShellQuote(authKeyPath))
 	script := "bash -lc " + reconcile.ShellQuote(innerCmd)
-	if out, err := client.Run(script); err != nil {
+	out, err := client.Run(script)
+	if err != nil {
+		// tailscaled is a systemd --user unit that common.nix only
+		// declares when cloudlab.tailscale is true, so the most likely
+		// cause is an instance provisioned with the flag off -- the
+		// daemon's own message suggests `systemctl start tailscaled`,
+		// which does not exist here and sends people the wrong way.
+		if strings.Contains(out, "failed to connect to local tailscaled") {
+			return fmt.Errorf("tailscaled is not running on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" to install it:\n%s", out)
+		}
 		return fmt.Errorf("tailscale up failed: %w\n%s", err, out)
 	}
 	return nil

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -93,6 +93,9 @@ func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
 
 	var gotCmd string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/home/devuser/.nix-profile/bin/tailscale\n", 0
+		}
 		gotCmd = cmd
 		return "", 0
 	})
@@ -106,9 +109,16 @@ func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
 	if err := Down(context.Background(), p, store, record); err != nil {
 		t.Fatalf("Down() error = %v", err)
 	}
-	wantCmd := "bash -lc " + reconcile.ShellQuote("sudo tailscale logout")
-	if gotCmd != wantCmd {
-		t.Errorf("remote command = %q, want %q", gotCmd, wantCmd)
+	// Absolute path, not a bare name: sudo resets PATH to its own
+	// secure_path, which has no ~/.nix-profile/bin in it.
+	if !strings.Contains(gotCmd, "/home/devuser/.nix-profile/bin/tailscale") {
+		t.Errorf("remote command = %q, want tailscale invoked by absolute path", gotCmd)
+	}
+	if !strings.Contains(gotCmd, "logout") {
+		t.Errorf("remote command = %q, want a tailscale logout", gotCmd)
+	}
+	if strings.Contains(gotCmd, "sudo tailscale") {
+		t.Errorf("remote command = %q, must not invoke a bare `sudo tailscale`", gotCmd)
 	}
 }
 

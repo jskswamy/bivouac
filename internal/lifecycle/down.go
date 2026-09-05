@@ -40,11 +40,17 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 		return
 	}
 	defer func() { _ = client.Close() }()
-	// bash -lc: tailscale lives in the instance user's home-manager
-	// profile, not a system path (see tailscale.go's JoinTailscale doc
-	// comment). sudo: tailscaled's LocalAPI gates tailscale logout on
+	// Absolute path, not a bare name: sudo resets PATH to its own
+	// secure_path and tailscale lives in the instance user's
+	// home-manager profile, so `sudo tailscale logout` would fail with
+	// "command not found" (see RemoteTailscaleBin). sudo itself is
+	// needed because tailscaled's LocalAPI gates logout on
 	// root-or-operator, same as tailscale up.
-	cmd := "bash -lc " + reconcile.ShellQuote("sudo tailscale logout")
+	tailscaleBin, err := RemoteTailscaleBin(client)
+	if err != nil {
+		return
+	}
+	cmd := "bash -lc " + reconcile.ShellQuote("sudo "+reconcile.ShellQuote(tailscaleBin)+" logout")
 	_, _ = client.Run(cmd)
 }
 

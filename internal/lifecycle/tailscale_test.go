@@ -77,6 +77,9 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 		if strings.Contains(cmd, "printf") {
 			return "/run/user/1000", 0
 		}
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/home/devuser/.nix-profile/bin/tailscale\n", 0
+		}
 		return "", 0
 	})
 
@@ -84,8 +87,8 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 		t.Fatalf("JoinTailscale() error = %v", err)
 	}
 
-	if len(commands) != 3 {
-		t.Fatalf("commands = %v, want 3 (resolve runtime dir, write key, tailscale up)", commands)
+	if len(commands) != 4 {
+		t.Fatalf("commands = %v, want 4 (resolve runtime dir, resolve tailscale, write key, tailscale up)", commands)
 	}
 	if !strings.Contains(commands[0], "XDG_RUNTIME_DIR") {
 		t.Errorf("commands[0] = %q, want it to resolve $XDG_RUNTIME_DIR", commands[0])
@@ -93,20 +96,28 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 	if !strings.HasPrefix(commands[0], "bash -lc ") {
 		t.Errorf("commands[0] = %q, want it wrapped in a login shell so tailscale's PATH is set", commands[0])
 	}
-	if !strings.Contains(commands[1], "install -m 600") || !strings.Contains(commands[1], "/run/user/1000/cloudlab-ts-authkey") {
-		t.Errorf("commands[1] = %q, want an install -m 600 into the resolved runtime dir", commands[1])
+	if !strings.Contains(commands[2], "install -m 600") || !strings.Contains(commands[2], "/run/user/1000/cloudlab-ts-authkey") {
+		t.Errorf("commands[2] = %q, want an install -m 600 into the resolved runtime dir", commands[2])
 	}
-	if string(stdins[1]) != "tskey-abc123-example" {
-		t.Errorf("stdin to the write step = %q, want the decrypted auth key", stdins[1])
+	if string(stdins[2]) != "tskey-abc123-example" {
+		t.Errorf("stdin to the write step = %q, want the decrypted auth key", stdins[2])
 	}
-	if !strings.Contains(commands[2], "sudo tailscale up --auth-key=file:") || !strings.Contains(commands[2], "/run/user/1000/cloudlab-ts-authkey") {
-		t.Errorf("commands[2] = %q, want sudo tailscale up --auth-key=file:<path>", commands[2])
+	if !strings.Contains(commands[3], "up --auth-key=file:") || !strings.Contains(commands[3], "/run/user/1000/cloudlab-ts-authkey") {
+		t.Errorf("commands[3] = %q, want <tailscale> up --auth-key=file:<path>", commands[3])
 	}
-	if !strings.Contains(commands[2], "trap") {
-		t.Errorf("commands[2] = %q, want a trap to clean up the tmpfs file", commands[2])
+	// sudo resets PATH to its own secure_path, so the bare name would
+	// resolve against a PATH with no ~/.nix-profile/bin in it.
+	if !strings.Contains(commands[3], "/home/devuser/.nix-profile/bin/tailscale") {
+		t.Errorf("commands[3] = %q, want sudo invoking tailscale by absolute path", commands[3])
 	}
-	if !strings.HasPrefix(commands[2], "bash -lc ") {
-		t.Errorf("commands[2] = %q, want it wrapped in a login shell so tailscale's PATH is set", commands[2])
+	if strings.Contains(commands[3], "sudo tailscale") {
+		t.Errorf("commands[3] = %q, must not invoke a bare `sudo tailscale` -- sudo's PATH cannot find it", commands[3])
+	}
+	if !strings.Contains(commands[3], "trap") {
+		t.Errorf("commands[3] = %q, want a trap to clean up the tmpfs file", commands[3])
+	}
+	if !strings.HasPrefix(commands[3], "bash -lc ") {
+		t.Errorf("commands[3] = %q, want it wrapped in a login shell", commands[3])
 	}
 	for i, cmd := range commands {
 		if strings.Contains(cmd, "tskey-abc123-example") {
@@ -123,6 +134,9 @@ func TestJoinTailscale_ReportsProgressBeforeDecrypting(t *testing.T) {
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		if strings.Contains(cmd, "printf") {
 			return "/run/user/1000", 0
+		}
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/home/devuser/.nix-profile/bin/tailscale\n", 0
 		}
 		return "", 0
 	})
