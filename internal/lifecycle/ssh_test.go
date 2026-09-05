@@ -21,7 +21,7 @@ func TestSSHArgs_NoDir_PlainSession(t *testing.T) {
 
 func TestSSHArgs_WithDir_CdsBeforeInteractiveShell(t *testing.T) {
 	got := sshArgs("203.0.113.5", "devuser", "/home/devuser/project")
-	inner := "cd " + reconcile.ShellQuote("/home/devuser/project") + " && exec \"$SHELL\" -l"
+	inner := "[[ -d " + reconcile.ShellQuote("/home/devuser/project") + " ]] && cd " + reconcile.ShellQuote("/home/devuser/project") + "; exec \"$SHELL\" -l"
 	want := []string{"-t", "devuser@203.0.113.5", "bash -lc " + reconcile.ShellQuote(inner)}
 	if len(got) != len(want) {
 		t.Fatalf("sshArgs() = %v, want %v", got, want)
