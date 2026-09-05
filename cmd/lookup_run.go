@@ -271,7 +271,10 @@ func runTailscale(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := lifecycle.JoinTailscale(cmd.Context(), record.IP, record.User); err != nil {
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
+	if err := lifecycle.JoinTailscale(ctx, record.IP, record.User); err != nil {
 		return err
 	}
 	record.TailscaleJoined = true

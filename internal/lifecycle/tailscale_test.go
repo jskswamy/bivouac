@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 )
 
@@ -111,6 +112,33 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 		if strings.Contains(cmd, "tskey-abc123-example") {
 			t.Errorf("commands[%d] = %q contains the secret literal -- it must only travel via stdin", i, cmd)
 		}
+	}
+}
+
+func TestJoinTailscale_ReportsProgressBeforeDecrypting(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+	writeTailscaleSecretsFixture(t, "tskey-abc123-example")
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		if strings.Contains(cmd, "printf") {
+			return "/run/user/1000", 0
+		}
+		return "", 0
+	})
+
+	var got []string
+	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
+
+	if err := JoinTailscale(ctx, addr, "devuser"); err != nil {
+		t.Fatalf("JoinTailscale() error = %v", err)
+	}
+
+	// Decrypting can block silently on a YubiKey touch prompt -- the
+	// progress line warning about it must fire before that call, not
+	// after, or a caller has no idea their key is waiting on them.
+	if len(got) == 0 || !strings.Contains(got[0], "YubiKey touch") {
+		t.Errorf("progress = %v, want a first entry warning about a YubiKey touch prompt", got)
 	}
 }
 

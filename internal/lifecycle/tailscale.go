@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 )
@@ -38,12 +39,20 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	if err != nil {
 		return err
 	}
+	// Decrypting can block silently on a YubiKey touch prompt (sops
+	// shells out to age-plugin-yubikey, which waits for a physical
+	// touch with no output of its own) -- report progress before this
+	// call specifically, not just at the top of the function, so a
+	// caller watching for "→ ..." lines knows to look at their key
+	// right when the wait actually starts.
+	provider.ReportProgress(ctx, "decrypting Tailscale auth key (check for a YubiKey touch prompt)")
 	key, err := secrets.Decrypt(ctx, path, "tailscale_authkey")
 	if err != nil {
 		return fmt.Errorf("decrypting tailscale_authkey: %w", err)
 	}
 	defer secrets.Zero(key)
 
+	provider.ReportProgress(ctx, "connecting to instance")
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
 		return err
@@ -61,12 +70,14 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	}
 	authKeyPath := runtimeDir + "/cloudlab-ts-authkey"
 
+	provider.ReportProgress(ctx, "writing auth key to instance")
 	writeErr := client.WriteSecretFile(authKeyPath, key)
 	secrets.Zero(key)
 	if writeErr != nil {
 		return fmt.Errorf("writing auth key to instance: %w", writeErr)
 	}
 
+	provider.ReportProgress(ctx, "joining tailnet")
 	// sudo: tailscaled runs as root (see common.nix), and its LocalAPI
 	// gates state-changing client calls -- tailscale up included -- on
 	// root-or-operator. cloud-init grants the instance user passwordless
