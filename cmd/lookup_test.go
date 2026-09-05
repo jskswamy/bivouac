@@ -20,6 +20,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		{[]string{"herdr", "--name", "myrepo"}, "herdr", `no instance named "myrepo"`},
 		{[]string{"tmux", "--name", "myrepo"}, "tmux", `no instance named "myrepo"`},
 		{[]string{"tailscale", "--name", "myrepo"}, "tailscale", `no instance named "myrepo"`},
+		{[]string{"pair", "--name", "myrepo"}, "pair", `no instance named "myrepo"`},
 		{[]string{"watch", "--name", "myrepo"}, "watch", `no instance named "myrepo"`},
 		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},

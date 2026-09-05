@@ -64,6 +64,14 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runTailscale,
 	},
 	{
+		use:   "pair [name]",
+		short: "Pair the getmoshi.app mobile app with the instance via QR code",
+		verb:  "pair",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+		run:   runPair,
+	},
+	{
 		use:   "watch [name]",
 		short: "Restart continuous two-way repo sync if it's stopped or dead",
 		verb:  "watch",

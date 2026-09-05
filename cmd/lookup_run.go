@@ -282,6 +282,14 @@ func runTailscale(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
+func runPair(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	return lifecycle.Pair(cmd.Context(), record.IP, record.User)
+}
+
 // defaultTmuxSession is the session cloudlab tmux creates-or-attaches
 // to when no session-name argument is given.
 const defaultTmuxSession = "main"
