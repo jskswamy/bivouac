@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, config, ... }:
 let
   # The instance's own non-root user (see internal/identity.RemoteUser
   # and cloud-init.sh, which creates it) -- read from the SSH session's
@@ -24,11 +24,17 @@ let
   moshiHook = pkgs.callPackage ./moshi-hook-pkg.nix { };
 in
 {
-  home.username = username;
-  home.homeDirectory = builtins.getEnv "HOME";
-  home.stateVersion = "25.11";
+  options.cloudlab.tailscale = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = "Enable Tailscale daemon on this instance";
+  };
 
-  home.packages = [
+  config.home.username = username;
+  config.home.homeDirectory = builtins.getEnv "HOME";
+  config.home.stateVersion = "25.11";
+
+  config.home.packages = [
     pkgs.git
     pkgs.age
     pkgs.devbox
@@ -49,8 +55,8 @@ in
     pkgs.tmux
   ];
 
-  programs.fish.enable = true;
-  programs.starship.enable = true;
+  config.programs.fish.enable = true;
+  config.programs.starship.enable = true;
 
   # gpakosz/.tmux's own config, used exactly as upstream ships it --
   # both files symlinked straight from the fetched repo, nothing
@@ -59,8 +65,8 @@ in
   # its own home.file.".tmux.conf.local".source later and win -- the
   # same personal-customization path packages/flakes already use (see
   # docs/config.md), no new cloudlab.pkl field needed for this.
-  home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
-  home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
+  config.home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
+  config.home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
 
   # Same reasoning as the docker template's dockerd unit: a real
   # daemon needs to actually be running, not just installed. Requires
@@ -72,7 +78,11 @@ in
   # root-owned path -- this user's systemd --user instance can't do
   # either directly. cloud-init.sh grants it passwordless sudo, so this
   # still starts non-interactively.
-  systemd.user.services.tailscaled = {
+  #
+  # Only enabled when cloudlab.tailscale is true (set by provisioning
+  # when user sets tailscale: true in cloudlab.pkl) -- otherwise
+  # tailscaled starting during provisioning would block SSH.
+  config.systemd.user.services.tailscaled = lib.mkIf config.cloudlab.tailscale {
     Unit.Description = "Tailscale daemon";
     Service = {
       ExecStart = "/usr/bin/sudo ${pkgs.tailscale}/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state";
@@ -86,7 +96,7 @@ in
   # systemd.user.services entry needed, and no sudo either: unlike
   # tailscaled/dockerd above it doesn't touch root-owned state. Re-running
   # on every activation is fine, `service install` is idempotent.
-  home.activation.moshiHookService = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  config.home.activation.moshiHookService = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     $DRY_RUN_CMD ${moshiHook}/bin/moshi-hook service install
   '';
 }

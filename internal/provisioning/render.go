@@ -28,6 +28,7 @@ var renderTmpl = template.Must(template.New("flake").Parse(`{
       pkgs = nixpkgs.legacyPackages."{{.System}}";
       modules = [
         template.homeManagerModules."{{.TemplateName}}"
+        { cloudlab.tailscale = {{.Tailscale}}; }
 {{if .Packages}}        ({ pkgs, ... }: { home.packages = [ {{range .Packages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{range $i, $f := .Flakes}}{{if $f.Packages}}        { home.packages = [ {{range $f.Packages}}flake{{$i}}.packages."{{$.System}}"."{{.}}" {{end}}]; }
 {{end}}{{if $f.Modules}}        flake{{$i}}.homeManagerModules.default
@@ -41,6 +42,7 @@ type renderData struct {
 	TemplateURL  string
 	TemplateName string
 	System       string
+	Tailscale    bool
 	Packages     []string
 	Flakes       []config.Flake
 }
@@ -56,6 +58,7 @@ func Render(cfg config.Config, templateRef string) (string, error) {
 		TemplateURL:  url,
 		TemplateName: templateModuleName(name, cfg.Arch),
 		System:       NixSystem(cfg.Arch),
+		Tailscale:    cfg.Tailscale,
 		Packages:     cfg.Packages,
 		Flakes:       cfg.Flakes,
 	}
