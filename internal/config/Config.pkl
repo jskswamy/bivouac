@@ -12,6 +12,18 @@ image: String = "ubuntu-24-04-x64"
 tailscale: Boolean = false
 sshKeys: Listing<String>?
 packages: Listing<String> = new Listing {}
+
+/// Coding agent harnesses to install, by short name.
+///
+/// A curated list rather than free-form `packages` entries, because the
+/// nixpkgs attribute is not guessable from the tool's name -- pi ships
+/// as `pi-coding-agent`, claude as `claude-code`, copilot as
+/// `github-copilot-cli` -- and because several are unfree, which needs
+/// handling at the point nixpkgs is instantiated (a home-manager module
+/// cannot set it). Selecting them permits exactly those packages, not
+/// unfree software in general.
+agents: Listing<"claude"|"codex"|"copilot"|"cursor"|"opencode"|"pi"> = new Listing {}
+
 flakes: Listing<Flake> = new Listing {}
 
 class Flake {

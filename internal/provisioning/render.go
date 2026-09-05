@@ -3,6 +3,7 @@ package provisioning
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -20,7 +21,7 @@ import (
 // nothing, so the template's default stands and the tailscaled unit is
 // never installed -- the flag silently does nothing at all.
 func NeedsRender(cfg config.Config) bool {
-	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale
+	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0
 }
 
 var renderTmpl = template.Must(template.New("flake").Parse(`{
@@ -32,11 +33,15 @@ var renderTmpl = template.Must(template.New("flake").Parse(`{
 {{end}}  };
   outputs = { self, nixpkgs, home-manager, template{{range $i, $f := .Flakes}}, flake{{$i}}{{end}}, ... }: {
     homeConfigurations.default = home-manager.lib.homeManagerConfiguration {
-      pkgs = nixpkgs.legacyPackages."{{.System}}";
+      pkgs = import nixpkgs {
+        system = "{{.System}}";
+        config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [ {{range .UnfreePackages}}"{{.}}" {{end}}];
+      };
       modules = [
         template.homeManagerModules."{{.TemplateName}}"
         { cloudlab.tailscale = {{.Tailscale}}; }
 {{if .Packages}}        ({ pkgs, ... }: { home.packages = [ {{range .Packages}}pkgs."{{.}}" {{end}}]; })
+{{end}}{{if .AgentPackages}}        ({ pkgs, ... }: { home.packages = [ {{range .AgentPackages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{range $i, $f := .Flakes}}{{if $f.Packages}}        { home.packages = [ {{range $f.Packages}}flake{{$i}}.packages."{{$.System}}"."{{.}}" {{end}}]; }
 {{end}}{{if $f.Modules}}        flake{{$i}}.homeManagerModules.default
 {{end}}{{end}}      ];
@@ -51,7 +56,68 @@ type renderData struct {
 	System       string
 	Tailscale    bool
 	Packages     []string
-	Flakes       []config.Flake
+	// AgentPackages are the nixpkgs attribute names cfg.Agents maps to,
+	// and UnfreePackages the subset of those whose licence is unfree --
+	// listed explicitly so the generated flake permits exactly the unfree
+	// packages that were asked for, rather than switching allowUnfree on
+	// wholesale and quietly permitting anything in Packages too.
+	AgentPackages  []string
+	UnfreePackages []string
+	Flakes         []config.Flake
+}
+
+// agentPackages maps a config `agents` entry to its nixpkgs attribute
+// name. The indirection exists because the attribute is not guessable
+// from the tool's name: pi ships as pi-coding-agent, claude as
+// claude-code. Keep in step with Config.pkl's agents union, which is
+// what stops an unknown name reaching here in the first place.
+var agentPackages = map[string]string{
+	"claude":   "claude-code",
+	"codex":    "codex",
+	"copilot":  "github-copilot-cli",
+	"cursor":   "cursor-cli",
+	"opencode": "opencode",
+	"pi":       "pi-coding-agent",
+}
+
+// unfreeAgentPackages lists the agentPackages values nixpkgs marks
+// unfree, which it refuses to build unless explicitly permitted. Keyed
+// by the same string lib.getName returns for that package, since that
+// is what the generated flake's allowUnfreePredicate compares against.
+var unfreeAgentPackages = map[string]bool{
+	"claude-code":        true,
+	"cursor-cli":         true,
+	"github-copilot-cli": true,
+}
+
+// knownAgents lists the accepted agent names for error messages, read
+// from agentPackages so it cannot drift from what is actually accepted.
+func knownAgents() string {
+	names := make([]string, 0, len(agentPackages))
+	for name := range agentPackages {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+// resolveAgents maps agents to their nixpkgs attribute names, and
+// returns the unfree subset alongside. An unknown name is an error
+// rather than a silent omission: Pkl's union type already rejects one,
+// so reaching here means the schema and this map have drifted apart,
+// and dropping it would install nothing while reporting success.
+func resolveAgents(agents []string) (pkgs, unfree []string, err error) {
+	for _, a := range agents {
+		name, ok := agentPackages[a]
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown agent %q (known: %s)", a, knownAgents())
+		}
+		pkgs = append(pkgs, name)
+		if unfreeAgentPackages[name] {
+			unfree = append(unfree, name)
+		}
+	}
+	return pkgs, unfree, nil
 }
 
 // Render produces the per-instance wrapper flake.nix content for cfg,
@@ -61,13 +127,19 @@ type renderData struct {
 // if Modules is true).
 func Render(cfg config.Config, templateRef string) (string, error) {
 	url, name := splitFlakeRef(templateRef)
+	agentPkgs, unfreePkgs, err := resolveAgents(cfg.Agents)
+	if err != nil {
+		return "", err
+	}
 	data := renderData{
-		TemplateURL:  url,
-		TemplateName: templateModuleName(name, cfg.Arch),
-		System:       NixSystem(cfg.Arch),
-		Tailscale:    cfg.Tailscale,
-		Packages:     cfg.Packages,
-		Flakes:       cfg.Flakes,
+		TemplateURL:    url,
+		TemplateName:   templateModuleName(name, cfg.Arch),
+		System:         NixSystem(cfg.Arch),
+		Tailscale:      cfg.Tailscale,
+		Packages:       cfg.Packages,
+		AgentPackages:  agentPkgs,
+		UnfreePackages: unfreePkgs,
+		Flakes:         cfg.Flakes,
 	}
 	if err := validateRenderData(data); err != nil {
 		return "", err

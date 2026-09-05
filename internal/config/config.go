@@ -120,6 +120,7 @@ func mergeConfig(base, project Config) Config {
 		Tailscale: project.Tailscale,
 		SshKeys:   mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
 		Packages:  append(append([]string{}, base.Packages...), project.Packages...),
+		Agents:    append(append([]string{}, base.Agents...), project.Agents...),
 		Flakes:    append(append([]Flake{}, base.Flakes...), project.Flakes...),
 	}
 }

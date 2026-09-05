@@ -31,8 +31,47 @@ see "A note on trust" near the end of this doc.
 | `tailscale` | `Boolean` | No | `false` | Auto-join the instance to your personal Tailscale network during `up` (see `cloudlab tailscale`). Requires `tailscale_authkey` in your personal secrets file — see `cloudlab secrets init`. |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
+| `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
 | `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
+
+### `agents`
+
+```pkl
+agents {
+  "claude"
+  "codex"
+}
+```
+
+| Name | Installs | Binary | Licence |
+|---|---|---|---|
+| `claude` | `claude-code` | `claude` | **unfree** |
+| `codex` | `codex` | `codex` | Apache-2.0 |
+| `copilot` | `github-copilot-cli` | `copilot` | **unfree** |
+| `cursor` | `cursor-cli` | `cursor-agent` | **unfree** |
+| `opencode` | `opencode` | `opencode` | MIT |
+| `pi` | `pi-coding-agent` | `pi` | MIT |
+
+Note the binary is not always the name: `cursor` installs `cursor-cli`
+and gives you `cursor-agent`, `copilot` installs `github-copilot-cli`
+(not nixpkgs' `copilot-cli`, which is AWS Copilot and has since been
+removed from nixpkgs entirely).
+
+These are a curated list rather than plain `packages` entries for two
+reasons. The nixpkgs attribute isn't guessable from the tool's name —
+`pi` ships as `pi-coding-agent`, `claude` as `claude-code` — and
+`claude-code` is unfree, which nixpkgs refuses to build unless
+explicitly permitted. That permission has to be granted where nixpkgs is
+instantiated; a home-manager module can't set it, so `packages` alone
+could never install it.
+
+Selecting an unfree agent permits **exactly** that package and nothing
+else, via an `allowUnfreePredicate` naming just the unfree agents you
+asked for. It does not switch unfree software on in general, so an
+unfree package listed in `packages` is still refused.
+
+Anything not on this list still goes in `packages` as usual.
 
 When generating the auth key for `tailscale_authkey` in the Tailscale admin
 console, mark it **Ephemeral**. Ephemeral keys make their devices
@@ -67,9 +106,9 @@ base config. If one exists, the two are merged:
   value (each has its own schema-level default) -- unlike the scalars
   above, a personal base config's `arch`/`image`/`tailscale` is never
   consulted, even if the project doesn't set one explicitly.
-- **Lists** (`sshKeys`, `packages`, `flakes`): additive — your base's
-  entries first, then the project's. Nothing is dropped from either
-  side.
+- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`): additive — your
+  base's entries first, then the project's. Nothing is dropped from
+  either side.
 
 If your base config doesn't exist yet, this isn't an error — your
 project's `cloudlab.pkl` is used on its own, and any field it doesn't

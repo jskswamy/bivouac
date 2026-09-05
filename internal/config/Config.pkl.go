@@ -26,6 +26,17 @@ type Config struct {
 
 	Packages []string `pkl:"packages"`
 
+	// Coding agent harnesses to install, by short name.
+	//
+	// A curated list rather than free-form `packages` entries, because the
+	// nixpkgs attribute is not guessable from the tool's name -- pi ships
+	// as `pi-coding-agent`, claude as `claude-code`, copilot as
+	// `github-copilot-cli` -- and because several are unfree, which needs
+	// handling at the point nixpkgs is instantiated (a home-manager module
+	// cannot set it). Selecting them permits exactly those packages, not
+	// unfree software in general.
+	Agents []string `pkl:"agents"`
+
 	Flakes []Flake `pkl:"flakes"`
 }
 

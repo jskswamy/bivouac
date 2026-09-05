@@ -396,3 +396,19 @@ func equalStrings(got, want []string) bool {
 	}
 	return true
 }
+
+func TestMergeConfig_AgentsAreAdditiveBaseFirst(t *testing.T) {
+	base := Config{Agents: []string{"claude"}}
+	project := Config{Agents: []string{"codex"}}
+
+	got := mergeConfig(base, project).Agents
+	want := []string{"claude", "codex"}
+	if len(got) != len(want) {
+		t.Fatalf("Agents = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Agents[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

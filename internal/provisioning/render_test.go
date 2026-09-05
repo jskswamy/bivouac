@@ -243,3 +243,88 @@ func TestNeedsRender_TrueForTailscaleAlone(t *testing.T) {
 		t.Error("NeedsRender(tailscale-only config) = false, want true — otherwise cloudlab.tailscale is never set")
 	}
 }
+
+func TestNeedsRender_TrueForAgentsAlone(t *testing.T) {
+	if !NeedsRender(config.Config{Agents: []string{"codex"}}) {
+		t.Error("NeedsRender(agents-only config) = false, want true")
+	}
+}
+
+// The nixpkgs attribute is not the tool's name: pi ships as
+// pi-coding-agent and claude as claude-code, which is the whole reason
+// agents is a curated list rather than free-form packages entries.
+func TestRender_Agents_MapToNixpkgsAttributeNames(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "codex", "copilot", "cursor", "opencode", "pi"}}
+	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	for _, want := range []string{`pkgs."claude-code"`, `pkgs."codex"`, `pkgs."github-copilot-cli"`, `pkgs."cursor-cli"`, `pkgs."opencode"`, `pkgs."pi-coding-agent"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `pkgs."pi"`) || strings.Contains(out, `pkgs."claude"`) || strings.Contains(out, `pkgs."cursor"`) || strings.Contains(out, `pkgs."copilot"`) {
+		t.Errorf("output references a short name rather than the nixpkgs attribute:\n%s", out)
+	}
+}
+
+// Selecting an unfree agent must permit exactly that package. Switching
+// allowUnfree on wholesale would also quietly permit anything the user
+// happened to list in packages, which they never asked for.
+func TestRender_UnfreeAgent_PermitsOnlyThatPackage(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "codex"}}
+	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(out, `allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [ "claude-code" ]`) {
+		t.Errorf("output does not permit exactly claude-code:\n%s", out)
+	}
+	if strings.Contains(out, "allowUnfree = true") {
+		t.Errorf("output allows unfree wholesale rather than per-package:\n%s", out)
+	}
+}
+
+func TestRender_NoUnfreeAgent_PermitsNothingUnfree(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"codex", "opencode"}}
+	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(out, `getName pkg) [ ]`) {
+		t.Errorf("output should permit an empty set of unfree packages:\n%s", out)
+	}
+}
+
+// Pkl's union type rejects unknown names first, so reaching Render with
+// one means the schema and the mapping have drifted -- louder is better
+// than installing nothing while reporting success.
+func TestRender_UnknownAgent_Rejected(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"definitely-not-an-agent"}}
+	if _, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux"); err == nil {
+		t.Fatal("Render() error = nil, want an error for an unknown agent")
+	}
+}
+
+// Several agents are unfree, and every one selected must be named in the
+// predicate -- a missing entry fails the build only once that package is
+// reached, long after render looked fine.
+func TestRender_MultipleUnfreeAgents_AllPermitted(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "cursor", "copilot", "codex"}}
+	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	for _, want := range []string{`"claude-code"`, `"cursor-cli"`, `"github-copilot-cli"`} {
+		if !strings.Contains(out, "getName pkg) [ ") || !strings.Contains(out, want) {
+			t.Errorf("unfree predicate does not permit %s:\n%s", want, out)
+		}
+	}
+	// codex is free and must not be listed as needing permission.
+	predicate := out[strings.Index(out, "allowUnfreePredicate"):]
+	predicate = predicate[:strings.Index(predicate, "\n")]
+	if strings.Contains(predicate, "codex") {
+		t.Errorf("free package listed in the unfree predicate: %s", predicate)
+	}
+}
