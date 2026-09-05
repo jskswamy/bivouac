@@ -38,9 +38,8 @@ in
     pkgs.git
     pkgs.age
     pkgs.devbox
-    # Self-manages its own server lifecycle (launches/attaches on
-    # demand, per `herdr --help`) -- no systemd unit needed, unlike
-    # tailscaled below.
+    # Started as a headless server by the systemd --user unit below,
+    # rather than left to launch on demand.
     pkgs.herdr
     # Lets the getmoshi.app mobile client (SSH & Mosh from iOS/Android)
     # connect to this instance -- moshi itself is a client-side app,
@@ -67,6 +66,31 @@ in
   # docs/config.md), no new cloudlab.pkl field needed for this.
   config.home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
   config.home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
+
+  # The Moshi mobile client supports herdr out of the box, so a phone
+  # paired via `cloudlab pair` expects a herdr server to already be
+  # running here. Left to itself herdr only starts one on demand at
+  # first attach, which means it exists solely once someone has attached
+  # from a desktop (`cloudlab herdr`, i.e. `herdr --remote`) -- a
+  # freshly paired phone would find nothing to connect to.
+  #
+  # Starting it at boot also decouples the server's lifetime from
+  # whichever SSH session happened to spawn it, so the persistent
+  # sessions and agent panes it holds survive a disconnect.
+  #
+  # No sudo here, unlike tailscaled and the docker template's dockerd:
+  # herdr is a terminal workspace manager that runs entirely as this
+  # user, keeping its socket, config and logs under ~/.config/herdr.
+  # cloud-init's `loginctl enable-linger` is what keeps this user's
+  # systemd instance -- and so this server -- alive between logins.
+  config.systemd.user.services.herdr = {
+    Unit.Description = "Herdr headless server";
+    Service = {
+      ExecStart = "${pkgs.herdr}/bin/herdr server";
+      Restart = "on-failure";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
 
   # Same reasoning as the docker template's dockerd unit: a real
   # daemon needs to actually be running, not just installed. Requires
