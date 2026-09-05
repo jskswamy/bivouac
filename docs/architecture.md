@@ -181,6 +181,8 @@ has no TOML support.
 | `ssh [name]` | per-instance | Interactive **remote** shell on the VM itself |
 | `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) -- a background session that survives disconnects |
 | `tmux [session-name]` | per-instance | Interactive **remote** tmux session (create-or-attach), preconfigured via gpakosz/.tmux |
+| `pair [name]` | per-instance | Pair the getmoshi.app mobile app with the instance via its Easy Pair QR flow (`moshi-hook host setup`) |
+| `tailscale [name]` | per-instance | Join the instance to your personal Tailscale network (optional, gated by `cloudlab.pkl`'s `tailscale` field; also runs automatically as part of `up` when that field is `true`) |
 | `sync [remote-dir] --dir <local-dir>` | per-instance | One-shot rsync of a local directory to the instance (e.g. a dataset). `--dir` defaults to the current directory. `remote-dir` when omitted resolves via the same `RemotePath` mirroring used for the main repo. Not involved in repo sync or reconciliation. |
 | `download <remote-dir> [local-dir]` | per-instance | One-shot rsync pulling files back from the instance. `local-dir` defaults to the current directory. |
 | `watch [name]` | per-instance | Restart continuous two-way repo sync if it's stopped/dead. Auto-started by `up`; rarely invoked directly. |
@@ -188,6 +190,7 @@ has no TOML support.
 | `status [name]` | per-instance | Instance detail: IP, uptime, cost, sync/watch state |
 | `down [name]` | per-instance | Stop watch, destroy VM, clear state |
 | `list` | global | All instances across all repos |
+| `secrets init/edit/keys` | global | Manage cloudlab's personal, sops-encrypted secrets file (Tailscale auth key today) |
 
 `[name]` is optional everywhere and defaults to the current repo's derived
 instance name; see [Instance identity](#instance-identity). `sync` and
