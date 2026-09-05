@@ -24,7 +24,7 @@ func TestRootCommandHelp(t *testing.T) {
 }
 
 func TestRootCmd_RegistersAllCommands(t *testing.T) {
-	want := []string{"connect", "down", "download", "herdr", "list", "pair", "provision", "shell", "ssh", "status", "sync", "tailscale", "tmux", "up", "watch"}
+	want := []string{"connect", "down", "download", "herdr", "list", "pair", "provision", "secrets", "shell", "ssh", "status", "sync", "tailscale", "tmux", "up", "watch"}
 	root := newRootCmd()
 	var got []string
 	for _, c := range root.Commands() {
