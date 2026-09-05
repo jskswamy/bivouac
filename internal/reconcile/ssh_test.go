@@ -213,6 +213,41 @@ func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 	}
 }
 
+func TestClient_WriteSecretFile_SendsContentViaStdinWithRestrictedMode(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var got sessionResult
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		got = sessionResult{Command: cmd, Stdin: stdin}
+		return "", 0
+	})
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	secret := []byte("tskey-abc123-example")
+	if err := client.WriteSecretFile("/run/user/1000/cloudlab-ts-authkey", secret); err != nil {
+		t.Fatalf("WriteSecretFile() error = %v", err)
+	}
+
+	if !strings.Contains(got.Command, "install -m 600") {
+		t.Errorf("command = %q, want it to use install -m 600", got.Command)
+	}
+	if !strings.Contains(got.Command, "/run/user/1000/cloudlab-ts-authkey") {
+		t.Errorf("command = %q, want it to reference the target path", got.Command)
+	}
+	if string(got.Stdin) != "tskey-abc123-example" {
+		t.Errorf("stdin sent = %q, want %q (the secret content)", got.Stdin, "tskey-abc123-example")
+	}
+	if strings.Contains(got.Command, "tskey-abc123-example") {
+		t.Error("command string contains the secret literal -- it must only travel via stdin")
+	}
+}
+
 func TestClient_Run_ReturnsOutputOnSuccess(t *testing.T) {
 	startFakeAgent(t)
 	t.Setenv("HOME", t.TempDir())

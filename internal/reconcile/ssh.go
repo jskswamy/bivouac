@@ -170,6 +170,29 @@ func (c *Client) WriteFile(remotePath, content string) error {
 	return nil
 }
 
+// WriteSecretFile writes content to remotePath on the instance with
+// permissions restricted to the owning user from the moment the file
+// exists (mode 600 via install, rather than cat followed by a
+// separate chmod, which would briefly leave default-umask
+// permissions). content is streamed over the SSH session's stdin --
+// unlike WriteFile's content-as-string approach (fine for a rendered
+// flake.nix, wrong for anything sensitive), it never appears as a
+// literal command argument.
+func (c *Client) WriteSecretFile(remotePath string, content []byte) error {
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("opening session: %w", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	session.Stdin = bytes.NewReader(content)
+	cmd := fmt.Sprintf("install -m 600 /dev/stdin %s", ShellQuote(remotePath))
+	if out, err := session.CombinedOutput(cmd); err != nil {
+		return fmt.Errorf("writing %s: %w\n%s", remotePath, err, out)
+	}
+	return nil
+}
+
 // Run executes cmd on the instance and returns its combined stdout and
 // stderr. A non-zero exit becomes a non-nil error; output is still
 // populated so the caller can include it in its own error message.
