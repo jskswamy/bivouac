@@ -56,6 +56,14 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runTmux,
 	},
 	{
+		use:   "tailscale [name]",
+		short: "Join the instance to your personal Tailscale network",
+		verb:  "tailscale",
+		args:  cobra.MaximumNArgs(1),
+		named: true,
+		run:   runTailscale,
+	},
+	{
 		use:   "watch [name]",
 		short: "Restart continuous two-way repo sync if it's stopped or dead",
 		verb:  "watch",

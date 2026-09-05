@@ -266,6 +266,22 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	return lifecycle.Herdr(cmd.Context(), record.IP, record.User)
 }
 
+func runTailscale(cmd *cobra.Command, name string, args []string) error {
+	store, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	if err := lifecycle.JoinTailscale(cmd.Context(), record.IP, record.User); err != nil {
+		return err
+	}
+	record.TailscaleJoined = true
+	if err := store.Put(record); err != nil {
+		return err
+	}
+	cmd.Printf("%s joined the tailnet\n", name)
+	return nil
+}
+
 // defaultTmuxSession is the session cloudlab tmux creates-or-attaches
 // to when no session-name argument is given.
 const defaultTmuxSession = "main"
