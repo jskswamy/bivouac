@@ -159,7 +159,7 @@ func TestWaitReady_SucceedsOnceCloudInitFinishes(t *testing.T) {
 		return "status: done\n", 0
 	})
 
-	if err := WaitReady(context.Background(), addr, 5*time.Second); err != nil {
+	if err := WaitReady(context.Background(), addr, "cloudlab", 5*time.Second); err != nil {
 		t.Fatalf("WaitReady() error = %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestWaitReady_ReportsProgressBeforeWaiting(t *testing.T) {
 	var got []string
 	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
 
-	if err := WaitReady(ctx, addr, 5*time.Second); err != nil {
+	if err := WaitReady(ctx, addr, "cloudlab", 5*time.Second); err != nil {
 		t.Fatalf("WaitReady() error = %v", err)
 	}
 	if len(got) == 0 || !strings.Contains(got[0], "ready") {
@@ -193,7 +193,7 @@ func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 		return "status: error\n", 1
 	})
 
-	err := WaitReady(context.Background(), addr, 5*time.Second)
+	err := WaitReady(context.Background(), addr, "cloudlab", 5*time.Second)
 	if err == nil {
 		t.Fatal("WaitReady() error = nil, want error for cloud-init failure")
 	}
@@ -203,12 +203,56 @@ func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 }
 
 func TestWaitReady_TimesOutIfNeverReachable(t *testing.T) {
-	err := WaitReady(context.Background(), "127.0.0.1:1", time.Second)
+	err := WaitReady(context.Background(), "127.0.0.1:1", "cloudlab", time.Second)
 	if err == nil {
 		t.Fatal("WaitReady() error = nil, want timeout error")
 	}
 	if !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("error = %q, want mention of timeout", err.Error())
+	}
+}
+
+// A tight retry loop against port 22 is indistinguishable from an SSH
+// brute-force attempt, and enough of it gets port 22 blackholed between
+// this host and the instance -- which then looks like a broken image
+// rather than a self-inflicted wound. Backoff is the fix, so the
+// connection rate is the thing worth pinning down.
+func TestWaitReady_BacksOffInsteadOfHammeringPort22(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	// Accepts the TCP connection then drops it, so every SSH handshake
+	// fails fast and WaitReady stays in its retry loop for the whole run.
+	attempts := make(chan struct{}, 128)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			select {
+			case attempts <- struct{}{}:
+			default:
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	if err := WaitReady(context.Background(), listener.Addr().String(), "cloudlab", 5*time.Second); err == nil {
+		t.Fatal("WaitReady() error = nil, want timeout against a server that never completes a handshake")
+	}
+
+	// At the old fixed 500ms interval this would be ~10. With backoff
+	// (2s, 4s, ...) it is a small handful, which is what keeps a full
+	// 5-minute wait far below the ~50-connection blackhole threshold.
+	if got := len(attempts); got > 5 {
+		t.Errorf("connection attempts in 5s = %d, want <= 5 (backoff must not hammer port 22)", got)
 	}
 }
 
@@ -222,7 +266,7 @@ func TestWaitReady_CloudInitHangIsBoundedByTimeout(t *testing.T) {
 	})
 
 	start := time.Now()
-	err := WaitReady(context.Background(), addr, 500*time.Millisecond)
+	err := WaitReady(context.Background(), addr, "cloudlab", 500*time.Millisecond)
 	elapsed := time.Since(start)
 
 	if err == nil {

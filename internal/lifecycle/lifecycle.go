@@ -28,7 +28,7 @@ var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 // otherwise need a real remote rsync/mutagen target. Production
 // callers always use DefaultSteps.
 type Steps struct {
-	WaitReady     func(ctx context.Context, ip string, timeout time.Duration) error
+	WaitReady     func(ctx context.Context, ip, user string, timeout time.Duration) error
 	Reconcile     func(ctx context.Context, name, cloudlabPath string) error
 	JoinTailscale func(ctx context.Context, ip, user string) error
 	Rsync         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error
@@ -132,11 +132,11 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return fmt.Errorf("recording instance state: %w", err)
 	}
 
-	// WaitReady always connects as root (see its own doc comment) --
-	// every step after it connects as remoteUser instead, once
-	// cloud-init has created that user and (as its last step) disabled
-	// root SSH login.
-	if err := steps.WaitReady(ctx, vm.IP, readyTimeout); err != nil {
+	// Waits as remoteUser, the same login every step after it uses:
+	// cloud-init creates that user early and disables root SSH login as
+	// its last step, so root would race a closing window (see
+	// WaitReady's own doc comment).
+	if err := steps.WaitReady(ctx, vm.IP, remoteUser, readyTimeout); err != nil {
 		return fmt.Errorf("waiting for %s to be ready: %w", name, err)
 	}
 

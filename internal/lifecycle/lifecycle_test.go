@@ -213,7 +213,7 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 
 	var gotIP, gotUser string
 	steps := Steps{
-		WaitReady: func(ctx context.Context, ip string, timeout time.Duration) error { return nil },
+		WaitReady: func(ctx context.Context, ip, user string, timeout time.Duration) error { return nil },
 		Reconcile: func(ctx context.Context, name, cloudlabPath string) error { return nil },
 		JoinTailscale: func(ctx context.Context, ip, user string) error {
 			gotIP, gotUser = ip, user
@@ -254,7 +254,7 @@ func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
 
 	called := false
 	steps := Steps{
-		WaitReady:     func(ctx context.Context, ip string, timeout time.Duration) error { return nil },
+		WaitReady:     func(ctx context.Context, ip, user string, timeout time.Duration) error { return nil },
 		Reconcile:     func(ctx context.Context, name, cloudlabPath string) error { return nil },
 		JoinTailscale: func(ctx context.Context, ip, user string) error { called = true; return nil },
 		Rsync:         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
@@ -291,7 +291,7 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1", Region: "nyc3", Size: "s-1vcpu-1gb"}}
 
 	steps := Steps{
-		WaitReady: func(ctx context.Context, ip string, timeout time.Duration) error {
+		WaitReady: func(ctx context.Context, ip, user string, timeout time.Duration) error {
 			return errors.New("simulated unreachable")
 		},
 		Reconcile:  func(ctx context.Context, name, cloudlabPath string) error { return nil },
