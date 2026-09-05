@@ -159,6 +159,19 @@ relevant secret in-process and exposes it only to the agent process's
 environment, never touching disk on the VM. See
 [ADR-0006](adr/0006-credentials-via-aide-secrets.md).
 
+## Secrets: a personal, sops-encrypted file
+
+`cloudlab secrets init/edit` manage a personal file at
+`~/.config/cloudlab/secrets.yaml` (the Tailscale auth key today, whatever
+else needs one later), encrypted with [sops](https://github.com/getsops/sops).
+`internal/secrets` shells out to the `sops` binary for every operation --
+same as tailscale/mutagen/nix elsewhere in this codebase -- rather than
+linking sops as a Go library. Values are decrypted and zeroed
+just-in-time: `JoinTailscale` decrypts `tailscale_authkey` right before
+using it and zeroes the in-memory copy immediately after, never writing
+it to disk in plaintext. The file is YAML, not TOML, because sops itself
+has no TOML support.
+
 ## Command surface
 
 | Command | Scope | Purpose |
