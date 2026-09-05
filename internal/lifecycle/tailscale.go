@@ -57,6 +57,42 @@ func RemoteTailscaleBin(client *reconcile.Client) (string, error) {
 	return path, nil
 }
 
+// TailscaleIP returns the instance's own Tailscale IPv4 address (its
+// 100.x.y.z tailnet address), connecting over ip as user. Returns an
+// empty string, and no error, when the instance is reachable but has no
+// tailnet address -- tailscale installed but logged out, or the daemon
+// not running. Only a genuine connection or lookup failure is an error,
+// so callers offering the tailnet address as an option can treat "not
+// available" as an ordinary outcome rather than something to report.
+func TailscaleIP(ctx context.Context, ip, user string) (string, error) {
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = client.Close() }()
+
+	bin, err := RemoteTailscaleBin(client)
+	if err != nil {
+		return "", nil
+	}
+	// `tailscale ip -4` prints nothing but an error when the daemon is
+	// down or logged out, which is exactly the empty-string case.
+	inner := "sudo " + reconcile.ShellQuote(bin) + " ip -4"
+	out, err := client.Run("bash -lc " + reconcile.ShellQuote(inner))
+	if err != nil {
+		return "", nil
+	}
+	// A node can hold several addresses; the first line is its own IPv4.
+	addr := strings.TrimSpace(out)
+	if i := strings.IndexByte(addr, '\n'); i >= 0 {
+		addr = strings.TrimSpace(addr[:i])
+	}
+	if !strings.HasPrefix(addr, "100.") {
+		return "", nil
+	}
+	return addr, nil
+}
+
 func JoinTailscale(ctx context.Context, ip, user string) error {
 	path, err := secrets.Path()
 	if err != nil {

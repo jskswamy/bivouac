@@ -69,7 +69,10 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "pair",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
-		run:   runPair,
+		flags: func(c *cobra.Command) {
+			c.Flags().String("host", "", "address the QR advertises to the phone (defaults to prompting when a Tailscale address is available)")
+		},
+		run: runPair,
 	},
 	{
 		use:   "watch [name]",

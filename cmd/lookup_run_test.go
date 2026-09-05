@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/spf13/cobra"
 )
 
 func TestDownSummary_WarnsDestructionIsUnrecoverable(t *testing.T) {
@@ -80,5 +82,25 @@ func TestTmuxSession_UsesFirstArgOrDefault(t *testing.T) {
 		if got := tmuxSession(tc.args); got != tc.want {
 			t.Errorf("tmuxSession(%v) = %q, want %q", tc.args, got, tc.want)
 		}
+	}
+}
+
+// With no tailnet address there is nothing to choose, so pair must not
+// stop to ask -- the public IP is the only answer.
+func TestChoosePairHost_NoTailscale_ReturnsPublicWithoutPrompting(t *testing.T) {
+	c := &cobra.Command{}
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetIn(strings.NewReader(""))
+
+	got, err := choosePairHost(c, state.Record{IP: "203.0.113.5", TailscaleJoined: false})
+	if err != nil {
+		t.Fatalf("choosePairHost() error = %v", err)
+	}
+	if got != "203.0.113.5" {
+		t.Errorf("choosePairHost() = %q, want the public IP", got)
+	}
+	if out.Len() != 0 {
+		t.Errorf("printed %q, want no prompt when there is nothing to choose", out.String())
 	}
 }

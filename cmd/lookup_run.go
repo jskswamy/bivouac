@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -290,7 +293,53 @@ func runPair(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.Pair(cmd.Context(), record.IP, record.User)
+
+	// The QR hands the phone an address to connect back to, so which one
+	// it advertises is a real choice: the public IP works from anywhere,
+	// the tailnet address keeps the session off the public internet but
+	// only works from a device on the same tailnet. cloudlab itself
+	// always connects over the public IP regardless (see lifecycle.Pair).
+	advertise, err := cmd.Flags().GetString("host")
+	if err != nil {
+		return err
+	}
+	if advertise == "" {
+		advertise, err = choosePairHost(cmd, record)
+		if err != nil {
+			return err
+		}
+	}
+	return lifecycle.Pair(cmd.Context(), record.IP, advertise, record.User)
+}
+
+// choosePairHost returns the address the pairing QR should advertise.
+// With no tailnet address available there is nothing to choose and the
+// public IP is returned without prompting; otherwise the user picks,
+// defaulting to the tailnet address as the more private of the two.
+func choosePairHost(cmd *cobra.Command, record state.Record) (string, error) {
+	if !record.TailscaleJoined {
+		return record.IP, nil
+	}
+	tsIP, err := lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
+	if err != nil || tsIP == "" {
+		// Not reachable over the tailnet is not a pairing failure --
+		// fall back to the address that always works.
+		return record.IP, nil
+	}
+
+	cmd.Printf("Which address should the QR advertise to the phone?\n")
+	cmd.Printf("  1) %s  (Tailscale -- private, needs the phone on your tailnet)\n", tsIP)
+	cmd.Printf("  2) %s  (public IP -- reachable anywhere)\n", record.IP)
+	cmd.Print("Choose [1]: ")
+
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	if strings.TrimSpace(line) == "2" {
+		return record.IP, nil
+	}
+	return tsIP, nil
 }
 
 // defaultTmuxSession is the session cloudlab tmux creates-or-attaches
