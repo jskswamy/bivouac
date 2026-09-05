@@ -232,3 +232,14 @@ func TestTemplates_AllBuildCleanly(t *testing.T) {
 		})
 	}
 }
+
+// cloudlab.tailscale is set only by the rendered wrapper flake, and the
+// shared template defaults it to false. A config that asks for Tailscale
+// but has no packages and no flakes must therefore still render, or the
+// flag silently does nothing and the tailscaled unit is never installed.
+func TestNeedsRender_TrueForTailscaleAlone(t *testing.T) {
+	cfg := config.Config{Tailscale: true}
+	if !NeedsRender(cfg) {
+		t.Error("NeedsRender(tailscale-only config) = false, want true — otherwise cloudlab.tailscale is never set")
+	}
+}

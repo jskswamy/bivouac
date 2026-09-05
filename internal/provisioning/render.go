@@ -9,11 +9,18 @@ import (
 	"github.com/jskswamy/cloudlab/internal/config"
 )
 
-// NeedsRender reports whether cfg's packages/flakes require a
-// per-instance wrapper flake, rather than using the template ref
-// as-is. See the Provisioning design spec's render-trigger rule.
+// NeedsRender reports whether cfg requires a per-instance wrapper
+// flake, rather than using the template ref as-is. See the Provisioning
+// design spec's render-trigger rule.
+//
+// Tailscale counts alongside packages/flakes because the rendered flake
+// is the only place cloudlab.tailscale is ever set (see renderTmpl);
+// the shared template defaults it to false. Left out of this condition,
+// "tailscale = true" in a config with no packages and no flakes renders
+// nothing, so the template's default stands and the tailscaled unit is
+// never installed -- the flag silently does nothing at all.
 func NeedsRender(cfg config.Config) bool {
-	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0
+	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale
 }
 
 var renderTmpl = template.Must(template.New("flake").Parse(`{
