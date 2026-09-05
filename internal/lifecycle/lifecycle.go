@@ -28,10 +28,11 @@ var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 // otherwise need a real remote rsync/mutagen target. Production
 // callers always use DefaultSteps.
 type Steps struct {
-	WaitReady  func(ctx context.Context, ip string, timeout time.Duration) error
-	Reconcile  func(ctx context.Context, name, cloudlabPath string) error
-	Rsync      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error
-	StartWatch func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error
+	WaitReady     func(ctx context.Context, ip string, timeout time.Duration) error
+	Reconcile     func(ctx context.Context, name, cloudlabPath string) error
+	JoinTailscale func(ctx context.Context, ip, user string) error
+	Rsync         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error
+	StartWatch    func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error
 }
 
 // DefaultSteps wires Steps to the real implementations. Reconcile is
@@ -46,8 +47,9 @@ func DefaultSteps() Steps {
 				return reconcile.Reconcile(ctx, name, cloudlabPath)
 			})
 		},
-		Rsync:      Rsync,
-		StartWatch: StartWatch,
+		JoinTailscale: JoinTailscale,
+		Rsync:         Rsync,
+		StartWatch:    StartWatch,
 	}
 }
 
@@ -140,6 +142,16 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 
 	if err := steps.Reconcile(ctx, name, cloudlabPath); err != nil {
 		return err
+	}
+
+	if cfg.Tailscale {
+		if err := steps.JoinTailscale(ctx, vm.IP, remoteUser); err != nil {
+			return err
+		}
+		record.TailscaleJoined = true
+		if err := store.Put(record); err != nil {
+			return err
+		}
 	}
 
 	if err := steps.Rsync(ctx, vm.IP, remoteUser, repoRoot, remotePath); err != nil {

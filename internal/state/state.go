@@ -11,17 +11,18 @@ import (
 // Record is one instance's state: which provider created it, its VM and
 // network details, and the PIDs of its background sync/tunnel processes.
 type Record struct {
-	Name      string `json:"name"`
-	Provider  string `json:"provider"`
-	VMID      string `json:"vm_id"`
-	IP        string `json:"ip"`
-	Region    string `json:"region"`
-	Size      string `json:"size"`
-	Template  string `json:"template"`
-	User      string `json:"user"`
-	RepoPath  string `json:"repo_path"`
-	WatchPID  int    `json:"watch_pid"`
-	TunnelPID int    `json:"tunnel_pid"`
+	Name            string `json:"name"`
+	Provider        string `json:"provider"`
+	VMID            string `json:"vm_id"`
+	IP              string `json:"ip"`
+	Region          string `json:"region"`
+	Size            string `json:"size"`
+	Template        string `json:"template"`
+	User            string `json:"user"`
+	RepoPath        string `json:"repo_path"`
+	WatchPID        int    `json:"watch_pid"`
+	TunnelPID       int    `json:"tunnel_pid"`
+	TailscaleJoined bool   `json:"tailscale_joined"`
 }
 
 // Store is a JSON-backed key-value store of instance Records, keyed by

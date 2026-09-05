@@ -196,6 +196,91 @@ func TestUp_RejectsInvalidInstanceNameBeforeCreate(t *testing.T) {
 	}
 }
 
+func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
+
+	repoRoot := t.TempDir()
+	cloudlabPath := filepath.Join(repoRoot, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`tailscale = true`,
+	}, "\n")+"\n")
+
+	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1", Region: "nyc3", Size: "s-1vcpu-1gb"}}
+
+	var gotIP, gotUser string
+	steps := Steps{
+		WaitReady: func(ctx context.Context, ip string, timeout time.Duration) error { return nil },
+		Reconcile: func(ctx context.Context, name, cloudlabPath string) error { return nil },
+		JoinTailscale: func(ctx context.Context, ip, user string) error {
+			gotIP, gotUser = ip, user
+			return nil
+		},
+		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
+		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
+	}
+
+	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+	if gotIP != "192.0.2.1" || gotUser == "" {
+		t.Errorf("JoinTailscale called with (%q, %q)", gotIP, gotUser)
+	}
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok, err := store.Get("myinstance")
+	if err != nil || !ok {
+		t.Fatalf("state.Get(myinstance) ok=%v err=%v", ok, err)
+	}
+	if !record.TailscaleJoined {
+		t.Error("record.TailscaleJoined = false, want true after a successful join")
+	}
+}
+
+func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
+
+	repoRoot := t.TempDir()
+	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+
+	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1", Region: "nyc3", Size: "s-1vcpu-1gb"}}
+
+	called := false
+	steps := Steps{
+		WaitReady:     func(ctx context.Context, ip string, timeout time.Duration) error { return nil },
+		Reconcile:     func(ctx context.Context, name, cloudlabPath string) error { return nil },
+		JoinTailscale: func(ctx context.Context, ip, user string) error { called = true; return nil },
+		Rsync:         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
+		StartWatch:    func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
+	}
+
+	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+	if called {
+		t.Error("JoinTailscale was called despite tailscale defaulting to false")
+	}
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok, err := store.Get("myinstance")
+	if err != nil || !ok {
+		t.Fatalf("state.Get(myinstance) ok=%v err=%v", ok, err)
+	}
+	if record.TailscaleJoined {
+		t.Error("record.TailscaleJoined = true, want false when tailscale was never enabled")
+	}
+}
+
 func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
