@@ -29,29 +29,32 @@ type Client struct {
 
 // Connect dials ip on port 22 (or, if ip already has an explicit port —
 // used by tests pointed at a fake server on an arbitrary port — that
-// port instead) as user, authenticates via the running ssh-agent
-// (SSH_AUTH_SOCK), and verifies the host key on a trust-on-first-connect
-// basis against the user's real ~/.ssh/known_hosts: an unknown host is
-// accepted and recorded; a host presenting a different key than what's
-// already recorded is rejected.
+// port instead) as user, authenticates with the running ssh-agent's keys
+// followed by the default on-disk identity files, and verifies the host
+// key on a trust-on-first-connect basis against the user's real
+// ~/.ssh/known_hosts: an unknown host is accepted and recorded; a host
+// presenting a different key than what's already recorded is rejected.
+//
+// Both key sources are offered because either one alone is routinely
+// incomplete. An agent may hold keys that exist nowhere on disk (a
+// smartcard/YubiKey), while a key may sit in ~/.ssh without ever being
+// added to the agent -- and if SSH_AUTH_SOCK points at gpg-agent, it
+// typically serves *only* the smartcard key, so the plain ~/.ssh/id_*
+// key registered with the cloud provider is invisible to it. Trying the
+// agent alone made cloudlab fail to authenticate against instances that
+// `ssh` itself could log into fine, which is both baffling to diagnose
+// and, because the caller then retries, escalates into the instance
+// blackholing this host (see lifecycle.WaitReady).
 func Connect(ctx context.Context, ip, user string) (*Client, error) {
 	addr := ip
 	if _, _, err := net.SplitHostPort(ip); err != nil {
 		addr = net.JoinHostPort(ip, "22")
 	}
 
-	sock := os.Getenv("SSH_AUTH_SOCK")
-	if sock == "" {
-		return nil, fmt.Errorf("SSH_AUTH_SOCK not set — is ssh-agent running?")
-	}
-	// #nosec G704 -- sock is SSH_AUTH_SOCK, a local unix-domain-socket
-	// path the user's own ssh-agent set in their own environment; this
-	// is local IPC, not a network request, so SSRF doesn't apply.
-	agentConn, err := net.Dial("unix", sock)
+	auth, err := authMethods()
 	if err != nil {
-		return nil, fmt.Errorf("connecting to ssh-agent: %w", err)
+		return nil, err
 	}
-	agentClient := agent.NewClient(agentConn)
 
 	knownHostsPath, err := defaultKnownHostsPath()
 	if err != nil {
@@ -64,7 +67,7 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 
 	clientConfig := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeysCallback(agentClient.Signers)},
+		Auth:            auth,
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         10 * time.Second,
 	}
@@ -84,6 +87,84 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
 	}
 	return &Client{conn: ssh.NewClient(sshConn, chans, reqs)}, nil
+}
+
+// defaultIdentityFiles are the private keys OpenSSH itself tries by
+// default (its IdentityFile defaults), in the same order. Deliberately
+// only these: every key offered is a separate authentication attempt,
+// and sshd's MaxAuthTries (6 by default) disconnects once they run out,
+// so sweeping in every ~/.ssh/id_* a user happens to have would risk
+// exhausting the budget before reaching the key that actually works.
+var defaultIdentityFiles = []string{
+	"id_ed25519",
+	"id_ecdsa",
+	"id_ecdsa_sk",
+	"id_ed25519_sk",
+	"id_rsa",
+}
+
+// authMethods returns the public-key auth to offer: every agent key
+// first (an agent can hold keys with no on-disk private half, such as a
+// smartcard's) followed by the default identity files.
+//
+// All of them go into a single ssh.PublicKeys method rather than one
+// method per source, which matters more than it looks. Split across two
+// methods, a first method that fails takes the whole authentication down
+// with it -- observed with gpg-agent serving only a smartcard key: the
+// handshake was abandoned reporting "no supported methods remain"
+// without the perfectly good ~/.ssh/id_ed25519 in the second method ever
+// being offered. Within one method the client walks the signer list,
+// cheaply querying each key until the server accepts one, so a rejected
+// or unusable leading key is skipped rather than fatal.
+func authMethods() ([]ssh.AuthMethod, error) {
+	var signers []ssh.Signer
+
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		// #nosec G704 -- sock is SSH_AUTH_SOCK, a local unix-domain-socket
+		// path the user's own ssh-agent set in their own environment; this
+		// is local IPC, not a network request, so SSRF doesn't apply.
+		if agentConn, err := net.Dial("unix", sock); err == nil {
+			// A broken or empty agent is not fatal: the on-disk keys
+			// below may still authenticate.
+			if agentSigners, err := agent.NewClient(agentConn).Signers(); err == nil {
+				signers = append(signers, agentSigners...)
+			}
+		}
+	}
+
+	signers = append(signers, defaultIdentitySigners()...)
+
+	if len(signers) == 0 {
+		return nil, fmt.Errorf("no SSH keys available — start an ssh-agent (SSH_AUTH_SOCK is unset or unreachable) or add a key at ~/.ssh/id_ed25519")
+	}
+	return []ssh.AuthMethod{ssh.PublicKeys(signers...)}, nil
+}
+
+// defaultIdentitySigners loads whichever of defaultIdentityFiles exist
+// and are usable. Unreadable, malformed, and passphrase-protected keys
+// are skipped rather than failing the connection: there is no terminal
+// to prompt on here, and such a key is exactly what the agent is for --
+// dropping it silently leaves the agent's copy to do the work.
+func defaultIdentitySigners() []ssh.Signer {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	var signers []ssh.Signer
+	for _, name := range defaultIdentityFiles {
+		// #nosec G304 -- path is ~/.ssh/<fixed name> from the
+		// defaultIdentityFiles constant, never external input.
+		pem, err := os.ReadFile(filepath.Join(home, ".ssh", name))
+		if err != nil {
+			continue
+		}
+		signer, err := ssh.ParsePrivateKey(pem)
+		if err != nil {
+			continue
+		}
+		signers = append(signers, signer)
+	}
+	return signers
 }
 
 // defaultKnownHostsPath returns ~/.ssh/known_hosts, creating an empty

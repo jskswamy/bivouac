@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	gopem "encoding/pem"
 	"net"
 	"os"
 	"path/filepath"
@@ -179,6 +180,56 @@ func TestConnect_UsesGivenUsername(t *testing.T) {
 
 	if lastConnectedUsername != "devuser" {
 		t.Errorf("SSH username = %q, want %q", lastConnectedUsername, "devuser")
+	}
+}
+
+// The agent is not always the whole story: if SSH_AUTH_SOCK points at
+// gpg-agent it typically serves only a smartcard key, leaving the plain
+// ~/.ssh/id_ed25519 registered with the cloud provider invisible. `ssh`
+// falls back to on-disk identity files in that situation and connects
+// fine, so cloudlab must too -- otherwise it fails to authenticate
+// against instances the user can log into by hand.
+func TestConnect_FallsBackToOnDiskKeyWhenAgentHasNone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SSH_AUTH_SOCK", "")
+
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "id_ed25519"), gopem.EncodeToMemory(pem), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v, want success using ~/.ssh/id_ed25519 with no agent", err)
+	}
+	_ = client.Close()
+}
+
+func TestConnect_NoAgentAndNoKeyOnDisk_ReportsActionableError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SSH_AUTH_SOCK", "")
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	_, err := Connect(context.Background(), addr, "devuser")
+	if err == nil {
+		t.Fatal("Connect() error = nil, want an error when there is no key anywhere")
+	}
+	if !strings.Contains(err.Error(), "no SSH keys available") {
+		t.Errorf("error = %q, want it to name the missing-key problem", err.Error())
 	}
 }
 
