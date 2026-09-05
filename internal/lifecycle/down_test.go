@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -82,5 +83,103 @@ func TestDown_RealDestroyErrorStillClearsStateButIsReturned(t *testing.T) {
 	}
 	if _, ok, _ := store.Get("myinstance"); ok {
 		t.Error("state record still present after Down, want cleared even on real destroy error")
+	}
+}
+
+func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
+	store := setupDownTest(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var gotCmd string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		gotCmd = cmd
+		return "", 0
+	})
+
+	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: addr, User: "devuser", TailscaleJoined: true}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record); err != nil {
+		t.Fatalf("Down() error = %v", err)
+	}
+	wantCmd := "bash -lc " + reconcile.ShellQuote("sudo tailscale logout")
+	if gotCmd != wantCmd {
+		t.Errorf("remote command = %q, want %q", gotCmd, wantCmd)
+	}
+}
+
+// TestDown_LogsOutBeforeDestroying asserts the ordering guarantee
+// documented on deregisterTailscale's call site in Down: logout must
+// happen before Destroy, since once the VM is destroyed nothing can
+// run on it anymore. A future accidental reorder of those two calls
+// would otherwise slip past every other Down test, none of which
+// observe relative order.
+func TestDown_LogsOutBeforeDestroying(t *testing.T) {
+	store := setupDownTest(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var order []string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		order = append(order, "logout")
+		return "", 0
+	})
+
+	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: addr, User: "devuser", TailscaleJoined: true}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &orderedDestroyProvider{order: &order}
+	if err := Down(context.Background(), p, store, record); err != nil {
+		t.Fatalf("Down() error = %v", err)
+	}
+
+	want := []string{"logout", "destroy"}
+	if len(order) != len(want) || order[0] != want[0] || order[1] != want[1] {
+		t.Errorf("call order = %v, want %v", order, want)
+	}
+}
+
+// orderedDestroyProvider is a fakeProvider variant whose Destroy
+// appends to a shared order slice, for TestDown_LogsOutBeforeDestroying
+// only -- the package's regular fakeProvider (used by every other Down
+// test) doesn't need this instrumentation.
+type orderedDestroyProvider struct {
+	fakeProvider
+	order *[]string
+}
+
+func (p *orderedDestroyProvider) Destroy(ctx context.Context, id string) error {
+	*p.order = append(*p.order, "destroy")
+	return p.fakeProvider.Destroy(ctx, id)
+}
+
+func TestDown_SkipsTailscaleLogoutWhenNeverJoined(t *testing.T) {
+	store := setupDownTest(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	called := false
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		called = true
+		return "", 0
+	})
+
+	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: addr, User: "devuser"}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record); err != nil {
+		t.Fatalf("Down() error = %v", err)
+	}
+	if called {
+		t.Error("tailscale logout was run despite TailscaleJoined being false")
 	}
 }
