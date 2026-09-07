@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/config"
@@ -94,7 +95,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// environment failed to build helps nobody, and this is the path both
 	// `up` and `provision` run -- so recovery after a reboot clears tmpfs is
 	// `cloudlab provision`, which is already idempotent.
-	placeDoltCredential(ctx, client, cfg.Beads)
+	placeDoltCredential(ctx, client, cfg.Beads, filepath.Dir(cloudlabPath))
 	return nil
 }
 

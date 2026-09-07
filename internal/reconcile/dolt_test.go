@@ -18,13 +18,27 @@ func TestPlaceDoltCredential_DoesNothingOutsideDolthubMode(t *testing.T) {
 			var out, errOut bytes.Buffer
 			ctx := provider.WithOutput(context.Background(), &out, &errOut)
 			// A nil client would panic if anything ran: the mode check must
-			// come before any connection use at all.
-			placeDoltCredential(ctx, nil, mode)
+			// come before any connection use at all. repoRoot is a bare temp
+			// dir with no .beads/ -- irrelevant here, since the mode check
+			// must short-circuit before the repository is ever consulted.
+			placeDoltCredential(ctx, nil, mode, t.TempDir())
 			if errOut.Len() != 0 {
 				t.Errorf("errOut = %q, want silence in %q mode", errOut.String(), mode)
 			}
 		})
 	}
+}
+
+// beadsRepoRoot returns a directory with a real .beads/ marker, standing in
+// for a repository that actually has a beads database -- the case
+// placeDoltCredential must get past its new repository check to reach.
+func beadsRepoRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".beads"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.T) {
@@ -36,7 +50,7 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 	// secrets init" case.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	placeDoltCredential(ctx, nil, "dolthub")
+	placeDoltCredential(ctx, nil, "dolthub", beadsRepoRoot(t))
 
 	got := errOut.String()
 	if !strings.Contains(got, "dolthub_creds") {
@@ -44,6 +58,28 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 	}
 	if !strings.Contains(got, "session") {
 		t.Errorf("errOut = %q, want it to say sync falls back to session mode", got)
+	}
+}
+
+// The headline regression this fix closes: "dolthub" mode shipped the
+// account-wide credential even to a repository with no beads database at
+// all -- nothing there could ever use it, so the only effect was paying the
+// cost the spec's Costs section describes for zero benefit.
+func TestPlaceDoltCredential_SkipsWhenTheRepositoryHasNoBeadsDatabase(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	// A nil client would panic if placeDoltCredential got as far as touching
+	// it -- the repository check must come before any secret is even looked
+	// up, let alone any instance command run.
+	placeDoltCredential(ctx, nil, "dolthub", t.TempDir())
+
+	got := errOut.String()
+	if !strings.Contains(got, "has no beads database") {
+		t.Errorf("errOut = %q, want it to explain the repository has no beads database", got)
+	}
+	if strings.Contains(got, "dolthub_creds") {
+		t.Errorf("errOut = %q, want it to skip before ever looking at the secret", got)
 	}
 }
 

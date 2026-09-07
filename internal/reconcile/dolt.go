@@ -3,6 +3,8 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,6 +12,18 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 )
+
+// hasBeadsDatabase reports whether repo has a beads database at all.
+//
+// A three-line stat rather than a call to internal/beads's own Present:
+// beads/instance.go already imports this package for ShellQuote, so
+// reconcile importing beads back would be a cycle. This is cheap enough, and
+// narrow enough, that duplicating it here beats restructuring either package
+// to break the cycle.
+func hasBeadsDatabase(repo string) bool {
+	info, err := os.Stat(filepath.Join(repo, ".beads"))
+	return err == nil && info.IsDir()
+}
 
 // validDoltCredsID matches a DoltHub creds id -- the JWK's filename stem --
 // which becomes part of a remote path built by plain string concatenation
@@ -92,8 +106,20 @@ func doltPrepareScript(doltDir string) string {
 // which hard-fails on a missing key. A tailnet the user asked for and did not
 // get is a broken instance; beads sharing has a working fallback that needs
 // no credential at all.
-func placeDoltCredential(ctx context.Context, client *Client, beadsMode string) {
+//
+// repoRoot is the local repository cloudlab.pkl lives beside. Skipped
+// entirely when it has no beads database: seedBeads only ever wires the
+// instance-side "dolthub" remote when the repository is already in
+// ModeExternal, so a repository with beads = "dolthub" but no .beads/ at all
+// -- or a git-mode one -- gets nothing that could ever use the credential.
+// Placing it anyway would pay the account-wide cost the spec's Costs section
+// describes for zero benefit, silently.
+func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoot string) {
 	if beadsMode != "dolthub" {
+		return
+	}
+	if !hasBeadsDatabase(repoRoot) {
+		provider.ReportWarning(ctx, "beads: "+repoRoot+" has no beads database; skipping the DoltHub credential since nothing on the instance can use it")
 		return
 	}
 

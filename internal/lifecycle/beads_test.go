@@ -313,3 +313,49 @@ func TestBootstrapBeads_WarnsWhenBootstrapFails(t *testing.T) {
 		t.Errorf("errOut = %q, want it to carry the Bootstrap failure", errOut.String())
 	}
 }
+
+// beads = "dolthub" ships a credential only from a repository already in
+// ModeExternal (see seedBeads' own "external" computation); asking for it
+// anywhere else silently gets the session remote and nothing more. The user
+// asked for external sync and did not get it, and that must not be silent.
+func TestWarnDolthubWithoutExternalRemote_WarnsWhenTheRepositoryIsNotExternal(t *testing.T) {
+	for _, mode := range []beads.Mode{beads.ModeUnsynced, beads.ModeGit} {
+		t.Run(mode.String(), func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+			warnDolthubWithoutExternalRemote(ctx, "dolthub", beads.Detection{Mode: mode})
+
+			if !strings.Contains(errOut.String(), "dolthub") {
+				t.Errorf("errOut = %q, want it to name dolthub mode", errOut.String())
+			}
+		})
+	}
+}
+
+// The other half: a caller weighing whether this warning fires at all needs
+// both the "asked for dolthub, didn't get it" case above and this "got
+// exactly what was asked for, or didn't ask" case to tell a real gate apart
+// from one that always warns.
+func TestWarnDolthubWithoutExternalRemote_SilentWhenModeMatchesTheRequest(t *testing.T) {
+	tests := []struct {
+		name      string
+		beadsMode string
+		detected  beads.Detection
+	}{
+		{"session mode never checks the repository's sync target", "session", beads.Detection{Mode: beads.ModeGit}},
+		{"dolthub mode with an external remote to reuse", "dolthub", beads.Detection{Mode: beads.ModeExternal, ExternalURL: "https://doltremoteapi.dolthub.com/x/y"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+			warnDolthubWithoutExternalRemote(ctx, tt.beadsMode, tt.detected)
+
+			if errOut.Len() != 0 {
+				t.Errorf("errOut = %q, want silence", errOut.String())
+			}
+		})
+	}
+}

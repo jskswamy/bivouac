@@ -35,6 +35,7 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 	if detected.Mode == beads.ModeAbsent {
 		return
 	}
+	warnDolthubWithoutExternalRemote(ctx, beadsMode, detected)
 
 	// Before bd init, not after. Setup is fail-safe, so a bd init that fails
 	// partway is tolerated -- but it can still leave .beads/ behind, and an
@@ -111,6 +112,18 @@ func bootstrapBeads(ctx context.Context, client *reconcile.Client, localRepo, re
 				"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
 		}
 		return
+	}
+}
+
+// warnDolthubWithoutExternalRemote tells the user when beads = "dolthub" buys
+// them nothing: seedBeads only ever wires the instance-side "dolthub" remote
+// from a repository already in ModeExternal, so asking for external sync
+// from a repository that is unsynced or git-only still seeds the session
+// remote and silently gets none of the sharing the user asked for.
+func warnDolthubWithoutExternalRemote(ctx context.Context, beadsMode string, detected beads.Detection) {
+	if beadsMode == "dolthub" && detected.Mode != beads.ModeExternal {
+		provider.ReportWarning(ctx, "beads: beads = \"dolthub\" but this repository has no external dolt remote to reuse (mode: "+
+			detected.Mode.String()+"); issues will sync over the session remote only")
 	}
 }
 
