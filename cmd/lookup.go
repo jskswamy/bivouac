@@ -21,8 +21,13 @@ type lookupCommandSpec struct {
 	// stays about the instance -- up, down, ssh, status, provision -- and a
 	// new verb is a new command rather than another string comparison.
 	parent string
-	flags  func(c *cobra.Command)
-	run    func(cmd *cobra.Command, name string, args []string) error
+	// spansInstances marks a verb that acts across every instance rather than
+	// one, so the shared dispatch must not resolve an instance name for it.
+	// named is a different question: it decides whether the first positional
+	// FEEDS resolution, not whether resolution happens at all.
+	spansInstances bool
+	flags          func(c *cobra.Command)
+	run            func(cmd *cobra.Command, name string, args []string) error
 }
 
 var lookupCommandSpecs = []lookupCommandSpec{
@@ -97,6 +102,16 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:    runSessionStart,
 	},
 	{
+		use:            "list",
+		short:          "List agent sessions across all instances",
+		verb:           "session list",
+		args:           cobra.NoArgs,
+		named:          false,
+		parent:         "session",
+		spansInstances: true,
+		run:            runSessionList,
+	},
+	{
 		use:   "connect [name]",
 		short: "Open a Jupyter tunnel to the instance (python template only)",
 		verb:  "connect",
@@ -161,8 +176,8 @@ var lookupCommandSpecs = []lookupCommandSpec{
 // newLookupCommands builds every lookup-only command from
 // lookupCommandSpecs. Flag handling, identity resolution, and the
 // stub/exit-code behavior are shared across all of them — only Use/Short
-// text, the Args validator, the per-command flags, and whether the verb is
-// a top-level command or hangs off a noun differ per spec.
+// text, the Args validator, the per-command flags, and whether the verb
+// takes an instance name or spans every instance differ per spec.
 func newLookupCommands() []*cobra.Command {
 	cmds := make([]*cobra.Command, 0, len(lookupCommandSpecs))
 	parents := map[string]*cobra.Command{}
@@ -173,6 +188,12 @@ func newLookupCommands() []*cobra.Command {
 			Short: spec.short,
 			Args:  spec.args,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if spec.spansInstances {
+					if spec.run != nil {
+						return spec.run(cmd, "", args)
+					}
+					return stubErr(spec.verb, "")
+				}
 				positional := ""
 				if spec.named && len(args) > 0 {
 					positional = args[0]

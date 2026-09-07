@@ -256,6 +256,95 @@ func mustGitCmd(t *testing.T, dir string, args ...string) {
 	}
 }
 
+// The empty state file is the common case on a fresh machine, and it must
+// read as "nothing running" rather than an error.
+func TestRunSessionList_NoSessions_PrintsNoSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	c := sessionTestCmd()
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	if err := runSessionList(c, "", nil); err != nil {
+		t.Fatalf("runSessionList() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "no sessions") {
+		t.Errorf("output = %q, want it to report no sessions", out.String())
+	}
+}
+
+// The whole point of `session list` is seeing sessions on every instance in
+// one place, so it has to walk every record, not just the first.
+func TestRunSessionList_AggregatesAcrossRecords(t *testing.T) {
+	repo := t.TempDir()
+	mustGitCmd(t, repo, "init", "--quiet")
+
+	one := state.Record{Name: "one", IP: "127.0.0.1"}
+	one.PutSession(state.Session{Name: "alpha", LocalRepo: repo})
+	store := sessionTestStore(t, one)
+
+	two := state.Record{Name: "two", IP: "127.0.0.1"}
+	two.PutSession(state.Session{Name: "beta", LocalRepo: repo})
+	if err := store.Put(two); err != nil {
+		t.Fatal(err)
+	}
+
+	c := sessionTestCmd()
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	if err := runSessionList(c, "", nil); err != nil {
+		t.Fatalf("runSessionList() error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "alpha") || !strings.Contains(got, "one") {
+		t.Errorf("output = %q, want it to list session alpha on instance one", got)
+	}
+	if !strings.Contains(got, "beta") || !strings.Contains(got, "two") {
+		t.Errorf("output = %q, want it to list session beta on instance two", got)
+	}
+	if !strings.Contains(got, "no worktree") {
+		t.Errorf("output = %q, want both sessions reported as having no worktree (never started)", got)
+	}
+}
+
+// status answers "what is on this one?" -- every session on the instance,
+// each with enough state to say whether it is safe to walk away from.
+func TestPrintSessions_ListsEverySessionWithItsState(t *testing.T) {
+	repo := t.TempDir()
+	mustGitCmd(t, repo, "init", "--quiet")
+
+	record := state.Record{Name: "myinstance"}
+	record.PutSession(state.Session{Name: "auth", LocalRepo: repo})
+	record.PutSession(state.Session{Name: "docs", LocalRepo: repo})
+
+	c := sessionTestCmd()
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	printSessions(c, record)
+
+	for _, want := range []string{"auth", "docs", "cloudlab/auth", "cloudlab/docs"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output does not mention %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// A fresh instance has no sessions, and that must read as "none" rather
+// than an empty, ambiguous section.
+func TestPrintSessions_SaysNoneWhenThereAreNone(t *testing.T) {
+	c := sessionTestCmd()
+	var out bytes.Buffer
+	c.SetOut(&out)
+
+	printSessions(c, state.Record{Name: "myinstance"})
+
+	if !strings.Contains(out.String(), "none") {
+		t.Errorf("output = %q, want it to say none", out.String())
+	}
+}
+
 // With no tailnet address there is nothing to choose, so pair must not
 // stop to ask -- the public IP is the only answer.
 func TestChoosePairHost_NoTailscale_ReturnsPublicWithoutPrompting(t *testing.T) {

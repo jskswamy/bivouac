@@ -129,6 +129,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 			cmd.Printf("Error:    %s\n", watch.LastError)
 		}
 	}
+	printSessions(cmd, record)
 	return nil
 }
 
@@ -191,6 +192,75 @@ func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
 		return args[0], nil
 	}
 	return lifecycle.RemotePath(local, remoteUser)
+}
+
+// printSessions renders an instance's sessions. Separate from runStatus so it
+// can be tested without a provider: runStatus reaches lifecycle.Status, which
+// makes a live API call, and the session section has nothing to do with that.
+func printSessions(cmd *cobra.Command, record state.Record) {
+	if len(record.Sessions) == 0 {
+		cmd.Printf("Sessions: none\n")
+		return
+	}
+	cmd.Printf("Sessions:\n")
+	for _, s := range record.Sessions {
+		info := lifecycle.DescribeSession(cmd.Context(), record.Name, s)
+		wtState := "clean"
+		if !info.WorktreeExists {
+			wtState = "no worktree"
+		} else if info.WorktreeDirty {
+			wtState = "dirty"
+		}
+		// "?" rather than 0 when the count could not be computed at all -- see
+		// the matching comment in runSessionList; this stays consistent with it.
+		unmerged := "?"
+		if info.UnmergedKnown {
+			unmerged = fmt.Sprintf("%d", info.Unmerged)
+		}
+		cmd.Printf("  %-16s %-16s %s unmerged, %s\n", info.Name, info.Branch, unmerged, wtState)
+	}
+}
+
+// runSessionList shows every session on every instance, not just this one:
+// the question "what is running anywhere?" is the one this answers, and it is
+// unanswerable today without reading state.json by hand.
+func runSessionList(cmd *cobra.Command, name string, args []string) error {
+	store, err := state.Open()
+	if err != nil {
+		return err
+	}
+	records, err := store.List()
+	if err != nil {
+		return err
+	}
+
+	var infos []lifecycle.SessionInfo
+	for _, r := range records {
+		for _, s := range r.Sessions {
+			infos = append(infos, lifecycle.DescribeSession(cmd.Context(), r.Name, s))
+		}
+	}
+	if len(infos) == 0 {
+		cmd.Println("no sessions")
+		return nil
+	}
+	for _, i := range infos {
+		wtState := "clean"
+		if !i.WorktreeExists {
+			wtState = "no worktree"
+		} else if i.WorktreeDirty {
+			wtState = "dirty"
+		}
+		// "?" rather than 0 when the count could not be computed at all --
+		// printing 0 would read as "nothing to lose", which a git failure does
+		// not establish.
+		unmerged := "?"
+		if i.UnmergedKnown {
+			unmerged = fmt.Sprintf("%d", i.Unmerged)
+		}
+		cmd.Printf("%-16s %-24s %-16s %s unmerged, %s\n", i.Name, i.Instance, i.Branch, unmerged, wtState)
+	}
+	return nil
 }
 
 // runSessionStart backs `cloudlab session start <name>`. Cobra resolves the

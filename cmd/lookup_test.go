@@ -187,3 +187,40 @@ func TestSessionCommand_TopLevelPullAndMergeAreGone(t *testing.T) {
 		}
 	}
 }
+
+// "session list" answers "what is running anywhere?" -- a question that must
+// not require standing inside a particular repo to ask. Driven through the
+// real command table (not runSessionList directly) because the bug this
+// guards against lived in the shared dispatch that runs ahead of every
+// spec's run func, not in runSessionList itself.
+func TestSessionListCommand_WorksOutsideAnyRepo(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+	chdir(t, t.TempDir())
+
+	root := newRootCmd()
+	root.SetArgs([]string{"session", "list"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v, want session list to work with no repo and no --name", err)
+	}
+	if !strings.Contains(out.String(), "no sessions") {
+		t.Errorf("output = %q, want it to report no sessions", out.String())
+	}
+}
+
+// A future edit to lookupCommandSpecs that drops spansInstances silently
+// reintroduces the identity-resolution coupling this test exists to catch.
+func TestLookupCommandSpecs_SessionListSpansInstances(t *testing.T) {
+	for _, spec := range lookupCommandSpecs {
+		if spec.parent == "session" && spec.use == "list" {
+			if !spec.spansInstances {
+				t.Error("session list spec has spansInstances = false, want true")
+			}
+			return
+		}
+	}
+	t.Fatal("no session list spec found in lookupCommandSpecs")
+}
