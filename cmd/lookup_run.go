@@ -2,14 +2,17 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
@@ -201,6 +204,21 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 	}
 }
 
+// beadsModeFor reads the beads setting out of the repository's cloudlab.pkl.
+//
+// Best-effort by design. `cloudlab session start` does not require pkl today,
+// and beads must not be the reason it starts to: a config that will not
+// resolve is a problem `up` and `provision` report properly, with a better
+// message than this could give. The fallback is inert on a repository with no
+// .beads/, which is the overwhelmingly common case.
+func beadsModeFor(ctx context.Context, root string) string {
+	cfg, err := config.Resolve(ctx, filepath.Join(root, "cloudlab.pkl"))
+	if err != nil {
+		return "session"
+	}
+	return cfg.Beads
+}
+
 // runSessionStart backs `cloudlab session start <name>`. Cobra resolves the
 // verb now, so there is no hand-rolled dispatch here and no unknown-subcommand
 // error to maintain -- an unrecognised verb gets cobra's own suggestion.
@@ -248,7 +266,7 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	if err := store.Put(record); err != nil {
 		return err
 	}
-	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session); err != nil {
+	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session, beadsModeFor(ctx, root)); err != nil {
 		return err
 	}
 	cmd.Printf("Session %s started on %s\n", session, name)

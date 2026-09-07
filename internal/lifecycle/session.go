@@ -31,7 +31,7 @@ func runLocalGit(ctx context.Context, localRepo string, args ...string) (string,
 // Every step is retry-safe, because a start that fails partway through --
 // most easily at the push or fetch, the first real network operations -- must
 // be fixable by running the same command again.
-func StartSession(ctx context.Context, ip, user, localRepo, repoName, session string) error {
+func StartSession(ctx context.Context, ip, user, localRepo, repoName, session, beadsMode string) error {
 	if err := CheckSessionName(session); err != nil {
 		return err
 	}
@@ -44,21 +44,22 @@ func StartSession(ctx context.Context, ip, user, localRepo, repoName, session st
 	branch := SessionBranch(session)
 	url := sshGitURL(user, host, repo)
 
-	if err := seedSession(ctx, ip, user, localRepo, repo, branch, url); err != nil {
+	if err := seedSession(ctx, ip, user, localRepo, repo, branch, url, host, session, beadsMode); err != nil {
 		return err
 	}
 	return trackSession(ctx, localRepo, session, branch, url)
 }
 
 // seedSession creates the session's repository on the instance and publishes
-// the Mac's current commit into it as the session branch.
+// the Mac's current commit into it as the session branch, then hands the
+// result to seedBeads for the (optional, best-effort) issue tracker.
 //
 // The order -- init, push, then checkout -- is what keeps this working
 // without configuring receive.denyCurrentBranch. A fresh `git init` leaves
 // HEAD on an unborn branch, so the pushed branch is not the checked-out one
 // and the push is legal; the checkout afterwards gives the agent its files.
 // Reversing those two steps makes every seed fail.
-func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url string) error {
+func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, host, session, beadsMode string) error {
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
 		return err
@@ -89,6 +90,11 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url str
 	if out, err := client.Run(checkoutSessionCmd(repo, branch)); err != nil {
 		return fmt.Errorf("checking out %s on instance: %w\n%s", branch, err, out)
 	}
+
+	// Last, deliberately. Beads never fails a session, so this returns
+	// nothing -- but it also has to run after the push and checkout above,
+	// because pushing dolt data into a git remote with no branches fails.
+	seedBeads(ctx, client, localRepo, repo, user, host, session, beadsMode)
 	return nil
 }
 

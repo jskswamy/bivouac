@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 )
@@ -86,4 +87,15 @@ func Output(ctx context.Context) (out, errOut io.Writer) {
 		return w.out, w.errOut
 	}
 	return os.Stdout, os.Stderr
+}
+
+// ReportWarning tells the user something went wrong that was not fatal.
+//
+// Distinct from ReportProgress, which narrates what is happening on the happy
+// path: a warning is what a fail-safe step emits when it gives up and carries
+// on. Written to the error writer so a caller rendering progress into a
+// viewport does not have to filter it back out of the progress stream.
+func ReportWarning(ctx context.Context, msg string) {
+	_, errOut := Output(ctx)
+	_, _ = fmt.Fprintln(errOut, "warning: "+msg)
 }

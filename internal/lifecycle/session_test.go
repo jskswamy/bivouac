@@ -43,7 +43,7 @@ func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 
 	remoteRepo := RemoteRepoPath("devuser", "auth", "cloudlab")
 	err := seedSession(context.Background(), addr, "devuser", repo, remoteRepo,
-		SessionBranch("auth"), sshGitURL("devuser", addr, remoteRepo))
+		SessionBranch("auth"), sshGitURL("devuser", addr, remoteRepo), addr, "auth", "session")
 	if err == nil {
 		t.Fatal("seedSession() = nil, want an error: the fake SSH server cannot complete a real git push")
 	}
@@ -173,7 +173,7 @@ func TestStartSession_SeedsRepoBeforeCreatingTheWorktree(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "commit", "--quiet", "-m", "first")
 
-	if err := StartSession(context.Background(), addr, "devuser", repo, "cloudlab", "auth-refactor"); err == nil {
+	if err := StartSession(context.Background(), addr, "devuser", repo, "cloudlab", "auth-refactor", "session"); err == nil {
 		t.Fatal("StartSession() = nil, want an error since the fake SSH server cannot complete a real git push")
 	}
 

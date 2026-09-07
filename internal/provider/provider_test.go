@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -53,5 +54,22 @@ func TestOutput_DefaultsToOsStdoutStderrWithoutWithOutput(t *testing.T) {
 	}
 	if gotErrOut != io.Writer(os.Stderr) {
 		t.Errorf("Output() stderr = %v, want os.Stderr", gotErrOut)
+	}
+}
+
+func TestReportWarning_WritesToTheErrorWriter(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ctx := WithOutput(context.Background(), &out, &errOut)
+
+	ReportWarning(ctx, "beads: could not seed issues")
+
+	if got := errOut.String(); !strings.Contains(got, "beads: could not seed issues") {
+		t.Errorf("errOut = %q, want it to contain the warning", got)
+	}
+	if got := errOut.String(); !strings.HasPrefix(got, "warning: ") {
+		t.Errorf("errOut = %q, want a \"warning: \" prefix", got)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout = %q, want nothing — a warning is not progress", out.String())
 	}
 }
