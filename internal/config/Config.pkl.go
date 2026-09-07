@@ -22,6 +22,20 @@ type Config struct {
 
 	Tailscale bool `pkl:"tailscale"`
 
+	// How the instance's beads issue database syncs.
+	//
+	// "session" (default): dolt data rides refs/dolt/data on the session's
+	// own git remote over SSH; no credential reaches the instance.
+	// "dolthub": additionally sync against the external remote already
+	// configured in the repo's .beads. Requires dolthub_creds and
+	// dolthub_creds_id in the personal secrets file.
+	// "off": do not wire beads at all.
+	//
+	// Says only whether to ship a credential -- never which mode the
+	// repository is in. `bd dolt remote list` is authoritative for that, and
+	// a second copy here would only drift.
+	Beads string `pkl:"beads"`
+
 	SshKeys *[]string `pkl:"sshKeys"`
 
 	Packages []string `pkl:"packages"`

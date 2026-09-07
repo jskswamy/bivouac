@@ -29,6 +29,7 @@ see "A note on trust" near the end of this doc.
 | `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
+| `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
@@ -103,6 +104,26 @@ Instances on the tailnet also get a practical benefit beyond privacy:
 one is available, so git traffic never crosses the public internet and the
 remote survives a reboot that reassigns the public IP.
 
+### `beads`
+
+`"session"` (default) | `"dolthub"` | `"off"`
+
+How the agent's issue database reaches the instance.
+
+`"session"` carries it over the session's own git remote as `refs/dolt/data` — the same
+repository, over the same SSH channel, that the session's code already uses. No
+credential reaches the VM.
+
+`"dolthub"` additionally ships your DoltHub credential so the instance can sync against
+the external remote your `.beads/` already names. The credential is account-wide and
+lives in tmpfs on the VM for its lifetime; the session remote is still wired, so issues
+come home over SSH even when DoltHub is unreachable. Requires `dolthub_creds` and
+`dolthub_creds_id` in `cloudlab secrets`.
+
+`"off"` wires nothing.
+
+The setting is inert in a repository with no `.beads/`.
+
 ### Templates
 
 `"python"` gives you `python312` and `uv`; `"docker"` gives you `docker` and
@@ -133,10 +154,10 @@ base config. If one exists, the two are merged:
 
 - **Scalars** (`region`, `size`, `template`): the project's value wins
   if it set one; otherwise the base's value is used.
-- **`arch`, `image`, and `tailscale`**: always the project's resolved
-  value (each has its own schema-level default) -- unlike the scalars
-  above, a personal base config's `arch`/`image`/`tailscale` is never
-  consulted, even if the project doesn't set one explicitly.
+- **`arch`, `image`, `tailscale`, and `beads`**: always the project's
+  resolved value (each has its own schema-level default) -- unlike the
+  scalars above, a personal base config's value for any of these four
+  is never consulted, even if the project doesn't set one explicitly.
 - **Lists** (`sshKeys`, `packages`, `agents`, `flakes`): additive — your
   base's entries first, then the project's. Nothing is dropped from
   either side.

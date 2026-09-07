@@ -55,6 +55,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		`template = "python"`,
 		`arch = "arm64"`,
 		`tailscale = true`,
+		`beads = "dolthub"`,
 		`sshKeys { "project-key" }`,
 		`packages { "ripgrep" }`,
 	}, "\n")+"\n")
@@ -89,6 +90,9 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 	}
 	if !cfg.Tailscale {
 		t.Error("Tailscale = false, want true (project overrides base)")
+	}
+	if cfg.Beads != "dolthub" {
+		t.Errorf("Beads = %q, want %q (project overrides base)", cfg.Beads, "dolthub")
 	}
 }
 
@@ -410,5 +414,65 @@ func TestMergeConfig_AgentsAreAdditiveBaseFirst(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("Agents[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestResolve_BeadsDefaultsToSession(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cloudlab.pkl")
+	if err := os.WriteFile(path, []byte(`region = "blr1"
+size = "s-2vcpu-4gb"
+template = "python"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	// The default has to be inert on a repository with no .beads/, so an
+	// existing config needs no change at all -- see beads.Detect, which
+	// returns ModeAbsent and skips every step.
+	if cfg.Beads != "session" {
+		t.Errorf("Beads = %q, want %q", cfg.Beads, "session")
+	}
+}
+
+func TestResolve_BeadsAcceptsDolthubAndOff(t *testing.T) {
+	for _, want := range []string{"dolthub", "off"} {
+		t.Run(want, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "cloudlab.pkl")
+			body := `region = "blr1"
+size = "s-2vcpu-4gb"
+template = "python"
+beads = "` + want + `"
+`
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Resolve(t.Context(), path)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			if cfg.Beads != want {
+				t.Errorf("Beads = %q, want %q", cfg.Beads, want)
+			}
+		})
+	}
+}
+
+func TestResolve_BeadsRejectsAnUnknownMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cloudlab.pkl")
+	if err := os.WriteFile(path, []byte(`region = "blr1"
+size = "s-2vcpu-4gb"
+template = "python"
+beads = "dolthubb"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(t.Context(), path); err == nil {
+		t.Fatal("Resolve() error = nil, want a type error naming the allowed modes")
 	}
 }
