@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Accepted. The composition model below is exactly what the code does; only
+the config file changed shape.
+
+The `cloudlab.yaml` shown in the Decision is now `cloudlab.pkl`, written in
+[Pkl](https://pkl-lang.org) rather than YAML — see
+[the declarative-config design](../superpowers/specs/2026-08-31-declarative-config-pkl-design.md)
+and [`docs/config.md`](../config.md). Two things have also been added since:
+an `agents` field, which becomes a further synthetic module (and is the one
+place unfree packages are permitted, since that has to happen where nixpkgs
+is instantiated), and the forward-looking `flakes[].modules` flag this ADR
+anticipated, which is now implemented. Re-triggering
+`home-manager switch` happens via `up` and `provision`, not the `shell`
+ADR-0007 named — that command is still a stub.
 
 ## Context
 

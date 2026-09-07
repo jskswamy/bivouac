@@ -2,12 +2,28 @@
 
 ## Status
 
-Accepted
+Accepted, not implemented — premise has lapsed.
+
+Nothing in this ADR exists in the code: `shell` is still a stub, no
+`SOPS_AGE_KEY` injection exists anywhere, and `aide` is not among the
+packages any template installs. The premise it rests on has also changed —
+Claude Code is no longer installed by default. Agent harnesses became
+opt-in through `cloudlab.pkl`'s `agents` field (see
+[`docs/config.md`](../config.md#agents)), so an instance only has one if
+you asked for it, and authenticating it there is currently manual.
+
+The decision below is still the intended direction for agent credentials,
+and the reasoning against credential sync still stands.
+[ADR-0009](0009-general-secrets-via-sops-nix.md) proposes the broader
+instance-secrets design that would subsume this; it is likewise not
+implemented. What *does* exist today is the personal, sops-encrypted
+secrets file `cloudlab secrets` manages — but that lives on your machine
+and holds the Tailscale auth key, not agent credentials on the instance.
 
 ## Context
 
-Claude Code and aide are installed by default on every instance (see the
-project brief). Instances are ephemeral — destroyed on `down`, recreated
+Claude Code and aide were to be installed by default on every instance (see
+the project brief). Instances are ephemeral — destroyed on `down`, recreated
 fresh on the next `up` — so if Claude Code needed an interactive `claude
 login` every time, "installed by default" wouldn't actually reduce friction
 at the point of use.

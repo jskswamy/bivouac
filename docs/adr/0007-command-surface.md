@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Superseded by
+[docs/superpowers/specs/2026-09-05-git-aware-sync-design.md](../superpowers/specs/2026-09-05-git-aware-sync-design.md).
+
+`up` no longer owns the repo. It seeds nothing; `session start` pushes the
+repo into a bare store on the instance and creates the session's worktrees,
+and code moves back through `pull`/`merge`. `sync`/`download` survive
+unchanged for everything that is not repo content.
 
 ## Context
 

@@ -25,15 +25,21 @@ see "A note on trust" near the end of this doc.
 |---|---|---|---|---|
 | `region` | `String?` | Yes, after merge | none | DigitalOcean region slug, e.g. `"nyc3"`. Maps directly to the `Region` field `Provider.Create` sends. |
 | `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
-| `template` | `String?` | Yes, after merge | none | Provisioning template name. The template catalog itself (what each name actually installs) is a separate, later feature — for now this is just a name cloudlab passes through. |
+| `template` | `String?` | Yes, after merge | none | Provisioning template: `"python"` or `"docker"`. Anything else is treated as a complete flake reference (`"<url>#<output>"`) and used as-is — see [Templates](#templates) below. |
 | `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
-| `tailscale` | `Boolean` | No | `false` | Auto-join the instance to your personal Tailscale network during `up` (see `cloudlab tailscale`). Requires `tailscale_authkey` in your personal secrets file — see `cloudlab secrets init`. |
+| `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
 | `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
+
+"Required, after merge" means: `region`/`size`/`template` don't have to
+be set in your project's `cloudlab.pkl` itself, as long as your
+personal base config supplies them (or vice versa) — see below. If
+neither file sets one, `Resolve` fails with an error naming exactly which
+field is still missing.
 
 ### `agents`
 
@@ -73,17 +79,42 @@ unfree package listed in `packages` is still refused.
 
 Anything not on this list still goes in `packages` as usual.
 
-When generating the auth key for `tailscale_authkey` in the Tailscale admin
-console, mark it **Ephemeral**. Ephemeral keys make their devices
-self-remove from your tailnet once they disconnect, so a destroyed instance
-(cloudlab's VMs are destroy-and-recreate, not long-lived) doesn't linger as
-a dead device counting against your plan's device limit.
+### `tailscale`
 
-"Required, after merge" means: `region`/`size`/`template` don't have to
-be set in your project's `cloudlab.pkl` itself, as long as your
-personal base config supplies them (or vice versa) — see below. If
-neither file sets one, `Resolve` fails with an error naming exactly which
-field is still missing.
+Setting `tailscale = true` does two things: it installs and enables the
+`tailscaled` daemon on the instance, and it makes `up` join the tailnet
+automatically once the instance is reachable. You can also join an
+already-running instance by hand with `cloudlab tailscale`.
+
+It needs `tailscale_authkey` in your personal secrets file — create it with
+`cloudlab secrets init`, then `cloudlab secrets edit`. cloudlab decrypts the
+key just-in-time, streams it to the instance over SSH stdin, and zeroes its
+in-memory copy immediately; the key is never a command-line argument and
+never lands in plaintext on disk on either machine.
+
+When generating that auth key in the Tailscale admin console, mark it
+**Ephemeral**. Ephemeral keys make their devices self-remove from your
+tailnet once they disconnect, so a destroyed instance (cloudlab's VMs are
+destroy-and-recreate, not long-lived) doesn't linger as a dead device
+counting against your plan's device limit.
+
+Instances on the tailnet also get a practical benefit beyond privacy:
+`session start` points a session's git remote at the tailnet address when
+one is available, so git traffic never crosses the public internet and the
+remote survives a reboot that reassigns the public IP.
+
+### Templates
+
+`"python"` gives you `python312` and `uv`; `"docker"` gives you `docker` and
+`minikube`, with the daemon and group membership already wired up. Both
+build on a shared module every instance gets — `git`, `age`, `devbox`,
+`herdr`, `mosh`, `moshi-hook`, `tailscale`, `tmux` (preconfigured), plus
+`fish` and `starship`.
+
+Any other value is passed straight through to home-manager as a flake
+reference, so you can point `template` at your own flake's
+`homeConfigurations` output. Note that `arch` is ignored in that case: the
+`-<system>` suffix is only appended for the two built-in names.
 
 ## Personal base config and reuse across projects
 
