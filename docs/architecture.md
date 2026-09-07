@@ -495,6 +495,10 @@ work.
   "not implemented yet".
 - **No second provider implementation.** The interface exists so adding one
   later doesn't require touching instance identity, templates, or state.
+- **No instance shared across repos.** An instance belongs to one repo; two
+  projects means two instances. Sessions are the axis that scales. See
+  [ADR-0010](adr/0010-one-instance-per-repo.md), which also records why
+  cross-repo sessions remain unbuilt.
 - **No custom-template catalog.** Two built-in templates, plus the escape
   hatch of passing a full flake ref as `template`.
 - **No file-watcher of any kind.** Environment changes go through

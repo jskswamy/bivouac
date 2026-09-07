@@ -18,6 +18,7 @@ does *today*, read [`../architecture.md`](../architecture.md).
 | [0007](0007-command-surface.md) | Command surface — `up` owns the repo, `sync`/`download` are for everything else | Superseded by the git-aware sync design |
 | [0008](0008-provider-abstraction.md) | Provider abstraction — DigitalOcean first, not DigitalOcean-only | Accepted |
 | [0009](0009-general-secrets-via-sops-nix.md) | General instance secrets via sops-nix, age key derived from the instance's own SSH host key | Proposed; not implemented |
+| [0010](0010-one-instance-per-repo.md) | One instance per repo — sessions scale, instances are not shared across projects | Accepted |
 
 Design specs and delivery plans that postdate these ADRs live in
 [`../superpowers/`](../superpowers/); the most recent, and the one that
