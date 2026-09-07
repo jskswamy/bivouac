@@ -152,10 +152,12 @@ and the errors you might see. Worked examples live in
 
 `cloudlab secrets init/edit/keys` manage a personal,
 [sops](https://github.com/getsops/sops)-encrypted file at
-`~/.config/cloudlab/secrets.yaml`. Today it holds `tailscale_authkey`, which
-`up`/`cloudlab tailscale` decrypt just-in-time, stream to the instance's
-tmpfs over SSH stdin, and zero immediately after — never a command-line
-argument, never plaintext on disk on either machine.
+`~/.config/cloudlab/secrets.yaml`. Today it holds `tailscale_authkey` and,
+for `beads = "dolthub"`, a DoltHub credential (`dolthub_creds` and
+`dolthub_creds_id`). `up`/`cloudlab tailscale` and `beads = "dolthub"`
+decrypt these just-in-time, stream them to the instance's tmpfs over SSH
+stdin, and zero immediately after — never a command-line argument, never
+plaintext on disk on either machine.
 
 ## Documentation
 

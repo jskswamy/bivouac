@@ -282,6 +282,15 @@ instance — not a worktree of a shared bare store. One session, one clone.
    worktree at `<repo>/.worktrees/<name>`, adding `/.worktrees/` to
    `.git/info/exclude` (cloudlab's own bookkeeping, not the user's
    `.gitignore`).
+5. Seeds the repository's issue tracker, best-effort: excludes `.beads/` on
+   the instance (so the next checkpoint's `git add -A` can't commit it),
+   registers a dolt remote `cloudlab-<name>` on the Mac pointing at the same
+   repository over the same SSH channel, pushes the Mac's issue database into
+   it, and has the instance clone it back out. Every step here warns and
+   continues rather than failing the session — see
+   [`docs/superpowers/specs/2026-09-07-beads-in-sessions-design.md`](superpowers/specs/2026-09-07-beads-in-sessions-design.md)
+   for the full design, including the opt-in `beads = "dolthub"` mode that
+   additionally ships an account-wide DoltHub credential.
 
 The worktree lives inside the repository rather than under `$HOME` because
 sandboxing tools scope themselves to the project directory — a worktree the
@@ -313,13 +322,18 @@ run outside a git repository, matching `down`.
 fetches the branch, verifies the fetched tip is genuinely in the local
 object store, and fast-forwards the worktree with `merge --ff-only` — which
 refuses loudly on divergence rather than eating local edits. Safe to run
-repeatedly, and while the agent is still working.
+repeatedly, and while the agent is still working. If beads was wired for the
+session, it also brings the agent's issue edits home: the instance publishes
+them into the session repository's own dolt ref, and the Mac pulls from
+there — best-effort, same as seeding.
 
 **`session merge [session]`** is the accept path, and its ordering is the
 safety property:
 
 1. Refuse if the user's working tree, or the session worktree, is dirty.
-2. Rescue (checkpoint + fetch + verify) as above.
+2. Rescue (checkpoint + fetch + verify) as above, then pull beads issues home
+   the same way `session pull` does — before the replay, since merge is about
+   to delete the session repository the issue database rides in.
 3. `git cherry-pick --empty=drop -S HEAD..<ref>` onto the current branch.
    Cherry-pick rather than rebase because the session ref lives outside
    `refs/heads`, where `rebase --onto` reports "up to date", re-signs
@@ -345,26 +359,36 @@ reachable, and refuses when it is not — `--force` skips both the rescue and
 the refusal. And because rescue checkpoints whatever the agent left
 uncommitted, a session with dirty-but-uncommitted instance-side work now
 refuses to delete instead of going quietly: the checkpoint turns that dirt
-into a commit the unmerged gate counts.
+into a commit the unmerged gate counts. If beads was wired, delete also
+refuses when it cannot confirm the instance's issue edits have landed on the
+Mac — the one place beads is fail-closed, an unknown treated as unsafe the
+same way an unconfirmed commit is; `--force` skips this too.
 
 **`down`** rescues every session's work before destroying anything, using the
 session names and local repo paths from the state record — `down` resolves an
 instance by name and may run from any directory, so neither is derivable
 from where the command is typed. A rescue failure aborts the destroy and
-says so (the instance is still billing); `--force` skips the rescue.
+says so (the instance is still billing); `--force` skips the rescue. Each
+session's beads issues are checked the same way delete checks them, for the
+same reason: down is the other verb that makes their loss permanent.
 
-The instance never pushes and never talks to a shared remote. Pull-direction
-means an agent *cannot* push anywhere, enforcing "no unreviewed pushes"
-structurally rather than by policy, and it's the only direction that works
-for an agent running overnight against a closed laptop.
+The instance never pushes and never talks to a shared remote, with one
+opt-in carve-out: `beads = "dolthub"` in `cloudlab.pkl` places an
+account-wide DoltHub credential on the instance so its issue database can
+sync there directly (see Secrets, below). Otherwise, pull-direction means an
+agent *cannot* push anywhere, enforcing "no unreviewed pushes" structurally
+rather than by policy, and it's the only direction that works for an agent
+running overnight against a closed laptop.
 
 ## Secrets: a personal, sops-encrypted file
 
 `cloudlab secrets init/edit/keys` manage a personal file at
 `$XDG_CONFIG_HOME/cloudlab/secrets.yaml` (else
 `~/.config/cloudlab/secrets.yaml`), encrypted with
-[sops](https://github.com/getsops/sops). It holds the Tailscale auth key
-today, whatever else needs one later.
+[sops](https://github.com/getsops/sops). It holds the Tailscale auth key and,
+for anyone using `beads = "dolthub"`, a DoltHub credential (`dolthub_creds`,
+the JWK itself, and `dolthub_creds_id`, its filename stem) — whatever else
+needs one later.
 
 `internal/secrets` shells out to the `sops` binary for every operation —
 same as tailscale/nix elsewhere in this codebase — rather than linking sops
@@ -382,6 +406,16 @@ the local copy immediately after the remote write, whether or not
 it, gated on `record.TailscaleJoined` rather than the current config (the
 config's value may have changed, or the instance may have been joined
 manually by `cloudlab tailscale`).
+
+`internal/reconcile` places the DoltHub credential the same careful way, and
+only when `cloudlab.pkl` sets `beads = "dolthub"`: it decrypts `dolthub_creds`
+and `dolthub_creds_id`, resolves the instance's `$XDG_RUNTIME_DIR` with a real
+round-trip, symlinks `~/.dolt` there, writes the credential into that tmpfs
+directory over SSH, and zeroes the local copies. Skipped — with a warning
+naming why — for a repository with no beads database at all, since nothing
+there could ever use it. A reboot clears tmpfs and leaves the symlink
+dangling; `cloudlab provision` restores it, the same recovery path `up`
+already runs.
 
 > **Note on agent credentials.** [ADR-0006](adr/0006-credentials-via-aide-secrets.md)
 > describes injecting `SOPS_AGE_KEY` into `shell`/`ssh` sessions so aide can

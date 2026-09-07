@@ -2,7 +2,55 @@
 
 ## Status
 
-Accepted, not implemented.
+Accepted, implemented.
+
+## Implementation notes
+
+Six places the shipped code differs from what this spec describes, plus why:
+
+**`session pull`, `merge`, `delete` and `down` detect wiring from the dolt
+remote, not from config.** This spec adds `beads` to `cloudlab.pkl`, but those
+four commands never resolve a config today, and `down` in particular runs
+from any directory and reads everything from the state record. Instead they
+ask the repository: if the Mac's beads database has no dolt remote named
+`cloudlab-<session>`, beads was never wired for this session, and every beads
+step is skipped silently. This is this spec's own "detected rather than
+declared" principle applied one level further, and it makes `beads = "off"`
+self-consistent without any of these commands knowing the setting.
+
+**`session start` resolves the config best-effort and falls back to
+`"session"`.** `session start` has the repo root, so `cloudlab.pkl` is one
+`config.Resolve` away — but it does not require `pkl` today, and making beads
+the reason it starts to would be a regression. A config that will not resolve
+warns and proceeds as `"session"`, the same way `up` and `provision` report a
+broken config properly while this path stays best-effort.
+
+**`Unpulled` proves the round trip rather than diffing refs.** This spec says
+`Unpulled` "reports whether the instance holds issue commits absent from the
+Mac". A ref diff would need the Mac to hold a comparable `refs/dolt/data`,
+which it does not — its database lives in `.beads/embeddeddolt` and the ref
+lives on whichever remote it syncs to. So `Unpulled` performs the sync
+(instance `bd dolt push`, Mac `bd dolt pull --remote cloudlab-<s>`) and
+reports `false` only when both demonstrably succeeded; any failure is an
+error. That satisfies the guarantee this spec actually states — "if cloudlab
+cannot establish that the instance's issues have landed, it refuses to
+destroy" — without a comparison it has no ground truth for.
+
+**`Detect` returns a `Detection` struct, not `(Mode, error)`.** It must also
+report the external remote's URL, so `"dolthub"` mode can reuse it, and a
+two-field `Detection` carries both without a second call.
+
+**The exclusion is `excludeBeadsCmd` in `gitremote.go`, not an
+`excludeBeadsDir` in `session.go`.** It runs against the instance's own
+repository, which is what actually needs the exclusion (see the checkpoint
+hazard below) — the naming and placement follow that, not this spec's
+original sketch.
+
+**`pullBeads` is called from `PullSession` and `MergeSession`, not from
+`RescueSession`.** `RescueSession` is also called by `session delete` and
+`down`, which gate on issues through `requireBeadsLanded` instead — syncing
+there too would cost a second round trip per teardown and report one failure
+as both a warning and an error.
 
 ## Context
 
