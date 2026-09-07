@@ -1,0 +1,8 @@
+State  Recv-Q Send-Q               Local Address:Port  Peer Address:PortProcess
+LISTEN 0      4096                 127.0.0.53%lo:53         0.0.0.0:*
+LISTEN 0      4096                       0.0.0.0:22         0.0.0.0:*
+LISTEN 0      4096                     127.0.0.1:24543      0.0.0.0:*    users:(("moshi-hook",pid=10954,fd=7))
+LISTEN 0      4096                 100.81.106.84:35669      0.0.0.0:*
+LISTEN 0      4096                    127.0.0.54:53         0.0.0.0:*
+LISTEN 0      4096   [fd7a:115c:a1e0::db38:6a55]:52076         [::]:*
+LISTEN 0      4096                          [::]:22            [::]:*
