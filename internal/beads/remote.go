@@ -1,5 +1,11 @@
 package beads
 
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
 // RemoteName is the dolt remote pointing at a session's repository on the
 // instance. Deliberately the same name lifecycle.sessionRemote gives the git
 // remote: they address the same repository over the same channel, and one
@@ -36,6 +42,36 @@ func addRemoteArgs(name, url string) []string {
 
 func removeRemoteArgs(name string) []string {
 	return []string{"dolt", "remote", "remove", name}
+}
+
+// RemoveRemote drops this machine's dolt remote for session, if one exists.
+//
+// Exported for two callers that need it best-effort, after Seed already runs
+// it unexported and silently as a pre-add safety wipe: a session whose
+// instance-side Bootstrap failed must not leave Wired reporting true for a
+// database that was never actually cloned there (seedBeads), and a session
+// that has ended must not leave a stale remote behind to make Wired report
+// true for an unrelated later session started at the same name (merge,
+// delete).
+//
+// Silent, like Wired, when there is no beads database here at all or bd is
+// not on PATH: merge and delete run on every session regardless of whether
+// beads was ever used in the repository, and a repository with neither must
+// stay completely inert rather than surfacing a warning about a remote that
+// was never a possibility. Also silent when the database exists but this
+// session's remote specifically was never registered -- "unknown remote" is
+// bd's own wording for that, read from its output rather than its exit code,
+// which it does not distinguish from any other remote-command failure.
+func RemoveRemote(ctx context.Context, localRepo, session string) error {
+	if !Present(localRepo) || !Available() {
+		return nil
+	}
+	remote := RemoteName(session)
+	out, err := run(ctx, localRepo, removeRemoteArgs(remote)...)
+	if err != nil && !strings.Contains(out, "unknown remote") {
+		return fmt.Errorf("removing dolt remote %s: %w\n%s", remote, err, out)
+	}
+	return nil
 }
 
 func pushArgs(name string) []string {

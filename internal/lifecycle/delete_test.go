@@ -248,3 +248,30 @@ func TestDeleteSession_ProceedsWhenIssuesHaveLanded(t *testing.T) {
 		t.Error("the instance-side session was not removed despite landed issues")
 	}
 }
+
+// The delete-side counterpart of TestMergeSession_RemovesTheSessionsDoltRemote:
+// delete drops the git remote via remoteRemoveArgs, but left the matching dolt
+// one behind, letting it accumulate and making a later session at the same
+// name read as wired even when beads is off for it.
+func TestDeleteSession_RemovesTheSessionsDoltRemote(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	if !beads.Wired(context.Background(), f.repo, f.session) {
+		t.Fatal("beads.Wired() = false right after Seed, fixture setup is broken")
+	}
+
+	_, err := DeleteSession(context.Background(), f.addr, "devuser", f.repoName,
+		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base}, false)
+	if err != nil {
+		t.Fatalf("DeleteSession() error = %v", err)
+	}
+
+	if beads.Wired(context.Background(), f.repo, f.session) {
+		t.Error("beads.Wired() = true after delete, want the session's dolt remote removed " +
+			"alongside its git remote")
+	}
+}

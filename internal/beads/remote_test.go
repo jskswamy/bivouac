@@ -5,6 +5,79 @@ import (
 	"testing"
 )
 
+// TestRemoveRemote_SilentWhenThereIsNoBeadsDatabase proves RemoveRemote is
+// inert on the overwhelmingly common case -- a repository that never used
+// beads at all -- exactly like Wired. Deliberately runs with no bd on PATH
+// requirement: Present's stat-only check must short-circuit before anything
+// would need bd, so this must pass even where bd is not installed.
+func TestRemoveRemote_SilentWhenThereIsNoBeadsDatabase(t *testing.T) {
+	if err := RemoveRemote(t.Context(), t.TempDir(), "fix-auth"); err != nil {
+		t.Errorf("RemoveRemote() error = %v, want nil for a repository with no beads database", err)
+	}
+}
+
+// TestRemoveRemote_ActuallyRemovesARegisteredRemote is what tells
+// TestRemoveRemote_SilentWhenThereIsNoBeadsDatabase apart from a stub that
+// always returns nil: it proves RemoveRemote does real work when there is
+// real work to do.
+func TestRemoveRemote_ActuallyRemovesARegisteredRemote(t *testing.T) {
+	requireBd(t)
+	mac := t.TempDir()
+	initGitRepo(t, mac)
+	mustRun(t, mac, "bd", "init", "--stealth")
+
+	session := t.TempDir()
+	initGitRepo(t, session)
+	if err := Seed(t.Context(), mac, "fix-auth", FileURL(session)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+
+	out, err := run(t.Context(), mac, remoteListArgs()...)
+	if err != nil {
+		t.Fatalf("dolt remote list before removal: %v\n%s", err, out)
+	}
+	if !containsRemote(parseRemoteList(out), RemoteName("fix-auth")) {
+		t.Fatalf("Seed() did not register %s, fixture setup is broken", RemoteName("fix-auth"))
+	}
+
+	if err := RemoveRemote(t.Context(), mac, "fix-auth"); err != nil {
+		t.Fatalf("RemoveRemote() error = %v", err)
+	}
+
+	out, err = run(t.Context(), mac, remoteListArgs()...)
+	if err != nil {
+		t.Fatalf("dolt remote list after removal: %v\n%s", err, out)
+	}
+	if containsRemote(parseRemoteList(out), RemoteName("fix-auth")) {
+		t.Errorf("RemoveRemote() left %s registered", RemoteName("fix-auth"))
+	}
+}
+
+// TestRemoveRemote_SilentWhenThisSessionsRemoteWasNeverRegistered exercises
+// the case Fix 2 actually needs: a repository that has beads for other
+// sessions, but never had one for this one -- session start with beads =
+// "off", say. Wired must key off the specific session's remote, not off
+// whether beads exists in the repository at all.
+func TestRemoveRemote_SilentWhenThisSessionsRemoteWasNeverRegistered(t *testing.T) {
+	requireBd(t)
+	mac := t.TempDir()
+	initGitRepo(t, mac)
+	mustRun(t, mac, "bd", "init", "--stealth")
+
+	if err := RemoveRemote(t.Context(), mac, "never-wired"); err != nil {
+		t.Errorf("RemoveRemote() error = %v, want nil when this session's remote was never registered", err)
+	}
+}
+
+func containsRemote(remotes []Remote, name string) bool {
+	for _, r := range remotes {
+		if r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRemoteName_MirrorsTheSessionGitRemote(t *testing.T) {
 	// Same name as lifecycle.sessionRemote, so `git remote` and
 	// `bd dolt remote list` show the session under one name, not two.

@@ -77,6 +77,40 @@ func TestBootstrap_SurfacesAnInitFailureWithoutAddingTheRemote(t *testing.T) {
 	if !slices.Equal(fr.commands, want) {
 		t.Fatalf("commands = %v, want %v (init only -- the remote add must not run after init fails)", fr.commands, want)
 	}
+
+	if !errors.Is(err, ErrInitFailed) {
+		t.Errorf("errors.Is(err, ErrInitFailed) = false, want true -- callers tell this apart "+
+			"from a remote-add failure to decide whether the instance has a database at all: err = %v", err)
+	}
+}
+
+// The external remote add is the "dolthub" extra on top of a bootstrap that
+// already succeeded: the instance has a perfectly good database, so this
+// failure must not be mistaken for ErrInitFailed by any caller checking with
+// errors.Is.
+func TestBootstrap_RemoteAddFailureIsNotErrInitFailed(t *testing.T) {
+	fr := newFakeRunner()
+	fr.failAt = 1
+	fr.failErr = errors.New("remote add exploded")
+	repo, fileURL, externalURL := "/repo", "git+file:///session-repo", "https://doltremoteapi.dolthub.com/x/y"
+
+	err := Bootstrap(fr, repo, fileURL, externalURL)
+	if err == nil {
+		t.Fatal("Bootstrap() error = nil, want the remote-add failure")
+	}
+
+	want := []string{
+		initCmd(repo, fileURL),
+		remoteAddCmd(repo, "dolthub", externalURL),
+	}
+	if !slices.Equal(fr.commands, want) {
+		t.Fatalf("commands = %v, want %v (init succeeded, then the remote add ran and failed)", fr.commands, want)
+	}
+
+	if errors.Is(err, ErrInitFailed) {
+		t.Errorf("errors.Is(err, ErrInitFailed) = true, want false -- init succeeded here, "+
+			"the instance has a real database, and this must read as the narrower failure: err = %v", err)
+	}
 }
 
 func TestUnpulled_ReturnsFalseOnlyOnFullSuccess(t *testing.T) {

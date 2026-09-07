@@ -2,6 +2,7 @@ package beads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -68,6 +69,16 @@ func Seed(ctx context.Context, localRepo, session, url string) error {
 	return nil
 }
 
+// ErrInitFailed marks a Bootstrap failure in the instance-side `bd init`
+// step, meaning the instance ended up with no .beads/ database at all.
+//
+// Callers use errors.Is against this to tell that apart from a failure in
+// the later "dolthub" remote-add step, where init already succeeded and a
+// real database exists on the instance -- the two failures call for
+// different responses from a caller deciding whether the session is still
+// wired.
+var ErrInitFailed = errors.New("initialising issues on the instance")
+
 // Bootstrap clones the seeded database into the instance's checkout, and in
 // "dolthub" mode adds the external remote as a second destination afterwards.
 //
@@ -78,9 +89,14 @@ func Seed(ctx context.Context, localRepo, session, url string) error {
 // network reachability and on a credential.
 //
 // externalURL empty means session mode; nothing else about this changes.
+//
+// The two steps fail distinguishably on purpose: wrap the init failure in
+// ErrInitFailed so a caller can tell "no database on the instance at all"
+// apart from "the database is fine, only the extra external remote didn't
+// get added".
 func Bootstrap(client instanceRunner, repo, fileURL, externalURL string) error {
 	if out, err := client.Run(initCmd(repo, fileURL)); err != nil {
-		return fmt.Errorf("initialising issues on the instance: %w\n%s", err, out)
+		return fmt.Errorf("%w: %w\n%s", ErrInitFailed, err, out)
 	}
 	if externalURL == "" {
 		return nil

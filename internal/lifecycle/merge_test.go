@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/beads"
 )
 
 // sessionFixture is a whole session standing up on one machine: a real
@@ -574,5 +576,31 @@ func TestPullSession_ReportsOnlyTheSessionsOwnCommitsAfterARewrite(t *testing.T)
 		if strings.Contains(c, "first") {
 			t.Errorf("pull reported %q, a commit from the pre-rewrite history", c)
 		}
+	}
+}
+
+// Nothing removed the Mac's dolt remote when a session ended: git's own
+// remote came down, but the matching dolt one did not, and it accumulates
+// forever. Worse, a later session started at the same name with beads =
+// "off" would then read as wired anyway, because Wired keys entirely on the
+// remote's presence -- the fail-closed guard firing on an explicit opt-out.
+func TestMergeSession_RemovesTheSessionsDoltRemote(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 1)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	if !beads.Wired(context.Background(), f.repo, f.session) {
+		t.Fatal("beads.Wired() = false right after Seed, fixture setup is broken")
+	}
+
+	if _, err := f.merge(t); err != nil {
+		t.Fatalf("merge() error = %v", err)
+	}
+
+	if beads.Wired(context.Background(), f.repo, f.session) {
+		t.Error("beads.Wired() = true after merge, want the session's dolt remote removed " +
+			"alongside its git remote")
 	}
 }

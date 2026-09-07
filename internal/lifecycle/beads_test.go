@@ -186,3 +186,130 @@ func TestRequireBeadsLanded_PassesOnceIssuesHaveLanded(t *testing.T) {
 		t.Errorf("requireBeadsLanded() error = %v, want nil once the sync completed", err)
 	}
 }
+
+// A warned-and-continued Bootstrap failure must not leave the Mac's dolt
+// remote in place: Wired keys entirely on that remote, so a session with no
+// .beads/ on the instance at all would otherwise read as "wired" and every
+// later requireBeadsLanded call would run `bd dolt push` against an instance
+// that has no beads database, refusing session delete and `cloudlab down`
+// forever. This is the default upgrade path -- any instance provisioned
+// before beads shipped has no `bd` binary, and Bootstrap's "command not
+// found" is exactly the failure this guards.
+//
+// Exercises bootstrapBeads directly rather than seedBeads end to end: seeding
+// through a real ssh:// dolt remote needs a real git/dolt-speaking SSH
+// server, which the fake one here cannot provide (see
+// TestSeedSession_CreatesTheRepoThenPushes's own comment on the same
+// limitation -- "the fake SSH server cannot complete a real git push").
+// wireBeadsForRequireLanded already establishes the pattern of wiring the
+// remote over a real file:// remote and driving only the instance-side half
+// through the fake server; this reuses it.
+func TestBootstrapBeads_RemovesTheRemoteWhenBootstrapFails(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	session := "s"
+	localRepo := t.TempDir()
+	wireBeadsForRequireLanded(t, localRepo, session)
+
+	// Every command containing "bd init" fails, standing in for an instance
+	// with no bd binary on PATH.
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "init") {
+			return "bash: bd: command not found", 127
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	ctx := context.Background()
+	bootstrapBeads(ctx, client, localRepo, "/home/devuser/sessions/s/repo", session, "")
+
+	if beads.Wired(ctx, localRepo, session) {
+		t.Error("Wired() = true after a failed Bootstrap, want false -- a warned-and-continued " +
+			"setup failure must be a known nothing, not something the fail-closed delete/down guard trips on")
+	}
+}
+
+// A Bootstrap failure in the external "dolthub" remote-add step, after `bd
+// init` already succeeded, leaves the instance with a perfectly good
+// database -- the Mac's dolt remote must survive that, unlike an init
+// failure. Removing it here would silently drop the account-wide DoltHub
+// sync protection the user paid a credential for: Wired would go false,
+// pullBeads would report "nothing to sync", and requireBeadsLanded would
+// pass, all without a word, while the session's own git+ssh transport (and
+// the agent's issue edits riding it) is completely intact.
+func TestBootstrapBeads_KeepsTheRemoteWhenOnlyTheExternalRemoteAddFails(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	session := "s"
+	localRepo := t.TempDir()
+	wireBeadsForRequireLanded(t, localRepo, session)
+
+	// bd init succeeds; only the dolthub remote-add fails, standing in for
+	// an instance that has no network reachability to DoltHub or a bad
+	// credential -- either way, `bd init` already produced a real database.
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "remote") && strings.Contains(cmd, "add") && strings.Contains(cmd, "dolthub") {
+			return "could not reach doltremoteapi.dolthub.com", 1
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	bootstrapBeads(ctx, client, localRepo, "/home/devuser/sessions/s/repo", session, "https://doltremoteapi.dolthub.com/x/y")
+
+	if !beads.Wired(ctx, localRepo, session) {
+		t.Error("Wired() = false after only the external remote-add failed, want true -- " +
+			"bd init succeeded, the instance has a real database, and the session's own " +
+			"git+ssh transport still carries issues home")
+	}
+	if !strings.Contains(errOut.String(), "external dolt remote") {
+		t.Errorf("errOut = %q, want a warning naming the external remote-add failure", errOut.String())
+	}
+}
+
+// The warning must say what happened -- silence here is exactly the failure
+// mode Fix 1 exists to close.
+func TestBootstrapBeads_WarnsWhenBootstrapFails(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	session := "s"
+	localRepo := t.TempDir()
+	wireBeadsForRequireLanded(t, localRepo, session)
+
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "init") {
+			return "bash: bd: command not found", 127
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	bootstrapBeads(ctx, client, localRepo, "/home/devuser/sessions/s/repo", session, "")
+
+	if !strings.Contains(errOut.String(), "command not found") {
+		t.Errorf("errOut = %q, want it to carry the Bootstrap failure", errOut.String())
+	}
+}

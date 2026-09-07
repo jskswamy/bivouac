@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
@@ -64,8 +65,52 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 	if beadsMode == "dolthub" && detected.Mode == beads.ModeExternal {
 		external = detected.ExternalURL
 	}
+	bootstrapBeads(ctx, client, localRepo, repo, session, external)
+}
+
+// bootstrapBeads clones the seeded database into the instance's checkout,
+// and removes the Mac's dolt remote only when that leaves the instance with
+// no database at all.
+//
+// Split out of seedBeads so it can be exercised without a real ssh:// dolt
+// remote, which needs a real git/dolt-speaking SSH server that no in-process
+// test harness here can satisfy -- the same reason trackSession is split
+// from seedSession.
+//
+// The removal matters because Wired keys entirely on the remote Seed just
+// registered: a Bootstrap whose `bd init` step fails -- most commonly
+// because the instance predates beads and has no `bd` on PATH -- otherwise
+// leaves that remote in place, and every later requireBeadsLanded call then
+// runs `bd dolt push` against an instance with no .beads/ at all, which
+// fails forever and makes session delete and `cloudlab down` refuse
+// permanently. Removing it turns a warned-and-continued setup failure back
+// into a known nothing, which is what the fail-closed teardown guard is
+// built to pass on.
+//
+// A failure in the later "dolthub" remote-add step is a different animal:
+// `bd init` already succeeded, so the instance has a real database, and the
+// session's own git+ssh transport is intact and will still carry the
+// agent's issues home. Removing the remote there would silently drop the
+// one protection an account-wide DoltHub credential is paid for -- Wired
+// would read false, and pullBeads and requireBeadsLanded would both pass
+// without a word -- exactly the silent loss the design spec's "the modes
+// compose; they do not replace each other" is describing when it says the
+// session's own SSH sync must survive even when the DoltHub side does not.
+// errors.Is against beads.ErrInitFailed is what tells the two failures
+// apart.
+func bootstrapBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, session, external string) {
 	if err := beads.Bootstrap(client, repo, beads.FileURL(repo), external); err != nil {
 		provider.ReportWarning(ctx, "beads: "+err.Error())
+		if !errors.Is(err, beads.ErrInitFailed) {
+			// The instance has a real database; the session's git+ssh
+			// transport still carries issues home, so it stays wired.
+			return
+		}
+		if rmErr := beads.RemoveRemote(ctx, localRepo, session); rmErr != nil {
+			provider.ReportWarning(ctx, "beads: bootstrap failed and the stale dolt remote could not be removed either: "+rmErr.Error()+
+				"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
+		}
+		return
 	}
 }
 

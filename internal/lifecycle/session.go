@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
@@ -488,6 +489,17 @@ func MergeSession(ctx context.Context, ip, user, localRepo, repoName, session, s
 		}
 	}
 	_, _ = runLocalGit(ctx, localRepo, "worktree", "prune")
+
+	// Best-effort, on the same reasoning as the beads sync above: a merge
+	// that has already landed and verified the user's commits must not fail
+	// because a leftover dolt remote could not be dropped. Left behind, it
+	// would make Wired report true for an unrelated later session started at
+	// the same name -- including one started with beads = "off", which is
+	// the fail-closed guard firing on an explicit opt-out.
+	if err := beads.RemoveRemote(ctx, localRepo, session); err != nil {
+		provider.ReportWarning(ctx, "beads: "+err.Error()+
+			"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
+	}
 
 	// Once the cherry-pick has landed, a cleanup failure below must say the
 	// merge succeeded -- retrying `cloudlab merge` against an already-deleted
