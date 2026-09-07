@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
@@ -91,4 +92,30 @@ func pullBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, s
 		return false
 	}
 	return true
+}
+
+// requireBeadsLanded refuses when the instance may still hold issue work this
+// machine does not have.
+//
+// The one place beads is fail-closed, and it inverts everything else in this
+// file deliberately. An error from Unpulled means cloudlab does not know
+// whether the agent's issues are safe, and delete and down are the two verbs
+// that make an unknown permanent -- so an unknown is treated as unsafe, the
+// same stance 47118eb took for commits.
+//
+// A session beads was never wired for passes: that is a known nothing, not an
+// unknown, and refusing on it would make every session in every repository
+// without beads undeletable.
+func requireBeadsLanded(ctx context.Context, client *reconcile.Client, localRepo, repo, session string) error {
+	if !beads.Wired(ctx, localRepo, session) {
+		return nil
+	}
+	unpulled, err := beads.Unpulled(ctx, localRepo, session, client, repo)
+	if err != nil {
+		return fmt.Errorf("cannot confirm session %s's issues have landed: %w\nrefusing to discard issue work cloudlab cannot see — fix the instance and retry, or pass --force to discard it anyway", session, err)
+	}
+	if unpulled {
+		return fmt.Errorf("session %s still holds issue work that is not on this machine — `cloudlab session pull %s` takes it, or --force throws it away", session, session)
+	}
+	return nil
 }

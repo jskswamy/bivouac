@@ -34,6 +34,13 @@ type sessionFixture struct {
 	// onRevParse runs before the nth rev-parse is answered, so a test can
 	// move the session underneath the merge.
 	onRevParse func(n int)
+	// cmdOverride, when set, is consulted before the fixture's own
+	// dispatch for every instance-side command; handled=true short-circuits
+	// the default rev-parse/rm-rf/no-op behaviour below. Used by the beads
+	// guard tests to fail one specific instance command (the dolt push)
+	// without disturbing checkpoint, rev-parse or removal for every other
+	// test built on this fixture.
+	cmdOverride func(cmd string) (output string, code uint32, handled bool)
 }
 
 func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
@@ -84,6 +91,14 @@ func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
 		f.local, sessionRemote(f.session)+"/"+SessionBranch(f.session))
 
 	f.addr = startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		f.mu.Lock()
+		override := f.cmdOverride
+		f.mu.Unlock()
+		if override != nil {
+			if out, code, handled := override(cmd); handled {
+				return out, code
+			}
+		}
 		switch {
 		case strings.Contains(cmd, "rev-parse"):
 			f.mu.Lock()

@@ -91,6 +91,18 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 		provider.ReportProgress(ctx, "rescuing "+s.Name+" before destroy")
 		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, record.Name, s.Name); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: cloudlab down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
+			continue
+		}
+		// Issues are the other half of what an agent produced, and down is
+		// the verb that makes their loss permanent. RescueSession's own
+		// beads step warns rather than failing, because a broken issue sync
+		// must not stop a pull -- but it must stop a destroy.
+		if client, err := reconcile.Connect(ctx, record.IP, record.User); err == nil {
+			err := requireBeadsLanded(ctx, client, s.LocalRepo, RemoteRepoPath(record.User, s.Name, record.Name), s.Name)
+			_ = client.Close()
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 	return firstErr

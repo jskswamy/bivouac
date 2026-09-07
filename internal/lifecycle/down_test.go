@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
@@ -274,5 +275,125 @@ func TestDown_ForceDestroysWithoutRescuing(t *testing.T) {
 	}
 	if !p.destroyed {
 		t.Error("Down(force) did not destroy the VM")
+	}
+}
+
+// The end-to-end version of the beads guard for down: exercises the real
+// rescueBeforeDestroy call site, including the added `continue` and
+// RemoteRepoPath argument order (record.Name plays repoName here, unlike
+// delete's own s.Name/repoName pairing), rather than the guard function in
+// isolation.
+func TestDown_RefusesWhenIssuesHaveNotLanded(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	// Every other instance command (checkpoint, rev-parse, rm -rf) keeps
+	// working -- the rescue itself must still succeed -- only the dolt push
+	// fails.
+	f.cmdOverride = func(cmd string) (string, uint32, bool) {
+		if strings.Contains(cmd, "dolt") && strings.Contains(cmd, "push") {
+			return "dolt push exploded", 1, true
+		}
+		return "", 0, false
+	}
+
+	store := setupDownTest(t)
+	record := state.Record{Name: f.repoName, IP: f.addr, User: "devuser"}
+	record.PutSession(state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	err := Down(context.Background(), p, store, record, false)
+	if err == nil {
+		t.Fatal("Down() = nil when the session's issues had not landed, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("error = %q, want it to name the --force escape hatch", err.Error())
+	}
+	if p.destroyed {
+		t.Error("Down() destroyed the VM despite unlanded issues")
+	}
+}
+
+// The other half: once the sync completes, down must still proceed. Without
+// this, TestDown_RefusesWhenIssuesHaveNotLanded could be "explained" by a
+// guard that refuses unconditionally once beads is wired at all.
+func TestDown_ProceedsWhenIssuesHaveLanded(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	// No override: every instance command, dolt push included, succeeds.
+
+	store := setupDownTest(t)
+	record := state.Record{Name: f.repoName, VMID: "vm-1", IP: f.addr, User: "devuser"}
+	record.PutSession(state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, false); err != nil {
+		t.Fatalf("Down() error = %v, want success once beads' issues have landed", err)
+	}
+	if p.destroyedID != "vm-1" {
+		t.Errorf("Destroy called with %q, want %q", p.destroyedID, "vm-1")
+	}
+}
+
+// Proves the `continue` rescueBeforeDestroy's loop needs: once a session's
+// own rescue has already failed, checking its issues too would only spend a
+// second, doomed round trip on a box already known to be a problem. This
+// asserts on the round trip itself (whether the dolt push the beads sync
+// depends on was ever attempted), because firstErr alone can't tell the two
+// behaviours apart -- a later error is guarded from overwriting the first
+// regardless of whether the check ran.
+func TestDown_SkipsBeadsCheckForASessionWhoseRescueFailed(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+
+	var pushAttempted bool
+	f.cmdOverride = func(cmd string) (string, uint32, bool) {
+		if strings.Contains(cmd, "git add -A") {
+			// Fails the checkpoint, and so RescueSession itself.
+			return "checkpoint exploded", 1, true
+		}
+		if strings.Contains(cmd, "dolt") && strings.Contains(cmd, "push") {
+			f.mu.Lock()
+			pushAttempted = true
+			f.mu.Unlock()
+			return "", 0, true
+		}
+		return "", 0, false
+	}
+
+	store := setupDownTest(t)
+	record := state.Record{Name: f.repoName, IP: f.addr, User: "devuser"}
+	record.PutSession(state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, false); err == nil {
+		t.Fatal("Down() = nil despite a failed rescue, want the rescue error")
+	}
+
+	f.mu.Lock()
+	attempted := pushAttempted
+	f.mu.Unlock()
+	if attempted {
+		t.Error("the beads sync ran for a session whose rescue had already failed -- the `continue` did not skip it")
 	}
 }

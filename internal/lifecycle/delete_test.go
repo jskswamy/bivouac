@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -183,5 +184,67 @@ func TestDeleteSession_ForcedAgainstAnUnreachableInstanceWarnsInsteadOfFailing(t
 	}
 	if out, err := runLocalGit(context.Background(), f.repo, "remote", "get-url", sessionRemote(f.session)); err == nil {
 		t.Errorf("the remote survived a forced delete despite the instance being unreachable: %s", out)
+	}
+}
+
+// The end-to-end version of TestRequireBeadsLanded_RefusesWhenTheSyncCannotConfirmIssuesLanded:
+// this exercises the actual call site inside DeleteSession, including the
+// RemoteRepoPath argument order and the reconcile.Connect that feeds it,
+// rather than the guard function in isolation.
+func TestDeleteSession_RefusesWhenIssuesHaveNotLanded(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	// Every other instance command (checkpoint, rev-parse, rm -rf) keeps
+	// working; only the dolt push -- the half of the sync that would prove
+	// the agent's issues are safe -- fails.
+	f.cmdOverride = func(cmd string) (string, uint32, bool) {
+		if strings.Contains(cmd, "dolt") && strings.Contains(cmd, "push") {
+			return "dolt push exploded", 1, true
+		}
+		return "", 0, false
+	}
+
+	warning, err := DeleteSession(context.Background(), f.addr, "devuser", f.repoName,
+		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base}, false)
+	if err == nil {
+		t.Fatal("DeleteSession() = nil when the session's issues had not landed, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("error = %q, want it to mention --force", err.Error())
+	}
+	if warning != "" {
+		t.Errorf("warning = %q, want none -- a refusal is an error, not a warning", warning)
+	}
+	if f.sessionRemoved() {
+		t.Error("the instance-side session was removed despite unlanded issues")
+	}
+	if _, statErr := os.Stat(f.local); statErr != nil {
+		t.Error("the local worktree was removed despite unlanded issues")
+	}
+}
+
+// The other half: once the sync completes, delete must still proceed. Without
+// this, TestDeleteSession_RefusesWhenIssuesHaveNotLanded could be "explained"
+// by a guard that refuses unconditionally once beads is wired at all.
+func TestDeleteSession_ProceedsWhenIssuesHaveLanded(t *testing.T) {
+	requireBd(t)
+	f := newSessionFixture(t, 0)
+	bdInitStealth(t, f.repo)
+	if err := beads.Seed(context.Background(), f.repo, f.session, beads.FileURL(f.agent)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	// No override: every instance command, dolt push included, succeeds.
+
+	_, err := DeleteSession(context.Background(), f.addr, "devuser", f.repoName,
+		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base}, false)
+	if err != nil {
+		t.Fatalf("DeleteSession() error = %v, want deletion once beads' issues have landed", err)
+	}
+	if !f.sessionRemoved() {
+		t.Error("the instance-side session was not removed despite landed issues")
 	}
 }
