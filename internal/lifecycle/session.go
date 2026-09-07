@@ -255,6 +255,17 @@ func PullSession(ctx context.Context, ip, user, localRepo, repoName, session, se
 		return nil, err
 	}
 
+	// After the rescue, so a commit the agent made alongside an issue edit is
+	// already safe if the issue sync then fails. A second connection rather
+	// than a signature change on RescueSession: delete and down call that too,
+	// and they gate on issues through requireBeadsLanded instead -- syncing
+	// there as well would cost two round trips per teardown and report one
+	// cause as both a warning and an error.
+	if client, err := reconcile.Connect(ctx, ip, user); err == nil {
+		pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
+		_ = client.Close()
+	}
+
 	local := LocalWorktreePath(localRepo, session)
 	// Fast-forward rather than reset --hard. The user is told to cd into
 	// this worktree and run the agent's code, so it can legitimately hold
@@ -361,6 +372,21 @@ func MergeSession(ctx context.Context, ip, user, localRepo, repoName, session, s
 	ref, tip, err := RescueSession(ctx, ip, user, localRepo, repoName, session)
 	if err != nil {
 		return nil, err
+	}
+
+	// Before the replay, so the issue state matching the commits about to
+	// land is already local. merge then removes the session repository --
+	// which is where refs/dolt/data lives -- so a failed sync here is issue
+	// work about to be destroyed, not a deferred problem. It still does not
+	// refuse: merge has no --force, and a beads failure must never be the
+	// thing that strands a user's commits on a box they then have to salvage
+	// by hand. Saying plainly what is at stake is the honest middle.
+	if client, err := reconcile.Connect(ctx, ip, user); err == nil {
+		synced := pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
+		_ = client.Close()
+		if !synced {
+			provider.ReportWarning(ctx, fmt.Sprintf("beads: merge removes the session repository, and its issue database with it — any issue edits that did not sync are about to be lost; fix the problem and `cloudlab session pull %s` first to keep them", session))
+		}
 	}
 
 	branch, err := runLocalGit(ctx, localRepo, "rev-parse", "--abbrev-ref", "HEAD")
