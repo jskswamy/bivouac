@@ -89,6 +89,12 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	if err != nil {
 		return fmt.Errorf("home-manager switch failed: %w\n%s", err, tail(output, 40))
 	}
+
+	// After the switch, not before: placing a credential on a box whose
+	// environment failed to build helps nobody, and this is the path both
+	// `up` and `provision` run -- so recovery after a reboot clears tmpfs is
+	// `cloudlab provision`, which is already idempotent.
+	placeDoltCredential(ctx, client, cfg.Beads)
 	return nil
 }
 

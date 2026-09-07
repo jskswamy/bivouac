@@ -120,6 +120,24 @@ lives in tmpfs on the VM for its lifetime; the session remote is still wired, so
 come home over SSH even when DoltHub is unreachable. Requires `dolthub_creds` and
 `dolthub_creds_id` in `cloudlab secrets`.
 
+`"dolthub"` mode reads two keys from `cloudlab secrets`:
+
+```yaml
+dolthub_creds: |            # contents of ~/.dolt/creds/<id>.jwk
+  {"kty":"OKP","crv":"Ed25519",…}
+dolthub_creds_id: us8isf…   # the jwk's filename stem, written to user.creds
+```
+
+The id is stored beside the key rather than derived from your local
+`~/.dolt/config_global.json`, so the instance's configuration does not depend on hidden
+local state. If either is missing, cloudlab warns and falls back to session mode.
+
+A reboot clears tmpfs and leaves `~/.dolt` dangling; external sync then fails and session
+mode is unaffected. `cloudlab provision` restores it.
+
+`bd dolt push` creates a real `refs/heads/__dolt_remote_info__` branch in the session
+repository alongside `refs/dolt/data`. It is harmless but visible in `git branch`.
+
 `"off"` wires nothing.
 
 The setting is inert in a repository with no `.beads/`.

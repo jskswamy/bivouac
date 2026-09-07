@@ -74,7 +74,14 @@ start a session:
   instance.
 
 The instance never pushes anywhere and never talks to a shared remote — no
-GitHub credentials, host keys or signing keys ever reach the VM. `sync`/
+GitHub credentials, host keys or signing keys ever reach the VM.
+
+The one carve-out is opt-in: `beads = "dolthub"` in `cloudlab.pkl` places your
+DoltHub credential on the instance, in tmpfs, so the agent's issue database can
+sync against DoltHub directly. That credential is account-wide — it grants write
+access to every Dolt repository on your account for the life of the instance.
+The default, `beads = "session"`, needs no credential at all: issues ride the
+session's own git remote over the SSH channel your code already uses. `sync`/
 `download` remain one-shot rsync transfers for things that deliberately
 aren't in git (datasets, weights, results); they never touch repo content or
 trigger a reconcile.
