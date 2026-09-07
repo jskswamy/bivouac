@@ -181,6 +181,57 @@ func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
 	}
 }
 
+// Re-running up against an instance that already exists must not create a
+// second droplet.
+//
+// Up went straight to Create with no store lookup, then overwrote the record
+// with the new IP. The first droplet kept running and became unreachable
+// through the CLI entirely -- list did not show it, down could not find it.
+// Observed live: a provisioning failure, one re-run, and a droplet that had to
+// be deleted through the provider API by hand. The cost is not the money; a
+// session on the orphan is unreachable work, which contradicts the whole
+// rescue-before-destroy guarantee.
+func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
+
+	repoRoot := t.TempDir()
+	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(state.Record{
+		Name: "myinstance", Provider: "digitalocean",
+		VMID: "vm-existing", IP: "192.0.2.9",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{vm: provider.VM{ID: "vm-new", IP: "192.0.2.1"}}
+	err = Up(context.Background(), p, DefaultSteps(), "myinstance", cloudlabPath, repoRoot)
+	if err == nil {
+		t.Fatal("Up() = nil, want a refusal when the instance already exists")
+	}
+	if p.created {
+		t.Error("Create was called; a second droplet was provisioned and the first orphaned")
+	}
+	if !strings.Contains(err.Error(), "192.0.2.9") {
+		t.Errorf("error = %q, want it to name the existing instance's address", err.Error())
+	}
+
+	// The record must still describe the ORIGINAL droplet, or down can never
+	// reach it again.
+	got, ok, err := store.Get("myinstance")
+	if err != nil || !ok {
+		t.Fatalf("store.Get() = %v, %v; want the original record intact", ok, err)
+	}
+	if got.VMID != "vm-existing" {
+		t.Errorf("record VMID = %q, want the original vm-existing -- the record was overwritten", got.VMID)
+	}
+}
+
 func TestUp_RejectsInvalidInstanceNameBeforeCreate(t *testing.T) {
 	repoRoot := t.TempDir()
 	cloudlabPath := minimalCloudlabPkl(t, repoRoot)

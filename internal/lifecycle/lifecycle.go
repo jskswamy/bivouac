@@ -108,6 +108,21 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return err
 	}
 
+	// Before Create, because Create is the irreversible step. Up used to go
+	// straight there and then overwrite the record, so a second run against a
+	// half-provisioned instance built a new droplet and orphaned the first --
+	// still running, still billing, and invisible to list and down, which read
+	// only the record. Recovering one needed the provider API by hand.
+	//
+	// The money is the smaller half. A session on the orphaned droplet is
+	// unreachable work, which is exactly what rescue-before-destroy exists to
+	// prevent.
+	if existing, ok, err := store.Get(name); err != nil {
+		return err
+	} else if ok {
+		return fmt.Errorf("instance %q already exists at %s (id %s)\nrun `cloudlab provision %s` to finish setting it up, or `cloudlab down %s` to destroy it first — creating another would leave this one running and unreachable", name, existing.IP, existing.VMID, name, name)
+	}
+
 	provider.ReportProgress(ctx, "creating instance")
 	vm, err := p.Create(ctx, spec)
 	if err != nil {
