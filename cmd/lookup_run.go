@@ -122,81 +122,8 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	} else {
 		cmd.Printf("Status:   %s\n", st.LiveStatus)
 	}
-
-	watch, err := lifecycle.GetWatchStatus(cmd.Context(), name)
-	if err != nil {
-		cmd.Printf("Watch:    unknown (check failed: %v)\n", err)
-	} else if !watch.Running {
-		cmd.Printf("Watch:    not running\n")
-	} else {
-		cmd.Printf("Watch:    %s (alpha connected: %v, beta connected: %v, conflicts: %d)\n", watch.Status, watch.AlphaConnected, watch.BetaConnected, watch.Conflicts)
-		if watch.LastError != "" {
-			cmd.Printf("Error:    %s\n", watch.LastError)
-		}
-	}
 	printSessions(cmd, record)
 	return nil
-}
-
-func runWatch(cmd *cobra.Command, name string, args []string) error {
-	store, record, err := resolveInstance(name)
-	if err != nil {
-		return err
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	repoFlag, _ := cmd.Flags().GetString("repo")
-	root, err := identity.RepoRoot(cwd, repoFlag)
-	if err != nil {
-		return err
-	}
-
-	// record.RepoPath is unset for instances provisioned before this
-	// field existed (no migration, per the RemotePath rollout) --
-	// recompute the same way Up would, and persist it so ssh's own
-	// RepoPath read (runSSH, below) agrees with where watch is
-	// actually syncing from now on instead of staying stuck at "".
-	remotePath := record.RepoPath
-	if remotePath == "" {
-		remotePath, err = lifecycle.RemotePath(root, record.User)
-		if err != nil {
-			return err
-		}
-		record.RepoPath = remotePath
-		if err := store.Put(record); err != nil {
-			return err
-		}
-	}
-
-	if err := lifecycle.StartWatch(cmd.Context(), record.IP, record.User, name, root, remotePath); err != nil {
-		return err
-	}
-	cmd.Printf("Watch restarted for %s\n", name)
-	return nil
-}
-
-// syncLocalDir returns the local directory sync should push: the
-// --dir flag's value if set, else the current working directory.
-func syncLocalDir(dirFlag string) (string, error) {
-	if dirFlag != "" {
-		return dirFlag, nil
-	}
-	return os.Getwd()
-}
-
-// syncRemoteDir returns the remote directory sync should target:
-// args[0] if given, else local's path mirrored under remoteUser's
-// home via lifecycle.RemotePath (always a mirror -- under the home
-// path directly if local is under the local user's home, or under
-// the full absolute local path otherwise).
-func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
-	if len(args) > 0 {
-		return args[0], nil
-	}
-	return lifecycle.RemotePath(local, remoteUser)
 }
 
 // printSessions renders an instance's sessions. Separate from runStatus so it
@@ -224,48 +151,6 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		}
 		cmd.Printf("  %-16s %-16s %s unmerged, %s\n", info.Name, info.Branch, unmerged, wtState)
 	}
-}
-
-// runSessionList shows every session on every instance, not just this one:
-// the question "what is running anywhere?" is the one this answers, and it is
-// unanswerable today without reading state.json by hand.
-func runSessionList(cmd *cobra.Command, name string, args []string) error {
-	store, err := state.Open()
-	if err != nil {
-		return err
-	}
-	records, err := store.List()
-	if err != nil {
-		return err
-	}
-
-	var infos []lifecycle.SessionInfo
-	for _, r := range records {
-		for _, s := range r.Sessions {
-			infos = append(infos, lifecycle.DescribeSession(cmd.Context(), r.Name, s))
-		}
-	}
-	if len(infos) == 0 {
-		cmd.Println("no sessions")
-		return nil
-	}
-	for _, i := range infos {
-		wtState := "clean"
-		if !i.WorktreeExists {
-			wtState = "no worktree"
-		} else if i.WorktreeDirty {
-			wtState = "dirty"
-		}
-		// "?" rather than 0 when the count could not be computed at all --
-		// printing 0 would read as "nothing to lose", which a git failure does
-		// not establish.
-		unmerged := "?"
-		if i.UnmergedKnown {
-			unmerged = fmt.Sprintf("%d", i.Unmerged)
-		}
-		cmd.Printf("%-16s %-24s %-16s %s unmerged, %s\n", i.Name, i.Instance, i.Branch, unmerged, wtState)
-	}
-	return nil
 }
 
 // runSessionStart backs `cloudlab session start <name>`. Cobra resolves the
@@ -323,6 +208,69 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Fetch   cloudlab session pull %s\n", session)
 	cmd.Printf("Accept  cloudlab session merge %s\n", session)
 	return nil
+}
+
+// runSessionList shows every session on every instance, not just this one:
+// the question "what is running anywhere?" is the one this answers, and it is
+// unanswerable today without reading state.json by hand.
+func runSessionList(cmd *cobra.Command, name string, args []string) error {
+	store, err := state.Open()
+	if err != nil {
+		return err
+	}
+	records, err := store.List()
+	if err != nil {
+		return err
+	}
+
+	var infos []lifecycle.SessionInfo
+	for _, r := range records {
+		for _, s := range r.Sessions {
+			infos = append(infos, lifecycle.DescribeSession(cmd.Context(), r.Name, s))
+		}
+	}
+	if len(infos) == 0 {
+		cmd.Println("no sessions")
+		return nil
+	}
+	for _, i := range infos {
+		wtState := "clean"
+		if !i.WorktreeExists {
+			wtState = "no worktree"
+		} else if i.WorktreeDirty {
+			wtState = "dirty"
+		}
+		// "?" rather than 0 when the count could not be computed at all --
+		// printing 0 would read as "nothing to lose", which a git failure does
+		// not establish.
+		unmerged := "?"
+		if i.UnmergedKnown {
+			unmerged = fmt.Sprintf("%d", i.Unmerged)
+		}
+		cmd.Printf("%-16s %-24s %-16s %s unmerged, %s\n", i.Name, i.Instance, i.Branch, unmerged, wtState)
+	}
+	return nil
+}
+
+// syncLocalDir returns the local directory sync should push: the
+// --dir flag's value if set, else the current working directory.
+func syncLocalDir(dirFlag string) (string, error) {
+	if dirFlag != "" {
+		return dirFlag, nil
+	}
+	return os.Getwd()
+}
+
+// syncRemoteDir returns the remote directory sync should target:
+// args[0] if given, else local's path mirrored under remoteUser's
+// home via lifecycle.RemotePath (always a mirror -- under the home
+// path directly if local is under the local user's home, or under
+// the full absolute local path otherwise).
+func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	return lifecycle.RemotePath(local, remoteUser)
 }
 
 func runSync(cmd *cobra.Command, name string, args []string) error {

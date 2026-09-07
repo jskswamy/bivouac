@@ -17,10 +17,11 @@ import (
 
 const readyTimeout = 5 * time.Minute
 
-// validInstanceName matches names Mutagen's sync-session naming
-// accepts: must start with a letter, followed by letters, digits, or
-// hyphens. Checked before any expensive step (VM creation, billing)
-// begins.
+// validInstanceName matches names usable as both a provider VM name and a
+// path component: must start with a letter, followed by letters, digits, or
+// hyphens. The instance name is also the repository name, so it lands in
+// RemoteBarePath and LocalWorktreePath. Checked before any expensive step
+// (VM creation, billing) begins.
 var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
 // validSessionName has the same shape and the same reason. A session name
@@ -42,14 +43,12 @@ func CheckSessionName(session string) error {
 
 // Steps groups the lifecycle steps Up calls after creating the VM, so
 // tests can substitute recording fakes for the steps that would
-// otherwise need a real remote rsync/mutagen target. Production
+// otherwise need a real remote instance to talk to. Production
 // callers always use DefaultSteps.
 type Steps struct {
 	WaitReady     func(ctx context.Context, ip, user string, timeout time.Duration) error
 	Reconcile     func(ctx context.Context, name, cloudlabPath string) error
 	JoinTailscale func(ctx context.Context, ip, user string) error
-	Rsync         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error
-	StartWatch    func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error
 }
 
 // DefaultSteps wires Steps to the real implementations. Reconcile is
@@ -65,18 +64,18 @@ func DefaultSteps() Steps {
 			})
 		},
 		JoinTailscale: JoinTailscale,
-		Rsync:         Rsync,
-		StartWatch:    StartWatch,
 	}
 }
 
 // Up creates a new instance and brings it fully live: creates the VM,
 // records its state immediately (so a later failure still leaves it
-// destroyable), waits until it's genuinely ready, reconciles
-// home-manager once, rsyncs the repo in, and starts continuous watch.
+// destroyable), waits until it's genuinely ready, and reconciles
+// home-manager once. It does not seed a repository -- nothing needs the
+// code on the instance until a session exists, so that happens in
+// StartSession instead.
 func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPath, repoRoot string) error {
 	if !validInstanceName.MatchString(name) {
-		return fmt.Errorf("instance name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens -- required by the watch session name) -- pass an explicit --name", name)
+		return fmt.Errorf("instance name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens -- it is also used as the repository name in paths on both machines) -- pass an explicit --name", name)
 	}
 
 	cfg, err := config.Resolve(ctx, cloudlabPath)
@@ -184,14 +183,6 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		if err := store.Put(record); err != nil {
 			return err
 		}
-	}
-
-	if err := steps.Rsync(ctx, vm.IP, remoteUser, repoRoot, remotePath); err != nil {
-		return err
-	}
-
-	if err := steps.StartWatch(ctx, vm.IP, remoteUser, name, repoRoot, remotePath); err != nil {
-		return err
 	}
 
 	return nil

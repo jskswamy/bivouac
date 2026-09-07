@@ -4,28 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
-// terminateWatch best-effort terminates any existing Mutagen sync
-// session named name. Errors -- including "no such session" -- are
-// swallowed: the absence of a session to terminate isn't a failure
-// for Down or for a Watch restart, both of which call this first.
-func terminateWatch(ctx context.Context, name string) {
-	// #nosec G204 -- argv-array exec.Command, no shell; name is the
-	// instance name, a local identifier never attacker-controlled.
-	_ = exec.CommandContext(ctx, "mutagen", "sync", "terminate", name).Run()
-}
-
 // deregisterTailscale best-effort logs the instance out of its
 // tailnet before it's destroyed -- once destroyed, nothing can run on
-// it anymore, so this must happen first. Errors are swallowed, same
-// as terminateWatch: a failed logout must never block VM teardown.
-// Skipped entirely if this instance never actually joined, checked
+// it anymore, so this must happen first. Errors are swallowed: a
+// failed logout must never block VM teardown. Skipped entirely if
+// this instance never actually joined, checked
 // via record.TailscaleJoined rather than a freshly-resolved
 // cloudlab.pkl -- Down never receives a config.Config, and the
 // config's current value could differ from what actually happened
@@ -55,8 +44,7 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 }
 
 // Down tears an instance down: rescues any session's work (unless
-// force), stops its watch session (best-effort), destroys the VM, and
-// clears its state record. A VM that's
+// force), destroys the VM, and clears its state record. A VM that's
 // already gone (destroyed outside cloudlab) is treated as success,
 // not an error -- state is cleared either way so cloudlab's view
 // converges with reality. If Destroy fails for any other reason,
@@ -70,7 +58,6 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 		}
 	}
 
-	terminateWatch(ctx, record.Name)
 	deregisterTailscale(ctx, record)
 
 	if err := p.Destroy(ctx, record.VMID); err != nil && !errors.Is(err, provider.ErrNotFound) {

@@ -30,7 +30,7 @@ visudo -cf /etc/sudoers.d/{{.Username}}
 loginctl enable-linger {{.Username}}
 
 # Root access is provisioning-only from here on: everything past
-# cloud-init (home-manager, rsync, watch, ssh) connects as
+# cloud-init (home-manager, git, rsync, ssh) connects as
 # {{.Username}}. Disabled last, and only once the new user's own
 # key-based login is confirmed in place, so a failure anywhere above
 # never locks the instance out entirely.

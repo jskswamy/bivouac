@@ -87,24 +87,9 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 		t.Fatalf("RemotePath() error = %v", err)
 	}
 
-	var order []string
 	steps := Steps{
 		WaitReady: WaitReady,
 		Reconcile: reconcile.Reconcile,
-		Rsync: func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error {
-			order = append(order, "rsync")
-			if ip != addr || user != wantUser || localRepoRoot != repoRoot || remotePath != wantRemotePath {
-				t.Errorf("Rsync called with (%q, %q, %q, %q)", ip, user, localRepoRoot, remotePath)
-			}
-			return nil
-		},
-		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error {
-			order = append(order, "watch")
-			if ip != addr || user != wantUser || name != "myinstance" || localRepoRoot != repoRoot || remotePath != wantRemotePath {
-				t.Errorf("StartWatch called with (%q, %q, %q, %q, %q)", ip, user, name, localRepoRoot, remotePath)
-			}
-			return nil
-		},
 	}
 
 	var progress []string
@@ -114,9 +99,6 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 		t.Fatalf("Up() error = %v", err)
 	}
 
-	if len(order) != 2 || order[0] != "rsync" || order[1] != "watch" {
-		t.Errorf("call order = %v, want [rsync watch]", order)
-	}
 	if len(progress) == 0 || !strings.Contains(progress[0], "creating") {
 		t.Errorf("progress = %v, want a first entry mentioning creating the instance", progress)
 	}
@@ -272,8 +254,6 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 			gotIP, gotUser = ip, user
 			return nil
 		},
-		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
-		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
 	}
 
 	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
@@ -310,8 +290,6 @@ func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
 		WaitReady:     func(ctx context.Context, ip, user string, timeout time.Duration) error { return nil },
 		Reconcile:     func(ctx context.Context, name, cloudlabPath string) error { return nil },
 		JoinTailscale: func(ctx context.Context, ip, user string) error { called = true; return nil },
-		Rsync:         func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
-		StartWatch:    func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
 	}
 
 	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
@@ -347,9 +325,7 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 		WaitReady: func(ctx context.Context, ip, user string, timeout time.Duration) error {
 			return errors.New("simulated unreachable")
 		},
-		Reconcile:  func(ctx context.Context, name, cloudlabPath string) error { return nil },
-		Rsync:      func(ctx context.Context, ip, user, localRepoRoot, remotePath string) error { return nil },
-		StartWatch: func(ctx context.Context, ip, user, name, localRepoRoot, remotePath string) error { return nil },
+		Reconcile: func(ctx context.Context, name, cloudlabPath string) error { return nil },
 	}
 
 	err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot)

@@ -85,14 +85,6 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run: runPair,
 	},
 	{
-		use:   "watch [name]",
-		short: "Restart continuous two-way repo sync if it's stopped or dead",
-		verb:  "watch",
-		args:  cobra.MaximumNArgs(1),
-		named: true,
-		run:   runWatch,
-	},
-	{
 		use:    "start <name>",
 		short:  "Start a named agent session on the instance",
 		verb:   "session start",
@@ -120,7 +112,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:   "status [name]",
-		short: "Show instance detail: IP, uptime, cost, sync/watch state",
+		short: "Show instance detail: IP, uptime, cost, live status",
 		verb:  "status",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
@@ -136,6 +128,25 @@ var lookupCommandSpecs = []lookupCommandSpec{
 			c.Flags().Bool("force", false, "destroy without rescuing work from the instance")
 		},
 		run: runDown,
+	},
+	{
+		use:   "sync [remote-dir]",
+		short: "One-shot push of a local directory to the instance (defaults to the current directory)",
+		verb:  "sync",
+		args:  cobra.MaximumNArgs(1),
+		named: false,
+		flags: func(c *cobra.Command) {
+			c.Flags().String("dir", "", "local directory to sync (defaults to the current directory)")
+		},
+		run: runSync,
+	},
+	{
+		use:   "download <remote-dir> [local-dir]",
+		short: "One-shot pull of files back from the instance",
+		verb:  "download",
+		args:  cobra.RangeArgs(1, 2),
+		named: false,
+		run:   runDownload,
 	},
 	{
 		use:    "pull [session]",
@@ -166,25 +177,6 @@ var lookupCommandSpecs = []lookupCommandSpec{
 			c.Flags().Bool("force", false, "delete even when the session has unmerged work")
 		},
 		run: runSessionDelete,
-	},
-	{
-		use:   "sync [remote-dir]",
-		short: "One-shot push of a local directory to the instance (defaults to the current directory)",
-		verb:  "sync",
-		args:  cobra.MaximumNArgs(1),
-		named: false,
-		flags: func(c *cobra.Command) {
-			c.Flags().String("dir", "", "local directory to sync (defaults to the current directory)")
-		},
-		run: runSync,
-	},
-	{
-		use:   "download <remote-dir> [local-dir]",
-		short: "One-shot pull of files back from the instance",
-		verb:  "download",
-		args:  cobra.RangeArgs(1, 2),
-		named: false,
-		run:   runDownload,
 	},
 }
 

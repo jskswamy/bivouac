@@ -1,8 +1,12 @@
 // Package lifecycle brings a newly created instance from "VM exists" to
-// "fully live": waiting for it to genuinely be ready, reconciling
-// home-manager, syncing the repo in, and starting continuous watch. It
-// is the piece cmd/up.go orchestrates on top of the already-built
-// provider, config, reconcile, and state packages.
+// "fully live": waiting for it to genuinely be ready and reconciling
+// home-manager. It also implements everything that happens on a live
+// instance afterward -- named agent sessions that move code to and
+// from it as git commits, rescue-before-destroy teardown, one-shot
+// rsync for data that deliberately isn't in git, and interactive
+// access (ssh, tmux, herdr, pair). It is the piece cmd/up.go and
+// friends orchestrate on top of the already-built provider, config,
+// reconcile, and state packages.
 package lifecycle
 
 import (

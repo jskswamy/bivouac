@@ -3,7 +3,7 @@
 // decrypting individual values just-in-time, listing key names, and
 // creating the file for a fresh setup. Every operation shells out to
 // sops -- it is never linked as a Go library, matching this
-// codebase's existing convention for tailscale/mutagen/nix.
+// codebase's existing convention for tailscale/nix.
 package secrets
 
 import (

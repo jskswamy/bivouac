@@ -20,7 +20,6 @@ type Record struct {
 	Template        string    `json:"template"`
 	User            string    `json:"user"`
 	RepoPath        string    `json:"repo_path"`
-	WatchPID        int       `json:"watch_pid"`
 	TunnelPID       int       `json:"tunnel_pid"`
 	TailscaleJoined bool      `json:"tailscale_joined"`
 	Sessions        []Session `json:"sessions"`
