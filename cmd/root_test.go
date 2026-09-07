@@ -23,8 +23,11 @@ func TestRootCommandHelp(t *testing.T) {
 	}
 }
 
+// The top level is about the instance. Session verbs -- start, pull, merge --
+// live under `session` rather than sitting beside up/down/ssh, so this list
+// deliberately does not contain them.
 func TestRootCmd_RegistersAllCommands(t *testing.T) {
-	want := []string{"connect", "down", "download", "herdr", "list", "pair", "provision", "secrets", "shell", "ssh", "status", "sync", "tailscale", "tmux", "up", "watch"}
+	want := []string{"connect", "down", "download", "herdr", "list", "pair", "provision", "secrets", "session", "shell", "ssh", "status", "sync", "tailscale", "tmux", "up", "watch"}
 	root := newRootCmd()
 	var got []string
 	for _, c := range root.Commands() {

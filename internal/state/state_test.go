@@ -3,6 +3,7 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -42,7 +43,7 @@ func TestPutGetList_RoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() ok = false, want true")
 	}
-	if got != rec {
+	if !reflect.DeepEqual(got, rec) {
 		t.Errorf("Get() = %+v, want %+v", got, rec)
 	}
 
@@ -50,7 +51,7 @@ func TestPutGetList_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(all) != 1 || all[0] != rec {
+	if len(all) != 1 || !reflect.DeepEqual(all[0], rec) {
 		t.Errorf("List() = %+v, want [%+v]", all, rec)
 	}
 }
@@ -94,7 +95,7 @@ func TestPut_NullStateFileDoesNotPanic(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() ok = false, want true")
 	}
-	if got != rec {
+	if !reflect.DeepEqual(got, rec) {
 		t.Errorf("Get() = %+v, want %+v", got, rec)
 	}
 }
@@ -110,5 +111,51 @@ func TestList_CorruptFileErrors(t *testing.T) {
 
 	if _, err := s.List(); err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestRecord_PutSessionReplacesByNameAndAppendsOtherwise(t *testing.T) {
+	var r Record
+	r.PutSession(Session{Name: "auth", LocalRepo: "/repo", Base: "aaa"})
+	r.PutSession(Session{Name: "docs", LocalRepo: "/repo", Base: "bbb"})
+	if len(r.Sessions) != 2 {
+		t.Fatalf("Sessions = %d, want 2", len(r.Sessions))
+	}
+
+	// Same name replaces rather than duplicating -- a retried start must not
+	// leave two entries whose bases disagree.
+	r.PutSession(Session{Name: "auth", LocalRepo: "/repo", Base: "ccc"})
+	if len(r.Sessions) != 2 {
+		t.Fatalf("Sessions = %d after replacing auth, want 2", len(r.Sessions))
+	}
+	got, ok := r.FindSession("auth")
+	if !ok || got.Base != "ccc" {
+		t.Errorf("FindSession(auth) = %+v, %v; want Base ccc", got, ok)
+	}
+
+	// Order is stable: list output should not shuffle between runs.
+	if r.Sessions[0].Name != "auth" || r.Sessions[1].Name != "docs" {
+		t.Errorf("Sessions order = %v, want auth then docs", r.Sessions)
+	}
+}
+
+// The record round-trips through the store, so the new shape must persist.
+func TestStore_RoundTripsSessions(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	s, err := Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Record{Name: "inst"}
+	r.PutSession(Session{Name: "auth", LocalRepo: "/repo", Base: "aaa"})
+	if err := s.Put(r); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.Get("inst")
+	if err != nil || !ok {
+		t.Fatalf("Get() = %v, %v", ok, err)
+	}
+	if len(got.Sessions) != 1 || got.Sessions[0].Base != "aaa" {
+		t.Errorf("round-tripped sessions = %+v, want one with Base aaa", got.Sessions)
 	}
 }

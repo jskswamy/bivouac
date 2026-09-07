@@ -193,6 +193,63 @@ func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
 	return lifecycle.RemotePath(local, remoteUser)
 }
 
+// runSessionStart backs `cloudlab session start <name>`. Cobra resolves the
+// verb now, so there is no hand-rolled dispatch here and no unknown-subcommand
+// error to maintain -- an unrecognised verb gets cobra's own suggestion.
+func runSessionStart(cmd *cobra.Command, name string, args []string) error {
+	store, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	session := args[0]
+	// Checked here as well as in StartSession, because the name is persisted
+	// before creation is attempted and a name that can never work must not
+	// end up in the record.
+	if err := lifecycle.CheckSessionName(session); err != nil {
+		return err
+	}
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	repoFlag, _ := cmd.Flags().GetString("repo")
+	root, err := identity.RepoRoot(cwd, repoFlag)
+	if err != nil {
+		return err
+	}
+	// The commit the session branches from. merge replays HEAD..<session ref>,
+	// which is only the session's own work while this stays an ancestor of
+	// HEAD -- a later rebase, amend or re-sign of this branch silently widens
+	// that range to the whole pre-rewrite history. Captured here because it is
+	// the only moment the answer is unambiguous.
+	base, err := lifecycle.HeadCommit(ctx, root)
+	if err != nil {
+		return err
+	}
+
+	// All three recorded before the session is created, not after: StartSession
+	// makes the branch and repository on the instance before the local fetch
+	// that can fail, and a session `down` cannot see is a session `down`
+	// destroys. down knows what to rescue only from here -- it resolves an
+	// instance by name and may run from anywhere, so none of this is derivable
+	// from the caller's working directory.
+	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base})
+	if err := store.Put(record); err != nil {
+		return err
+	}
+	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session); err != nil {
+		return err
+	}
+	cmd.Printf("Session %s started on %s\n", session, name)
+	cmd.Printf("\nLocal   %s\n", lifecycle.LocalWorktreePath(root, session))
+	cmd.Printf("Fetch   cloudlab session pull %s\n", session)
+	cmd.Printf("Accept  cloudlab session merge %s\n", session)
+	return nil
+}
+
 func runSync(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {

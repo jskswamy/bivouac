@@ -23,6 +23,23 @@ const readyTimeout = 5 * time.Minute
 // begins.
 var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
+// validSessionName has the same shape and the same reason. A session name
+// becomes a git branch component, a directory on both machines via
+// filepath.Join, and the suffix of the git remote name -- and a later
+// `git worktree remove` is pointed at the path built from it.
+var validSessionName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+
+// CheckSessionName rejects a session name that cannot safely be a branch
+// component, a directory, or a remote suffix. Exported because the CLI
+// records the session name before creating it (so a half-created session is
+// still visible to down) and must not persist a name that can never work.
+func CheckSessionName(session string) error {
+	if !validSessionName.MatchString(session) {
+		return fmt.Errorf("session name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens)", session)
+	}
+	return nil
+}
+
 // Steps groups the lifecycle steps Up calls after creating the VM, so
 // tests can substitute recording fakes for the steps that would
 // otherwise need a real remote rsync/mutagen target. Production

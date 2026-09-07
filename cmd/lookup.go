@@ -16,8 +16,13 @@ type lookupCommandSpec struct {
 	use, short, verb string
 	args             cobra.PositionalArgs
 	named            bool
-	flags            func(c *cobra.Command)
-	run              func(cmd *cobra.Command, name string, args []string) error
+	// parent groups this command under a noun instead of putting it at the
+	// top level. Session verbs live under "session" so cloudlab's top level
+	// stays about the instance -- up, down, ssh, status, provision -- and a
+	// new verb is a new command rather than another string comparison.
+	parent string
+	flags  func(c *cobra.Command)
+	run    func(cmd *cobra.Command, name string, args []string) error
 }
 
 var lookupCommandSpecs = []lookupCommandSpec{
@@ -83,6 +88,15 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runWatch,
 	},
 	{
+		use:    "start <name>",
+		short:  "Start a named agent session on the instance",
+		verb:   "session start",
+		args:   cobra.ExactArgs(1),
+		named:  false,
+		parent: "session",
+		run:    runSessionStart,
+	},
+	{
 		use:   "connect [name]",
 		short: "Open a Jupyter tunnel to the instance (python template only)",
 		verb:  "connect",
@@ -128,11 +142,13 @@ var lookupCommandSpecs = []lookupCommandSpec{
 
 // newLookupCommands builds every lookup-only command from
 // lookupCommandSpecs. Flag handling, identity resolution, and the
-// stub/exit-code behavior are shared across all ten — only Use/Short
-// text, the Args validator, and whether the first positional arg is the
-// instance name differ per spec.
+// stub/exit-code behavior are shared across all of them — only Use/Short
+// text, the Args validator, the per-command flags, and whether the verb is
+// a top-level command or hangs off a noun differ per spec.
 func newLookupCommands() []*cobra.Command {
 	cmds := make([]*cobra.Command, 0, len(lookupCommandSpecs))
+	parents := map[string]*cobra.Command{}
+
 	for _, spec := range lookupCommandSpecs {
 		c := &cobra.Command{
 			Use:   spec.use,
@@ -156,9 +172,33 @@ func newLookupCommands() []*cobra.Command {
 		if spec.flags != nil {
 			spec.flags(c)
 		}
-		cmds = append(cmds, c)
+
+		if spec.parent == "" {
+			cmds = append(cmds, c)
+			continue
+		}
+		parent, ok := parents[spec.parent]
+		if !ok {
+			parent = newGroupCmd(spec.parent)
+			parents[spec.parent] = parent
+			cmds = append(cmds, parent)
+		}
+		parent.AddCommand(c)
 	}
 	return cmds
+}
+
+// newGroupCmd builds the noun a set of verbs hangs off. It runs nothing
+// itself: invoked bare it prints help, which is what someone typing
+// `cloudlab session` wants.
+func newGroupCmd(name string) *cobra.Command {
+	return &cobra.Command{
+		Use:   name,
+		Short: "Manage agent " + name + "s on the instance",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
 }
 
 // resolveLookupIdentity resolves an instance name for lookup-only

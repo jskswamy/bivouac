@@ -11,18 +11,52 @@ import (
 // Record is one instance's state: which provider created it, its VM and
 // network details, and the PIDs of its background sync/tunnel processes.
 type Record struct {
-	Name            string `json:"name"`
-	Provider        string `json:"provider"`
-	VMID            string `json:"vm_id"`
-	IP              string `json:"ip"`
-	Region          string `json:"region"`
-	Size            string `json:"size"`
-	Template        string `json:"template"`
-	User            string `json:"user"`
-	RepoPath        string `json:"repo_path"`
-	WatchPID        int    `json:"watch_pid"`
-	TunnelPID       int    `json:"tunnel_pid"`
-	TailscaleJoined bool   `json:"tailscale_joined"`
+	Name            string    `json:"name"`
+	Provider        string    `json:"provider"`
+	VMID            string    `json:"vm_id"`
+	IP              string    `json:"ip"`
+	Region          string    `json:"region"`
+	Size            string    `json:"size"`
+	Template        string    `json:"template"`
+	User            string    `json:"user"`
+	RepoPath        string    `json:"repo_path"`
+	WatchPID        int       `json:"watch_pid"`
+	TunnelPID       int       `json:"tunnel_pid"`
+	TailscaleJoined bool      `json:"tailscale_joined"`
+	Sessions        []Session `json:"sessions"`
+}
+
+// Session is one agent session on an instance. Name, LocalRepo and Base
+// travel together in one struct rather than as parallel fields: a base
+// paired with the wrong session is a silently wrong replay range, which is
+// exactly the bug that made merge re-apply a whole rewritten history.
+type Session struct {
+	Name      string `json:"name"`
+	LocalRepo string `json:"local_repo"`
+	Base      string `json:"base"`
+}
+
+// FindSession returns the session called name, if the instance has one.
+func (r Record) FindSession(name string) (Session, bool) {
+	for _, s := range r.Sessions {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return Session{}, false
+}
+
+// PutSession adds a session, replacing any existing one with the same name.
+// Replacing rather than appending matters for the retry path: starting the
+// same session twice must not leave two entries whose bases disagree.
+func (r *Record) PutSession(s Session) {
+	for i := range r.Sessions {
+		if r.Sessions[i].Name == s.Name {
+			r.Sessions[i] = s
+			return
+		}
+	}
+	r.Sessions = append(r.Sessions, s)
 }
 
 // Store is a JSON-backed key-value store of instance Records, keyed by

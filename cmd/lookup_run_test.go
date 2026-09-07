@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,99 @@ import (
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/spf13/cobra"
 )
+
+// sessionTestStore isolates state and returns a store holding record.
+func sessionTestStore(t *testing.T, record state.Record) *state.Store {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func sessionTestCmd() *cobra.Command {
+	c := &cobra.Command{}
+	c.Flags().String("repo", "", "")
+	c.SetOut(&bytes.Buffer{})
+	c.SetContext(context.Background())
+	return c
+}
+
+// A second session on the same instance is the point of this change.
+func TestRunSessionStart_AllowsASecondSession(t *testing.T) {
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
+	record.PutSession(state.Session{Name: "alpha", LocalRepo: "/repo", Base: "aaa"})
+	store := sessionTestStore(t, record)
+
+	// Fails at the connection, not at a guard: reaching the connection is
+	// what proves the second session was allowed.
+	err := runSessionStart(sessionTestCmd(), "myinstance", []string{"beta"})
+	if err != nil && strings.Contains(err.Error(), "already has session") {
+		t.Fatalf("a second session was refused: %v", err)
+	}
+	got, _, _ := store.Get("myinstance")
+	if _, ok := got.FindSession("alpha"); !ok {
+		t.Error("starting beta removed alpha from the record")
+	}
+	if _, ok := got.FindSession("beta"); !ok {
+		t.Error("beta was not recorded")
+	}
+}
+
+// A start that fails partway has still created the branch and worktree on
+// the instance. If the session name is only recorded on success, `down`
+// sees no session at all and destroys the VM without rescuing anything.
+func TestRunSession_RecordsTheSessionBeforeCreatingIt(t *testing.T) {
+	// Port 1 refuses immediately, so StartSession fails at its first step.
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1:1", User: "devuser"}
+	store := sessionTestStore(t, record)
+
+	if err := runSessionStart(sessionTestCmd(), "myinstance", []string{"gamma"}); err == nil {
+		t.Fatal("runSessionStart() = nil, want the start to fail against a refused connection")
+	}
+	got, _, _ := store.Get("myinstance")
+	sess, ok := got.FindSession("gamma")
+	if !ok {
+		t.Fatalf("FindSession(gamma) not found after a failed start, want it recorded so down can still rescue it")
+	}
+	if sess.LocalRepo == "" {
+		t.Error("session.LocalRepo is empty after a failed start, so down would not know which repository to fetch into")
+	}
+}
+
+// Retrying the same session is not a second session -- it is how a failed
+// start is fixed.
+func TestRunSession_AllowsRetryingTheSameSession(t *testing.T) {
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1:1", User: "devuser"}
+	record.PutSession(state.Session{Name: "gamma"})
+	sessionTestStore(t, record)
+
+	err := runSessionStart(sessionTestCmd(), "myinstance", []string{"gamma"})
+	if err == nil {
+		t.Fatal("runSessionStart() = nil, want it to get past the guard and fail at the connection")
+	}
+	if strings.Contains(err.Error(), "already has session") {
+		t.Errorf("error = %q, want a retry of the same session to be allowed", err.Error())
+	}
+}
+
+func TestRunSession_RejectsANameThatCannotBeABranchOrPath(t *testing.T) {
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1:1", User: "devuser"}
+	store := sessionTestStore(t, record)
+
+	if err := runSessionStart(sessionTestCmd(), "myinstance", []string{"../escape"}); err == nil {
+		t.Fatal("runSessionStart() = nil, want a bad session name refused")
+	}
+	got, _, _ := store.Get("myinstance")
+	if len(got.Sessions) != 0 {
+		t.Errorf("Sessions = %+v, want a name that can never work not to be persisted", got.Sessions)
+	}
+}
 
 func TestDownSummary_WarnsDestructionIsUnrecoverable(t *testing.T) {
 	record := state.Record{
