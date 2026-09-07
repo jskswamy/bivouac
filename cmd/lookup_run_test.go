@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -776,4 +777,51 @@ func headOf(t *testing.T, repo string) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// Plan D2: "session start resolves the config best-effort and falls back to
+// 'session'... it warns and proceeds as 'session'." beadsModeFor returned
+// "session" on a config that would not resolve with no warning at all -- a
+// user who set beads = "off" got beads wired anyway and no explanation why.
+func TestBeadsModeFor_WarnsAndFallsBackWhenTheConfigWillNotResolve(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	// No cloudlab.pkl at all in this directory: config.Resolve fails to read
+	// the file, which is the same failure a syntactically broken or
+	// unreadable config produces.
+	root := t.TempDir()
+
+	if got := beadsModeFor(ctx, root); got != "session" {
+		t.Errorf("beadsModeFor() = %q, want the documented fallback %q", got, "session")
+	}
+	if errOut.Len() == 0 {
+		t.Error("errOut is empty, want a warning that beads is falling back to session mode")
+	}
+	if !strings.Contains(errOut.String(), "session") {
+		t.Errorf("errOut = %q, want it to name the session-mode fallback", errOut.String())
+	}
+}
+
+// The other half: a real, resolvable config must not be drowned out by a
+// warning that always fires regardless of whether resolution actually
+// failed.
+func TestBeadsModeFor_SilentWhenTheConfigResolves(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	root := t.TempDir()
+	pkl := "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nbeads = \"off\"\n"
+	if err := os.WriteFile(filepath.Join(root, "cloudlab.pkl"), []byte(pkl), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// No base file at the XDG default location for this test's HOME.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "no-such-config"))
+
+	if got := beadsModeFor(ctx, root); got != "off" {
+		t.Errorf("beadsModeFor() = %q, want %q from the resolved config", got, "off")
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want silence when the config resolves", errOut.String())
+	}
 }

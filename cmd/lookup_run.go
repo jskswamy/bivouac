@@ -214,6 +214,7 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 func beadsModeFor(ctx context.Context, root string) string {
 	cfg, err := config.Resolve(ctx, filepath.Join(root, "cloudlab.pkl"))
 	if err != nil {
+		provider.ReportWarning(ctx, "beads: could not resolve "+root+"'s config ("+err.Error()+"); falling back to session mode")
 		return "session"
 	}
 	return cfg.Beads
