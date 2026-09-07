@@ -27,6 +27,12 @@ let
   };
 
   moshiHook = pkgs.callPackage ./moshi-hook-pkg.nix { };
+
+  # The agent's issue tracker. Installed unconditionally rather than gated on
+  # cloudlab.pkl's `beads` field: it is a single small binary, and gating it
+  # would mean an instance provisioned before someone enabled beads could not
+  # sync until it was reprovisioned.
+  beads = pkgs.callPackage ./beads-pkg.nix { };
 in
 {
   options.cloudlab.tailscale = lib.mkOption {
@@ -42,6 +48,7 @@ in
   config.home.packages = [
     pkgs.git
     pkgs.age
+    beads
     pkgs.devbox
     # Started as a headless server by the systemd --user unit below, so
     # one is listening before anyone attaches.

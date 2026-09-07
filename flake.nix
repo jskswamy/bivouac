@@ -140,6 +140,14 @@
               (pklFor system pkgs)
               direnv-instant.packages.${system}.default
             ]
+            # The same derivation the instances get, so the beads round-trip
+            # test in internal/beads exercises a real `bd` in CI rather than
+            # skipping everywhere. Linux only: beads-pkg.nix deliberately has
+            # no darwin entries (the template flake builds neither), so this
+            # would throw on a Mac -- there the round-trip test skips.
+            ++ nixpkgs.lib.optional (nixpkgs.lib.hasSuffix "-linux" system) (
+              pkgs.callPackage ./templates/modules/beads-pkg.nix { }
+            )
             ++ pre-commit-check.enabledPackages;
             # Some sandboxed shells restrict writes to arbitrary
             # subdirectories of $HOME (observed: ~/go/pkg/mod, ~/.pkl both
