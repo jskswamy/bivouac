@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,7 +36,16 @@ func startFakeAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sockPath := filepath.Join(t.TempDir(), "agent.sock")
+	// Not t.TempDir(): its name embeds the test's, and a unix socket path is
+	// capped at ~104 bytes on darwin, so a descriptive test name would fail
+	// the bind rather than the assertion.
+	dir, err := os.MkdirTemp("", "cl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	sockPath := filepath.Join(dir, "a.sock")
 	listener, err := net.Listen("unix", sockPath)
 	if err != nil {
 		t.Fatal(err)
