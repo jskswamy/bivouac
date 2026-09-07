@@ -120,6 +120,15 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:   runDown,
 	},
 	{
+		use:    "pull [session]",
+		short:  "Fetch an agent session's work without merging it",
+		verb:   "session pull",
+		args:   cobra.MaximumNArgs(1),
+		named:  false,
+		parent: "session",
+		run:    runPull,
+	},
+	{
 		use:   "sync [remote-dir]",
 		short: "One-shot push of a local directory to the instance (defaults to the current directory)",
 		verb:  "sync",

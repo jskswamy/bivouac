@@ -182,6 +182,113 @@ func trimLine(s string) string {
 	return s
 }
 
+// RescueSession makes every scrap of a session's work durable on this
+// machine: it commits whatever the agent left uncommitted, fetches the
+// session branch, and verifies the fetched tip is genuinely in the local
+// object store. Returns the local ref the work landed on and the
+// instance-side tip that was verified -- a caller that goes on to delete
+// anything needs the tip to confirm the session has not moved since (see
+// MergeSession).
+//
+// Idempotent by construction -- the checkpoint is a no-op on a clean tree
+// and the fetch moves only missing objects -- so retrying after fixing one
+// problem is always safe.
+func RescueSession(ctx context.Context, ip, user, localRepo, repoName, session string) (string, string, error) {
+	if err := CheckSessionName(session); err != nil {
+		return "", "", err
+	}
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		return "", "", err
+	}
+	defer func() { _ = client.Close() }()
+
+	repo := RemoteRepoPath(user, session, repoName)
+	if out, err := client.Run(checkpointCmd(repo, checkpointMessage(session))); err != nil {
+		return "", "", fmt.Errorf("checkpointing work on instance: %w\n%s", err, out)
+	}
+
+	branch := SessionBranch(session)
+	tip, err := client.Run(remoteGitCmd(repo, "rev-parse", branch))
+	if err != nil {
+		return "", "", fmt.Errorf("reading session tip on instance: %w\n%s", err, tip)
+	}
+	tip = trimLine(tip)
+
+	remote := sessionRemote(session)
+	if out, err := runLocalGit(ctx, localRepo, fetchRemoteArgs(remote)...); err != nil {
+		return "", "", fmt.Errorf("fetching session %s: %w\n%s", session, err, out)
+	}
+	ref := remote + "/" + branch
+
+	if err := verifyFetched(ctx, localRepo, tip); err != nil {
+		return "", "", err
+	}
+	return ref, tip, nil
+}
+
+// checkpointMessage is the subject the instance-side checkpoint commits
+// under. Shared so MergeSession's pre-delete re-checkpoint is
+// indistinguishable from the rescue's own.
+func checkpointMessage(session string) string {
+	return "cloudlab: checkpoint " + session
+}
+
+// PullSession brings a session's work to this machine and refreshes the
+// local worktree, without touching the user's branch. Safe to run
+// repeatedly, including while the agent is still working and while the
+// user's own tree is dirty. Returns one "<sha> <subject>" line per commit
+// not yet on the current branch.
+func PullSession(ctx context.Context, ip, user, localRepo, repoName, session, sessionBase string) ([]string, error) {
+	provider.ReportProgress(ctx, "checkpointing and fetching "+session)
+
+	ref, _, err := RescueSession(ctx, ip, user, localRepo, repoName, session)
+	if err != nil {
+		return nil, err
+	}
+
+	local := LocalWorktreePath(localRepo, session)
+	// Fast-forward rather than reset --hard. The user is told to cd into
+	// this worktree and run the agent's code, so it can legitimately hold
+	// their own edits -- and pull is the safe verb. --ff-only refuses
+	// loudly when the worktree has diverged instead of silently eating
+	// whatever is there.
+	if out, err := runLocalGit(ctx, local, "merge", "--ff-only", ref); err != nil {
+		return nil, fmt.Errorf("updating local worktree %s: %w\n%s\nthe worktree has diverged from the session — commit or discard your changes there, then pull again", local, err, out)
+	}
+
+	out, err := runLocalGit(ctx, localRepo, "log", "--pretty=%h %s", reportRange(ctx, localRepo, sessionBase)+".."+ref)
+	if err != nil {
+		return nil, fmt.Errorf("listing new commits: %w\n%s", err, out)
+	}
+	return nonEmptyLines(out), nil
+}
+
+// reportRange picks the left side of the range pull lists commits from.
+//
+// HEAD is right while the session's base is still an ancestor of it. Once the
+// branch has been rewritten it is not: the range widens to include a
+// pre-rewrite copy of the branch, and pull names commits the user already has
+// while giving no hint that merge is about to refuse. The recorded base is the
+// honest left edge in that case -- it still reaches exactly the session's own
+// work.
+//
+// Falls back to HEAD when there is no base (a session predating the field) or
+// when the base object is gone, since a range against a missing commit fails
+// outright and a slightly wide list beats no list at all.
+func reportRange(ctx context.Context, localRepo, sessionBase string) string {
+	if sessionBase == "" {
+		return "HEAD"
+	}
+	if _, err := runLocalGit(ctx, localRepo, "cat-file", "-e", sessionBase+"^{commit}"); err != nil {
+		return "HEAD"
+	}
+	if _, err := runLocalGit(ctx, localRepo, "merge-base", "--is-ancestor", sessionBase, "HEAD"); err == nil {
+		return "HEAD"
+	}
+	return sessionBase
+}
+
 // nonEmptyLines splits s on newlines, dropping blanks.
 func nonEmptyLines(s string) []string {
 	var out []string
@@ -191,6 +298,16 @@ func nonEmptyLines(s string) []string {
 		}
 	}
 	return out
+}
+
+// verifyFetched confirms sha is present in localRepo's object store. This,
+// not a fetch's exit code, is what authorises deleting a worktree or
+// destroying an instance.
+func verifyFetched(ctx context.Context, localRepo, sha string) error {
+	if _, err := runLocalGit(ctx, localRepo, "cat-file", "-e", sha+"^{commit}"); err != nil {
+		return fmt.Errorf("commit %s is on the instance but not in your local repository — refusing to treat it as rescued", sha)
+	}
+	return nil
 }
 
 // HeadCommit returns the SHA localRepo's HEAD points at. Exported so session

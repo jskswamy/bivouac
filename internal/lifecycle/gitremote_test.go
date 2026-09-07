@@ -68,3 +68,14 @@ func TestCheckoutSessionCmd_UsesPlainCheckout(t *testing.T) {
 		t.Errorf("checkoutSessionCmd() = %q, must never move or force the session branch", got)
 	}
 }
+
+func TestCheckpointCmd_StagesEverythingAndToleratesACleanTree(t *testing.T) {
+	got := checkpointCmd("/home/devuser/sessions/s/repo", "cloudlab: checkpoint")
+	if !strings.Contains(got, "add -A") {
+		t.Errorf("checkpointCmd() = %q, want it to stage all changes", got)
+	}
+	// A clean tree must not be an error: pull runs this every time.
+	if !strings.Contains(got, "diff --cached --quiet") {
+		t.Errorf("checkpointCmd() = %q, want a guard so a clean tree is a no-op", got)
+	}
+}

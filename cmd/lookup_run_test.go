@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -176,6 +177,51 @@ func TestTmuxSession_UsesFirstArgOrDefault(t *testing.T) {
 		if got := tmuxSession(tc.args); got != tc.want {
 			t.Errorf("tmuxSession(%v) = %q, want %q", tc.args, got, tc.want)
 		}
+	}
+}
+
+// With one session the name is ceremony: the record already knows it.
+func TestRunPull_ResolvesTheOnlySessionWithoutAnArgument(t *testing.T) {
+	repo := t.TempDir()
+	mustGitCmd(t, repo, "init", "--quiet")
+
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
+	record.PutSession(state.Session{Name: "solo", LocalRepo: repo, Base: "aaa"})
+	sessionTestStore(t, record)
+
+	c := sessionTestCmd()
+	c.SetArgs(nil)
+	err := runPull(c, "myinstance", nil)
+	// It will fail at the connection; what matters is that it did not fail
+	// for want of an argument.
+	if err != nil && strings.Contains(err.Error(), "no sessions") {
+		t.Fatalf("pull did not resolve the only session: %v", err)
+	}
+}
+
+func TestRunPull_AmbiguityRefusesRatherThanPrompting(t *testing.T) {
+	repo := t.TempDir()
+	mustGitCmd(t, repo, "init", "--quiet")
+
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
+	record.PutSession(state.Session{Name: "auth", LocalRepo: repo})
+	record.PutSession(state.Session{Name: "docs", LocalRepo: repo})
+	sessionTestStore(t, record)
+
+	err := runPull(sessionTestCmd(), "myinstance", nil)
+	if err == nil {
+		t.Fatal("runPull() = nil with two sessions and no argument, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "auth") || !strings.Contains(err.Error(), "docs") {
+		t.Errorf("error = %q, want both candidates named", err.Error())
+	}
+}
+
+func mustGitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 

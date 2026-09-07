@@ -69,12 +69,80 @@ func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 	}
 }
 
+// Rescue must checkpoint before fetching, or uncommitted agent work is
+// invisible to git and lost when the instance goes away.
+func TestRescueSession_CheckpointsBeforeFetching(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var commands []string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		return "", 0
+	})
+
+	_, _, _ = RescueSession(context.Background(), addr, "devuser", t.TempDir(), "cloudlab", "auth")
+
+	var checkpointAt = -1
+	for i, c := range commands {
+		if strings.Contains(c, "add -A") {
+			checkpointAt = i
+			break
+		}
+	}
+	if checkpointAt != 0 {
+		t.Errorf("commands = %v, want the checkpoint first", commands)
+	}
+}
+
 // What RescueSession actually returns, and that the ref resolves, is
 // asserted against real repositories in
 // TestRescueSession_LandsWorkOnTheRemoteTrackingRef (merge_test.go). It
 // cannot be asserted here: the fake SSH server cannot serve a fetch, so
 // RescueSession only ever fails, and every claim about its success value
 // would hold trivially.
+
+// A fetch reporting success is not proof the object arrived. Verification
+// is what authorises anything destructive downstream.
+func TestVerifyFetched_FailsWhenObjectIsAbsent(t *testing.T) {
+	repo := t.TempDir()
+	if out, err := runLocalGit(context.Background(), repo, "init", "--quiet"); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	err := verifyFetched(context.Background(), repo, "0000000000000000000000000000000000000000")
+	if err == nil {
+		t.Fatal("verifyFetched() = nil, want an error for an object this repo does not have")
+	}
+}
+
+// pull must change nothing on the instance beyond checkpointing: the agent
+// is still working in that tree, and pull is run repeatedly while it is.
+// (What pull does on *this* machine -- fast-forward the session worktree,
+// leave the user's branch alone -- is asserted against real repositories in
+// TestPullSession_UpdatesTheSessionWorktreeAndNeverTheUsersBranch, since the
+// commands captured here are only the remote ones.)
+func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var commands []string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		return "", 0
+	})
+
+	_, _ = PullSession(context.Background(), addr, "devuser", t.TempDir(), "cloudlab", "auth", "")
+
+	if len(commands) == 0 {
+		t.Fatal("PullSession() ran no remote commands, want at least a checkpoint")
+	}
+	joined := strings.Join(commands, "\n")
+	for _, forbidden := range []string{"rebase", "reset", "checkout", "worktree remove", "branch -D"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("commands = %v, pull must not run %q on the instance", commands, forbidden)
+		}
+	}
+}
 
 // StartSession now seeds the repository first (seeding moved out of `up` and
 // into session start), so a session's remote worktree is never created

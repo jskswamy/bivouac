@@ -303,6 +303,60 @@ func runDownload(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
+// resolveSessionArg resolves the session a session-aware command acts on,
+// along with the repository root it should operate in. Returns
+// *lifecycle.AmbiguousError unchanged, so an interactive caller can offer a
+// picker instead of refusing.
+func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (state.Session, string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return state.Session{}, "", err
+	}
+	repoFlag, _ := cmd.Flags().GetString("repo")
+	root, err := identity.RepoRoot(cwd, repoFlag)
+	if err != nil {
+		return state.Session{}, "", err
+	}
+	explicit := ""
+	if len(args) > 0 {
+		explicit = args[0]
+	}
+	sess, err := lifecycle.ResolveSession(cmd.Context(), cwd, record, explicit)
+	if err != nil {
+		return state.Session{}, root, err
+	}
+	return sess, root, nil
+}
+
+func runPull(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
+	sess, root, err := resolveSessionArg(cmd, record, args)
+	if err != nil {
+		return err
+	}
+	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, root, name, sess.Name, sess.Base)
+	if err != nil {
+		return err
+	}
+	if len(commits) == 0 {
+		cmd.Printf("%s: up to date\n", sess.Name)
+		return nil
+	}
+	cmd.Printf("%s: %d new commits\n", sess.Name, len(commits))
+	for _, c := range commits {
+		cmd.Printf("  %s\n", c)
+	}
+	cmd.Printf("\nReview  git log HEAD..%s\n", "cloudlab-"+sess.Name+"/"+lifecycle.SessionBranch(sess.Name))
+	cmd.Printf("Accept  cloudlab session merge %s\n", sess.Name)
+	return nil
+}
+
 func runSSH(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {

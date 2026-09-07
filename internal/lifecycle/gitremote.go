@@ -48,6 +48,16 @@ func checkoutSessionCmd(repo, branch string) string {
 	return remoteGitCmd(repo, "checkout", branch)
 }
 
+// checkpointCmd commits whatever the agent left uncommitted. The
+// diff --cached --quiet guard makes a clean tree exit 0 without creating an
+// empty commit, so pull can run this unconditionally.
+func checkpointCmd(repo, message string) string {
+	inner := "cd " + reconcile.ShellQuote(repo) +
+		" && git add -A" +
+		" && { git diff --cached --quiet || git commit --quiet -m " + reconcile.ShellQuote(message) + "; }"
+	return "bash -lc " + reconcile.ShellQuote(inner)
+}
+
 // setIdentityCmd gives the session repository the user's own git identity.
 //
 // Without it git does not fail -- it fabricates an identity from the OS, the
