@@ -517,7 +517,19 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 	if dir == "" {
-		dir = record.RepoPath
+		// record.RepoPath is a mirror of the local checkout path that rsync
+		// used to create; nothing creates it now, so it silently landed the
+		// user in $HOME. The session's repository is where the work is.
+		//
+		// nil, not args: for ssh and herdr args[0] is the INSTANCE name
+		// (named: true), and for tmux it is a tmux session name -- a
+		// different namespace. Passing either through would resolve it as a
+		// cloudlab session and fail with "instance X has no session X".
+		// Resolution here comes from the cwd, the single session, or the
+		// picker; naming one explicitly is what `cd` into its worktree is for.
+		if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, name)
+		}
 	}
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir)
 }
@@ -527,7 +539,19 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.Herdr(cmd.Context(), record.IP, record.User)
+	// nil, not args: args[0] here is the INSTANCE name (see the nil-args
+	// comment on runSSH). herdr has no way to attach a starting directory to
+	// a --remote session (that's cloudlab-7y1, via `workspace create --cwd`
+	// at `session start` time) -- but it does accept --session, so the
+	// resolved cloudlab session still buys a per-session herdr session:
+	// reconnecting to the same session name lands back in the same place.
+	// With no session resolvable, connect anyway with herdr's own default
+	// session -- connecting is not destructive and must degrade, not refuse.
+	session := ""
+	if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+		session = sess.Name
+	}
+	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
 }
 
 func runTailscale(cmd *cobra.Command, name string, args []string) error {
@@ -621,5 +645,16 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, tmuxSession(args))
+	session := tmuxSession(args)
+	// nil, not args: args[0] here is a tmux session name, a different
+	// namespace from a cloudlab session name (see the nil-args comment on
+	// runSSH). Only substitute the cloudlab session's name when the caller
+	// didn't already ask for a specific tmux session -- reconnecting to that
+	// same name is what lands back in the same place.
+	if len(args) == 0 {
+		if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+			session = sess.Name
+		}
+	}
+	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, session)
 }
