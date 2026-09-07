@@ -38,8 +38,8 @@ in
     pkgs.git
     pkgs.age
     pkgs.devbox
-    # Started as a headless server by the systemd --user unit below,
-    # rather than left to launch on demand.
+    # Started as a headless server by the systemd --user unit below, so
+    # one is listening before anyone attaches.
     pkgs.herdr
     # Lets the getmoshi.app mobile client (SSH & Mosh from iOS/Android)
     # connect to this instance -- moshi itself is a client-side app,
@@ -68,25 +68,34 @@ in
   config.home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
 
   # The Moshi mobile client supports herdr out of the box, so a phone
-  # paired via `cloudlab pair` expects a herdr server to already be
-  # running here. Left to itself herdr only starts one on demand at
-  # first attach, which means it exists solely once someone has attached
-  # from a desktop (`cloudlab herdr`, i.e. `herdr --remote`) -- a
-  # freshly paired phone would find nothing to connect to.
-  #
-  # Starting it at boot also decouples the server's lifetime from
-  # whichever SSH session happened to spawn it, so the persistent
-  # sessions and agent panes it holds survive a disconnect.
+  # paired via `cloudlab pair` expects a herdr server to be listening
+  # here. herdr does launch one on demand at first attach (per `herdr
+  # --help`), and that server outlives whichever session spawned it --
+  # one was measured still running 59 minutes later with PPID 1 -- so
+  # persistence is herdr's doing, not this unit's. What the unit buys
+  # is a server that exists before anyone has attached at all,
+  # including after a reboot.
   #
   # No sudo here, unlike tailscaled and the docker template's dockerd:
   # herdr is a terminal workspace manager that runs entirely as this
   # user, keeping its socket, config and logs under ~/.config/herdr.
   # cloud-init's `loginctl enable-linger` is what keeps this user's
   # systemd instance -- and so this server -- alive between logins.
+  #
+  # `herdr server` refuses to share its socket and exits 1 when one is
+  # already being served. At boot nothing has attached yet, so the unit
+  # wins that race and starts the server it is here to start. Re-running
+  # `cloudlab provision` against a live instance someone has already
+  # attached to is the case where it does not: a server is up, systemd
+  # simply is not the thing that started it. Treating that exit as
+  # success keeps provision idempotent -- without it the collision fails
+  # the unit, Restart retries to the start limit, and herdr.service is
+  # left permanently failed on a box whose server is running fine.
   config.systemd.user.services.herdr = {
     Unit.Description = "Herdr headless server";
     Service = {
       ExecStart = "${pkgs.herdr}/bin/herdr server";
+      SuccessExitStatus = "1";
       Restart = "on-failure";
     };
     Install.WantedBy = [ "default.target" ];
