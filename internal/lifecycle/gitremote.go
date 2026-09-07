@@ -106,3 +106,43 @@ func setIdentityCmd(repo, name, email string) string {
 		" && git -C " + q(repo) + " config user.email " + q(email)
 	return "bash -lc " + reconcile.ShellQuote(inner)
 }
+
+// beadsDirPattern is the ignore entry that keeps a session's issue database
+// out of the instance's checkpoint commits. A sibling of worktreeDirPattern,
+// which does the same job on this machine.
+const beadsDirPattern = "/.beads/"
+
+// excludeBeadsCmd makes sure .beads/ is ignored in the instance's repository.
+//
+// Three facts compound into the reason this exists. checkpointCmd runs `git
+// add -A` on every pull. `bd init` creates .beads/embeddeddolt inside the
+// session checkout -- 3.8 MB in this repository today. And .git/info/exclude
+// does not travel over `git push`, so the Mac's own exclusions are absent
+// from the repository `git init` just made over here. Unexcluded, the first
+// pull commits a multi-megabyte database and merge cherry-picks it onto the
+// user's branch under their signature.
+//
+// Written by cloudlab before `bd init` runs, rather than relying on bd to
+// write it: setup is fail-safe, so a `bd init` that fails partway is
+// tolerated -- but it can still leave .beads/ behind, and by then the guard
+// has to already be in place.
+//
+// .git/info/exclude rather than .gitignore, matching excludeWorktreeDir: it
+// is cloudlab's own bookkeeping, not something to add to a file the user
+// commits and reviews. grep -qxF makes it idempotent, which session start's
+// retry-safety requires.
+func excludeBeadsCmd(repo string) string {
+	q := reconcile.ShellQuote
+	// --absolute-git-dir, not --git-dir: the latter answers ".git", relative
+	// to the -C directory, and this command never cd's -- so the exclusion
+	// would land under the login shell's own home directory instead of the
+	// session repository, silently doing nothing.
+	exclude := "\"$(git -C " + q(repo) + " rev-parse --absolute-git-dir)\"/info/exclude"
+	inner := "set -e" +
+		"; e=" + exclude +
+		"; mkdir -p \"$(dirname \"$e\")\"" +
+		"; touch \"$e\"" +
+		"; grep -qxF " + q(beadsDirPattern) + " \"$e\"" +
+		" || printf '\\n# cloudlab session issue database\\n%s\\n' " + q(beadsDirPattern) + " >> \"$e\""
+	return "bash -lc " + reconcile.ShellQuote(inner)
+}
