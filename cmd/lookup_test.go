@@ -21,7 +21,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		{[]string{"tmux", "--name", "myrepo"}, "tmux", `no instance named "myrepo"`},
 		{[]string{"tailscale", "--name", "myrepo"}, "tailscale", `no instance named "myrepo"`},
 		{[]string{"pair", "--name", "myrepo"}, "pair", `no instance named "myrepo"`},
-		{[]string{"watch", "--name", "myrepo"}, "watch", `no instance named "myrepo"`},
+		{[]string{"session", "start", "auth-refactor", "--name", "myrepo"}, "session", `no instance named "myrepo"`},
 		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
 		{[]string{"down", "--name", "myrepo"}, "down", `no instance named "myrepo"`},
@@ -142,5 +142,48 @@ func TestLookupCommands_ErrorOutsideRepoNoName(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no instance name given") {
 		t.Errorf("error = %q, want mention of 'no instance name given'", err.Error())
+	}
+}
+
+// session, pull and merge only ever act on a session, so they belong under one
+// noun rather than as three top-level verbs beside up/down/ssh. Grouping them
+// also means adding a verb is adding a command, not another string comparison
+// inside runSession.
+func TestSessionCommand_GroupsStartPullAndMerge(t *testing.T) {
+	root := newRootCmd()
+
+	session, _, err := root.Find([]string{"session"})
+	if err != nil || session.Name() != "session" {
+		t.Fatalf("root.Find(session) = %v, %v; want the session command", session, err)
+	}
+	if !session.HasSubCommands() {
+		t.Fatal("session has no subcommands; it is still dispatching by hand")
+	}
+
+	for _, verb := range []string{"start", "pull", "merge"} {
+		got, _, err := root.Find([]string{"session", verb})
+		if err != nil {
+			t.Errorf("root.Find(session %s) error = %v", verb, err)
+			continue
+		}
+		if got.Name() != verb {
+			t.Errorf("session %s resolved to %q, want %q", verb, got.Name(), verb)
+		}
+		if got.RunE == nil {
+			t.Errorf("session %s has no RunE", verb)
+		}
+	}
+}
+
+// The old top-level pull and merge must be gone, or there are two ways to do
+// the same thing and only one of them is documented.
+func TestSessionCommand_TopLevelPullAndMergeAreGone(t *testing.T) {
+	root := newRootCmd()
+	for _, verb := range []string{"pull", "merge"} {
+		for _, c := range root.Commands() {
+			if c.Name() == verb {
+				t.Errorf("%q is still a top-level command; it should live under session", verb)
+			}
+		}
 	}
 }

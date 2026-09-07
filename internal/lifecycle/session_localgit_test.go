@@ -242,3 +242,86 @@ func TestSeeding_RetryLeavesExistingWorkAlone(t *testing.T) {
 		t.Errorf("retry destroyed the agent's uncommitted file: %v", err)
 	}
 }
+
+// C2. The gate's whole job is to fail. These are the two ways it silently
+// did not: a range that resolves to nothing, and commits git will not vouch
+// for.
+func TestVerifySignatures_RejectsAnEmptyRange(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+
+	// Exactly the shape of the old bug: the branch name after a cherry-pick
+	// has advanced, so "main..HEAD" names an empty range.
+	if _, err := verifySignatures(context.Background(), repo, "main..HEAD"); err == nil {
+		t.Fatal("verifySignatures() = nil for an empty range, want a failure — a check that inspected nothing is not a pass")
+	}
+}
+
+func TestVerifySignatures_RejectsUnsignedCommits(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	writeAndCommit(t, repo, "a.txt", "x", "unsigned work")
+
+	_, err := verifySignatures(context.Background(), repo, base+"..HEAD")
+	if err == nil {
+		t.Fatal("verifySignatures() = nil for an unsigned commit, want a failure")
+	}
+	if !strings.Contains(err.Error(), "cannot verify") {
+		t.Errorf("error = %q, want it to say the commit cannot be verified", err.Error())
+	}
+	// The commonest real cause is a missing trust store, not a missing key,
+	// so the message has to name it -- a live run failed here with
+	// commit.gpgsign and user.signingkey both already set correctly.
+	if !strings.Contains(err.Error(), "allowedSignersFile") {
+		t.Errorf("error = %q, want it to name gpg.ssh.allowedSignersFile", err.Error())
+	}
+}
+
+func TestVerifySignatures_AcceptsSignedCommits(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+	configureSigning(t, repo, true)
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	mustGit(t, repo, "config", "commit.gpgsign", "true")
+	writeAndCommit(t, repo, "a.txt", "x", "signed work")
+
+	signed, err := verifySignatures(context.Background(), repo, base+"..HEAD")
+	if err != nil {
+		t.Fatalf("verifySignatures() error = %v, want a pass for a genuinely signed commit", err)
+	}
+	if len(signed) != 1 {
+		t.Errorf("verifySignatures() reported %d commits, want 1", len(signed))
+	}
+}
+
+// I6. cherry-pick has no patch-id dedup -- that is a rebase behaviour -- so
+// replaying an already-applied range must be made safe explicitly, or the
+// documented "just re-run it" recovery leaves the repository mid-cherry-pick.
+func TestCherryPickSignArgs_ReRunAfterTheRangeAlreadyLanded(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("HOME", filepath.Join(base, "home"))
+	repo := filepath.Join(base, "repo")
+	initRepo(t, repo)
+	configureSigning(t, repo, true)
+
+	mustGit(t, repo, "checkout", "--quiet", "-b", "agent")
+	writeAndCommit(t, repo, "a.txt", "x", "agent one")
+	writeAndCommit(t, repo, "b.txt", "y", "agent two")
+	mustGit(t, repo, "checkout", "--quiet", "main")
+	// The user's branch has its own commit, so the replayed commits are
+	// genuinely new objects rather than a fast-forward -- which is what makes
+	// the second run see a non-empty range whose commits all apply as empty.
+	writeAndCommit(t, repo, "mine.txt", "mine", "user commit")
+
+	mustGit(t, repo, cherryPickSignArgs("HEAD..agent")...)
+	if n := gitOut(t, repo, countRangeArgs("HEAD..agent")...); n == "0" {
+		t.Fatal("the replayed range is empty, so this test would not exercise the re-run at all")
+	}
+	if out, err := runLocalGit(context.Background(), repo, cherryPickSignArgs("HEAD..agent")...); err != nil {
+		t.Fatalf("re-running the cherry-pick failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "CHERRY_PICK_HEAD")); err == nil {
+		t.Error("repository left mid-cherry-pick after a re-run")
+	}
+}

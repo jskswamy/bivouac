@@ -139,6 +139,21 @@ func TestRecord_PutSessionReplacesByNameAndAppendsOtherwise(t *testing.T) {
 	}
 }
 
+func TestRecord_RemoveSessionLeavesTheOthers(t *testing.T) {
+	var r Record
+	r.PutSession(Session{Name: "auth"})
+	r.PutSession(Session{Name: "docs"})
+
+	r.RemoveSession("auth")
+	if _, ok := r.FindSession("auth"); ok {
+		t.Error("auth still present after RemoveSession")
+	}
+	if _, ok := r.FindSession("docs"); !ok {
+		t.Error("docs was removed too")
+	}
+	r.RemoveSession("nonexistent") // must not panic
+}
+
 // The record round-trips through the store, so the new shape must persist.
 func TestStore_RoundTripsSessions(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

@@ -357,6 +357,48 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
+func runMerge(cmd *cobra.Command, name string, args []string) error {
+	store, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
+	sess, root, err := resolveSessionArg(cmd, record, args)
+	if err != nil {
+		return err
+	}
+	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, root, name, sess.Name, sess.Base)
+	if err != nil {
+		return err
+	}
+	if err := forgetMergedSession(store, record, sess.Name); err != nil {
+		return err
+	}
+	cmd.Printf("%s: %d commits replayed and signed\n", sess.Name, len(signed))
+	for _, s := range signed {
+		cmd.Printf("  %s\n", s)
+	}
+	cmd.Printf("session %s removed from both sides\n", sess.Name)
+	return nil
+}
+
+// forgetMergedSession drops a merged session from the instance's record.
+// Leaving it there would make the next `down` try to rescue a session whose
+// local remote merge already removed, refuse to destroy, and recommend
+// --force -- which skips the rescue for every other session on the instance,
+// not just this dead one. A session the record does not name is left alone,
+// since the record is the only thing telling `down` what to rescue.
+// runSessionDelete drops its entry on the same reasoning.
+func forgetMergedSession(store *state.Store, record state.Record, session string) error {
+	if _, ok := record.FindSession(session); !ok {
+		return nil
+	}
+	record.RemoveSession(session)
+	return store.Put(record)
+}
+
 func runSSH(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {

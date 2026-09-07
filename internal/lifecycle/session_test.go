@@ -263,6 +263,38 @@ func TestTrackSession_UsesTheURLItWasGiven(t *testing.T) {
 	}
 }
 
+func TestMergeSession_RefusesOnADirtyTree(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	repo := t.TempDir()
+	ctx := context.Background()
+	mustGit(t, repo, "init", "--quiet")
+	mustGit(t, repo, "config", "user.email", "t@example.com")
+	mustGit(t, repo, "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "commit", "--quiet", "-m", "first")
+	// leave an uncommitted change
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("y"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty base: a session recorded before session_base existed. The
+	// rewritten-base check must not fire, so the dirty-tree refusal is what
+	// this test still observes.
+	_, err := MergeSession(ctx, addr, "devuser", repo, "cloudlab", "auth", "")
+	if err == nil {
+		t.Fatal("MergeSession() = nil, want a refusal on a dirty worktree")
+	}
+	if !strings.Contains(err.Error(), "uncommitted") {
+		t.Errorf("error = %q, want it to name the uncommitted changes", err.Error())
+	}
+}
+
 func mustGit(t *testing.T, repo string, args ...string) {
 	t.Helper()
 	if out, err := runLocalGit(context.Background(), repo, args...); err != nil {

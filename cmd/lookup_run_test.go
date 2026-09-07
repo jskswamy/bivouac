@@ -106,6 +106,37 @@ func TestRunSession_RejectsANameThatCannotBeABranchOrPath(t *testing.T) {
 	}
 }
 
+// After a successful merge the session exists on neither machine. A record
+// that still names it makes the next `down` refuse to destroy and recommend
+// --force, which is the one path that loses work.
+func TestForgetMergedSession_ClearsTheRecordSoDownStopsRescuing(t *testing.T) {
+	record := state.Record{Name: "myinstance"}
+	record.PutSession(state.Session{Name: "alpha", LocalRepo: "/some/repo"})
+	store := sessionTestStore(t, record)
+
+	if err := forgetMergedSession(store, record, "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := store.Get("myinstance")
+	if len(got.Sessions) != 0 {
+		t.Errorf("Sessions after merge = %+v, want cleared", got.Sessions)
+	}
+}
+
+func TestForgetMergedSession_LeavesADifferentSessionAlone(t *testing.T) {
+	record := state.Record{Name: "myinstance"}
+	record.PutSession(state.Session{Name: "alpha", LocalRepo: "/some/repo"})
+	store := sessionTestStore(t, record)
+
+	if err := forgetMergedSession(store, record, "beta"); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := store.Get("myinstance")
+	if _, ok := got.FindSession("alpha"); !ok {
+		t.Error("FindSession(alpha) not found, want the live session still recorded for down to rescue")
+	}
+}
+
 func TestDownSummary_WarnsDestructionIsUnrecoverable(t *testing.T) {
 	record := state.Record{
 		Name: "myrepo", Provider: "digitalocean", Region: "nyc3",

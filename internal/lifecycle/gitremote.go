@@ -58,6 +58,37 @@ func checkpointCmd(repo, message string) string {
 	return "bash -lc " + reconcile.ShellQuote(inner)
 }
 
+// removeRepoCmd tears a session down on the instance. The repository is the
+// session, so removing the directory removes the branch, the working tree and
+// the object store together -- there is no shared store left needing a
+// separate branch delete or worktree prune.
+//
+// Called once the session's commits are verified present in the Mac's
+// object store (see MergeSession, where that ordering is the safety
+// property the whole design rests on) -- or, via DeleteSession --force,
+// when the caller has deliberately chosen to discard unverified work
+// instead.
+func removeRepoCmd(repo string) string {
+	q := reconcile.ShellQuote
+	// rmdir, not rm -rf, on the parent: a session can hold more than one
+	// repository once multi-repo lands, and rmdir refuses a directory that
+	// still has something in it. So the empty case is cleaned up and the
+	// sibling case is left alone, without this having to know which it is.
+	// The `|| true` keeps a non-empty parent from failing the whole teardown.
+	inner := "rm -rf " + q(repo) +
+		" && rmdir " + q(remoteSessionDir(repo)) + " 2>/dev/null || true"
+	return "bash -lc " + reconcile.ShellQuote(inner)
+}
+
+// remoteSessionDir is the directory holding a session's repositories --
+// RemoteRepoPath minus its last element.
+func remoteSessionDir(repo string) string {
+	if i := strings.LastIndex(repo, "/"); i > 0 {
+		return repo[:i]
+	}
+	return repo
+}
+
 // setIdentityCmd gives the session repository the user's own git identity.
 //
 // Without it git does not fail -- it fabricates an identity from the OS, the

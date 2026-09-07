@@ -76,3 +76,33 @@ func remoteRemoveArgs(name string) []string {
 func fetchRemoteArgs(name string) []string {
 	return []string{"fetch", "--prune", name}
 }
+
+// cherryPickSignArgs replays a range onto the checked-out branch, signing
+// each commit. Not rebase: the session ref lives outside refs/heads, and
+// `git rebase --onto <branch> <branch> <ref>` on a descendant ref reports
+// "up to date", re-signs nothing, and detaches HEAD -- leaving the user's
+// branch untouched while appearing to succeed.
+//
+// --empty=drop is what makes a re-run after a conflict work. cherry-pick has
+// no patch-id dedup -- that is a rebase behaviour -- so replaying a range
+// whose commits already landed stops with "The previous cherry-pick is now
+// empty" and leaves the repository mid-cherry-pick. Dropping the ones that
+// became empty skips exactly the already-applied ones instead.
+func cherryPickSignArgs(revRange string) []string {
+	return []string{"cherry-pick", "--empty=drop", "-S", revRange}
+}
+
+// countRangeArgs counts the commits in revRange. Used to tell "the agent
+// produced nothing" apart from real work: cherry-pick on an empty range
+// exits 128, which would make a session that produced nothing, or one
+// already merged, impossible to retire.
+func countRangeArgs(revRange string) []string {
+	return []string{"rev-list", "--count", revRange}
+}
+
+// signatureStatusArgs asks git to report each commit's signature state.
+// %G? yields G for a good signature and N for none, which is what the
+// verification step checks before reporting success.
+func signatureStatusArgs(revRange string) []string {
+	return []string{"log", "--pretty=%H %G?", revRange}
+}

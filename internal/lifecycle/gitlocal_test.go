@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,29 @@ func TestFetchRemoteArgs_IsAnOrdinaryFetch(t *testing.T) {
 	got := fetchRemoteArgs("cloudlab-auth")
 	if got[0] != "fetch" || !slices.Contains(got, "cloudlab-auth") {
 		t.Errorf("fetchRemoteArgs() = %v, want a plain fetch of the named remote", got)
+	}
+}
+
+// cherry-pick advances the checked-out branch. rebase --onto with a
+// non-branch ref does not: it reports "up to date", re-signs nothing, and
+// leaves HEAD detached while the user's branch never moves.
+func TestCherryPickSignArgs_SignsAndTakesARange(t *testing.T) {
+	got := cherryPickSignArgs("HEAD..cloudlab-auth/cloudlab/auth")
+	if got[0] != "cherry-pick" {
+		t.Errorf("cherryPickSignArgs()[0] = %q, want cherry-pick", got[0])
+	}
+	if !slices.Contains(got, "-S") {
+		t.Errorf("cherryPickSignArgs() = %v, want -S so each replayed commit is signed", got)
+	}
+	if !slices.Contains(got, "HEAD..cloudlab-auth/cloudlab/auth") {
+		t.Errorf("cherryPickSignArgs() = %v, want the range preserved", got)
+	}
+}
+
+func TestSignatureStatusArgs_AsksGitForTheSignatureFlag(t *testing.T) {
+	got := signatureStatusArgs("main..HEAD")
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "%G?") {
+		t.Errorf("signatureStatusArgs() = %v, want the %%G? signature placeholder", got)
 	}
 }

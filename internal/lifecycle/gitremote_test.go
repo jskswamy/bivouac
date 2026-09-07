@@ -1,6 +1,8 @@
 package lifecycle
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -77,5 +79,88 @@ func TestCheckpointCmd_StagesEverythingAndToleratesACleanTree(t *testing.T) {
 	// A clean tree must not be an error: pull runs this every time.
 	if !strings.Contains(got, "diff --cached --quiet") {
 		t.Errorf("checkpointCmd() = %q, want a guard so a clean tree is a no-op", got)
+	}
+}
+
+// One session, one repository: removing the directory removes the branch,
+// the working tree and the objects together. No shared store survives it, so
+// there is nothing left to prune or delete a branch from.
+func TestRemoveRepoCmd_RemovesTheSessionDirectory(t *testing.T) {
+	repo := "/home/devuser/sessions/auth/cloudlab"
+	got := removeRepoCmd(repo)
+	if !strings.Contains(got, "rm -rf") {
+		t.Errorf("removeRepoCmd() = %q, want the directory removed", got)
+	}
+	if !strings.Contains(got, repo) {
+		t.Errorf("removeRepoCmd() = %q, want it to name the session repo", got)
+	}
+}
+
+// The one command on either machine that deletes anything, so a quoting slip
+// here is an rm -rf with an attacker-chosen argument. Run for real against a
+// bystander directory rather than inspecting the string: the point is that
+// the injected command does not execute, which only running it can show.
+func TestRemoveRepoCmd_DoesNotExecuteInjectedCommands(t *testing.T) {
+	base := t.TempDir()
+	bystander := filepath.Join(base, "keepme")
+	if err := os.MkdirAll(bystander, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(base, "session; rm -rf "+bystander)
+	if err := os.MkdirAll(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := runShell(t, removeRepoCmd(target)); err != nil {
+		t.Fatalf("removeRepoCmd: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(bystander); err != nil {
+		t.Errorf("the injected rm -rf executed and destroyed %s: %v", bystander, err)
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Errorf("%s still exists; the session repo should have been removed", target)
+	}
+}
+
+// merge removed the session repository but not the directory holding it, so
+// every retired session left an empty ~/sessions/<name>/ behind and the
+// instance accumulated them.
+func TestRemoveRepoCmd_RemovesTheSessionDirectoryToo(t *testing.T) {
+	base := t.TempDir()
+	sessionDir := filepath.Join(base, "sessions", "auth")
+	repo := filepath.Join(sessionDir, "myrepo")
+	if err := os.MkdirAll(repo, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := runShell(t, removeRepoCmd(repo)); err != nil {
+		t.Fatalf("removeRepoCmd: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(sessionDir); err == nil {
+		t.Errorf("%s still exists; the session directory was left behind", sessionDir)
+	}
+}
+
+// But it must not take a sibling with it. One session can hold several repos
+// once multi-repo lands, and removing one must leave the others alone.
+func TestRemoveRepoCmd_LeavesASiblingRepoAlone(t *testing.T) {
+	base := t.TempDir()
+	sessionDir := filepath.Join(base, "sessions", "auth")
+	repo := filepath.Join(sessionDir, "myrepo")
+	sibling := filepath.Join(sessionDir, "otherrepo")
+	for _, d := range []string{repo, sibling} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if out, err := runShell(t, removeRepoCmd(repo)); err != nil {
+		t.Fatalf("removeRepoCmd: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(sibling); err != nil {
+		t.Errorf("the sibling repo was destroyed: %v", err)
+	}
+	if _, err := os.Stat(sessionDir); err != nil {
+		t.Errorf("the session directory was removed while a sibling remained: %v", err)
 	}
 }

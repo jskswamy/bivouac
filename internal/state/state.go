@@ -59,6 +59,22 @@ func (r *Record) PutSession(s Session) {
 	r.Sessions = append(r.Sessions, s)
 }
 
+// RemoveSession drops a session by name. Absent is not an error -- merge and
+// delete both call this and neither should care whether it ran twice.
+//
+// A fresh slice rather than filtering into r.Sessions[:0]: callers hold Record
+// by value, so reusing the backing array rewrites the caller's own elements
+// underneath a header still reporting the old length.
+func (r *Record) RemoveSession(name string) {
+	out := make([]Session, 0, len(r.Sessions))
+	for _, s := range r.Sessions {
+		if s.Name != name {
+			out = append(out, s)
+		}
+	}
+	r.Sessions = out
+}
+
 // Store is a JSON-backed key-value store of instance Records, keyed by
 // name, at the XDG state path.
 type Store struct {
