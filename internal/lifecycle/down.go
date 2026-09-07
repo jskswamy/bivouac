@@ -89,8 +89,15 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 	var firstErr error
 	for _, s := range record.Sessions {
 		provider.ReportProgress(ctx, "rescuing "+s.Name+" before destroy")
-		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, record.Name, s.Name); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: cloudlab down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
+		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, record.Name, s.Name); err != nil {
+			// Skip unconditionally, whether or not this is the first failure:
+			// a session whose own rescue just failed is a box already known
+			// to be a problem, and checking its issues too would only spend
+			// a second, doomed round trip on it. Only which error gets
+			// reported is limited to the first.
+			if firstErr == nil {
+				firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: cloudlab down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
+			}
 			continue
 		}
 		// Issues are the other half of what an agent produced, and down is

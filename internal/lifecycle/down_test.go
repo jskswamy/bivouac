@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
@@ -395,5 +397,92 @@ func TestDown_SkipsBeadsCheckForASessionWhoseRescueFailed(t *testing.T) {
 	f.mu.Unlock()
 	if attempted {
 		t.Error("the beads sync ran for a session whose rescue had already failed -- the `continue` did not skip it")
+	}
+}
+
+// wireBeadsOnlyRepo gives dir its own real, minimal beads database and
+// dolt remote for session, without any of the git session-remote plumbing
+// sessionFixture sets up: RescueSession's checkpoint and rev-parse succeed
+// against the fake SSH server regardless, so the local `git fetch
+// cloudlab-<session>` that follows -- with no such remote ever
+// registered -- is what makes the rescue fail. That is deliberately the
+// cheapest way to fail a rescue while still making beads.Wired true.
+func wireBeadsOnlyRepo(t *testing.T, dir, session string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	initRepo(t, dir)
+	bdInitStealth(t, dir)
+	sink := t.TempDir()
+	initRepo(t, sink)
+	if err := beads.Seed(context.Background(), dir, session, beads.FileURL(sink)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+}
+
+// The multi-session counterpart of TestDown_SkipsBeadsCheckForASessionWhoseRescueFailed:
+// once a second session's rescue also fails, firstErr is already set, so the
+// `err != nil && firstErr == nil` gate that used to guard the `continue` went
+// false right along with it, and the beads check ran anyway on a box already
+// known to be broken. Fixed by splitting "skip the beads check" from "record
+// only the first error" into two separate conditions in down.go.
+func TestDown_SkipsBeadsCheckForEverySessionWhoseRescueFailed(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	if err := os.MkdirAll(home, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+
+	sessions := []string{"auth", "docs"}
+	repos := make(map[string]string, len(sessions))
+	for _, s := range sessions {
+		dir := filepath.Join(base, s)
+		wireBeadsOnlyRepo(t, dir, s)
+		repos[s] = dir
+	}
+
+	var mu sync.Mutex
+	pushAttempted := map[string]bool{}
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "dolt") && strings.Contains(cmd, "push") {
+			mu.Lock()
+			for _, s := range sessions {
+				if strings.Contains(cmd, s) {
+					pushAttempted[s] = true
+				}
+			}
+			mu.Unlock()
+		}
+		return "", 0
+	})
+
+	record := state.Record{Name: "repo", IP: addr, User: "devuser"}
+	for _, s := range sessions {
+		record.PutSession(state.Session{Name: s, LocalRepo: repos[s]})
+	}
+
+	store := setupDownTest(t)
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, false); err == nil {
+		t.Fatal("Down() = nil despite both sessions failing rescue, want the rescue error")
+	}
+	if p.destroyed {
+		t.Error("Down() destroyed the VM despite both sessions failing rescue")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, s := range sessions {
+		if pushAttempted[s] {
+			t.Errorf("the beads sync ran for session %s, whose rescue had already failed", s)
+		}
 	}
 }

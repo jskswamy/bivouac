@@ -114,6 +114,10 @@ func requireBeadsLanded(ctx context.Context, client *reconcile.Client, localRepo
 	if err != nil {
 		return fmt.Errorf("cannot confirm session %s's issues have landed: %w\nrefusing to discard issue work cloudlab cannot see — fix the instance and retry, or pass --force to discard it anyway", session, err)
 	}
+	// Unreachable under Unpulled's current contract -- true is only ever
+	// returned alongside a non-nil err, which the branch above already
+	// catches. Kept anyway: if that contract ever loosens, this is what
+	// stands between the change and a silent fail-open regression here.
 	if unpulled {
 		return fmt.Errorf("session %s still holds issue work that is not on this machine — `cloudlab session pull %s` takes it, or --force throws it away", session, session)
 	}
