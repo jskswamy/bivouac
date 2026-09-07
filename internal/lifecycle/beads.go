@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
@@ -112,6 +113,35 @@ func bootstrapBeads(ctx context.Context, client *reconcile.Client, localRepo, re
 				"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
 		}
 		return
+	}
+	warnOnBeadsVersionMismatch(ctx, client, repo)
+}
+
+// warnOnBeadsVersionMismatch compares bd's version on both machines, once
+// per session start rather than once per sync -- the round trip and the
+// blast radius (a warning, nothing more) don't justify doing this on every
+// pull. The pinned instance derivation (templates/modules/beads-pkg.nix) was
+// meant to make this check unnecessary, but it only pins that one side: the
+// maintainer's own Mac gets bd from a hand-maintained overlay that must be
+// bumped in lockstep by hand, and that unpinned side is exactly the one this
+// warning exists to catch.
+//
+// Fail-safe like everything else in this file: a version check that cannot
+// run must not fail a session, so a failure to read either side is silent
+// rather than surfaced.
+func warnOnBeadsVersionMismatch(ctx context.Context, client *reconcile.Client, repo string) {
+	macVersion, err := beads.Version(ctx)
+	if err != nil {
+		return
+	}
+	instanceVersion, err := beads.InstanceVersion(client, repo)
+	if err != nil {
+		return
+	}
+	if !beads.VersionsMatch(macVersion, instanceVersion) {
+		provider.ReportWarning(ctx, "beads: version mismatch -- Mac has "+strings.TrimSpace(macVersion)+
+			", instance has "+strings.TrimSpace(instanceVersion)+
+			"; a shared Dolt database is the one place a version gap does real damage")
 	}
 }
 

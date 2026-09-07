@@ -402,3 +402,108 @@ func TestCheckBeadsLanded_RunsTheGuardWhenConnectSucceeds(t *testing.T) {
 		t.Errorf("checkBeadsLanded() error = %v, want nil when beads was never wired", err)
 	}
 }
+
+// versionCmd has a caller. The spec requires `bd version` to be compared
+// across both machines with a mismatch warning, since a shared Dolt database
+// is the one place a version gap does real damage -- and the pinned instance
+// derivation only pins that side of the gap; the maintainer's own Mac gets bd
+// from a hand-maintained overlay bumped separately.
+func TestWarnOnBeadsVersionMismatch_WarnsWhenTheVersionsDiffer(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "version") {
+			// The pinned derivation is 1.1.2; nothing on this branch pins to
+			// 0.0.1, so this is unconditionally a mismatch.
+			return "bd version 0.0.1 (deadbeef: HEAD@deadbeef)\n", 0
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	warnOnBeadsVersionMismatch(ctx, client, "/home/devuser/sessions/s/repo")
+
+	if !strings.Contains(errOut.String(), "version") {
+		t.Errorf("errOut = %q, want a version-mismatch warning", errOut.String())
+	}
+}
+
+// The other half: matching versions -- even with a different build hash,
+// which changes on every release regardless of the version number -- must
+// stay silent, or the warning above could be explained by one that always
+// fires.
+func TestWarnOnBeadsVersionMismatch_SilentWhenTheVersionsMatch(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	macVersion, err := beads.Version(context.Background())
+	if err != nil {
+		t.Fatalf("Version() error = %v", err)
+	}
+	fields := strings.Fields(macVersion)
+	if len(fields) < 3 {
+		t.Fatalf("bd version banner %q did not parse into fields, fixture assumption is broken", macVersion)
+	}
+	number := fields[2]
+
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "version") {
+			return "bd version " + number + " (differenthash: HEAD@differenthash)\n", 0
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	warnOnBeadsVersionMismatch(ctx, client, "/home/devuser/sessions/s/repo")
+
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want silence when the version numbers match despite a different build hash", errOut.String())
+	}
+}
+
+// The version check must be wired into the real bootstrap path, not just
+// exist unreachable like versionCmd did before this fix.
+func TestBootstrapBeads_WarnsOnVersionMismatchAfterASuccessfulBootstrap(t *testing.T) {
+	requireBd(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	session := "s"
+	localRepo := t.TempDir()
+	wireBeadsForRequireLanded(t, localRepo, session)
+
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "version") {
+			return "bd version 0.0.1 (deadbeef: HEAD@deadbeef)\n", 0
+		}
+		return "", 0
+	})
+	client, err := reconcile.Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	bootstrapBeads(ctx, client, localRepo, "/home/devuser/sessions/s/repo", session, "")
+
+	if !strings.Contains(errOut.String(), "version") {
+		t.Errorf("errOut = %q, want a version-mismatch warning after a successful Bootstrap", errOut.String())
+	}
+}

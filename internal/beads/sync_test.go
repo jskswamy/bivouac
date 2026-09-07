@@ -113,6 +113,33 @@ func TestBootstrap_RemoteAddFailureIsNotErrInitFailed(t *testing.T) {
 	}
 }
 
+func TestInstanceVersion_ReturnsTheInstancesBanner(t *testing.T) {
+	fr := newFakeRunner()
+
+	got, err := InstanceVersion(fr, "/repo")
+	if err != nil {
+		t.Fatalf("InstanceVersion() error = %v", err)
+	}
+	if got != "ok" {
+		t.Errorf("InstanceVersion() = %q, want the runner's own output %q", got, "ok")
+	}
+
+	want := []string{versionCmd("/repo")}
+	if !slices.Equal(fr.commands, want) {
+		t.Fatalf("commands = %v, want %v", fr.commands, want)
+	}
+}
+
+func TestInstanceVersion_SurfacesAFailure(t *testing.T) {
+	fr := newFakeRunner()
+	fr.failAt = 0
+	fr.failErr = errors.New("ssh connection reset")
+
+	if _, err := InstanceVersion(fr, "/repo"); err == nil {
+		t.Fatal("InstanceVersion() error = nil, want the runner's failure surfaced")
+	}
+}
+
 func TestUnpulled_ReturnsFalseOnlyOnFullSuccess(t *testing.T) {
 	requireBd(t)
 

@@ -141,3 +141,15 @@ func Unpulled(ctx context.Context, localRepo, session string, client instanceRun
 	}
 	return false, nil
 }
+
+// InstanceVersion reads the instance's `bd version` banner, for comparison
+// against this machine's own (see Version). Behind instanceRunner like
+// Bootstrap, Pull and Unpulled, so the comparison can be driven by a fake in
+// tests rather than only against a live SSH connection.
+func InstanceVersion(client instanceRunner, repo string) (string, error) {
+	out, err := client.Run(versionCmd(repo))
+	if err != nil {
+		return "", fmt.Errorf("reading the instance's bd version: %w\n%s", err, out)
+	}
+	return out, nil
+}

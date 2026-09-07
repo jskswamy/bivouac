@@ -15,9 +15,11 @@ package beads
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 )
 
 // Available reports whether bd is on this machine's PATH. Callers use it to
@@ -26,6 +28,38 @@ import (
 func Available() bool {
 	_, err := exec.LookPath("bd")
 	return err == nil
+}
+
+// Version reports this machine's `bd version` banner
+// ("bd version 1.1.2 (20e493e56: HEAD@20e493e569c9)"), compared against the
+// instance's because a shared Dolt database is the one place a version gap
+// does real damage. Read next to Available so both live where a caller
+// checks the same binary two different ways -- whether it exists here at
+// all, versus what version it reports.
+//
+// No repo argument: `bd version` answers regardless of directory, and
+// nothing here needs one.
+func Version(ctx context.Context) (string, error) {
+	out, err := run(ctx, "", "version")
+	if err != nil {
+		return "", fmt.Errorf("bd version: %w\n%s", err, out)
+	}
+	return out, nil
+}
+
+// versionNumberPattern picks the version number out of a `bd version`
+// banner, discarding the build hash and ref that change on every release
+// even when the version itself has not.
+var versionNumberPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+// VersionsMatch reports whether two `bd version` banners name the same
+// version number -- the part that matters for a shared Dolt database -- not
+// whether the banners are identical. Empty or unparseable input never
+// matches, including against itself: a banner this cannot read is not
+// evidence that two machines agree.
+func VersionsMatch(a, b string) bool {
+	na, nb := versionNumberPattern.FindString(a), versionNumberPattern.FindString(b)
+	return na != "" && na == nb
 }
 
 // Present reports whether repo has a beads database at all. Checked before
