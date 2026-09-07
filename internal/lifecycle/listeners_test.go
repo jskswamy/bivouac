@@ -1,8 +1,10 @@
 package lifecycle
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +39,33 @@ func TestParseListeners_SkipsHeader(t *testing.T) {
 	got := parseListeners("State  Recv-Q Send-Q Local Address:Port  Peer Address:Port\n")
 	if len(got) != 0 {
 		t.Errorf("parseListeners() = %+v, want none — the header is not a listener", got)
+	}
+}
+
+func TestListeners_RunsSSAndParses(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	raw, err := os.ReadFile(filepath.Join("testdata", "ss-tlnp.txt"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	var gotCmd string
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		gotCmd = cmd
+		return string(raw), 0
+	})
+
+	got, err := Listeners(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Listeners() error = %v", err)
+	}
+	if !strings.Contains(gotCmd, "ss -tlnp") {
+		t.Errorf("Listeners() ran %q, want it to invoke `ss -tlnp`", gotCmd)
+	}
+	if len(got) != 7 {
+		t.Errorf("Listeners() returned %d listeners, want 7", len(got))
 	}
 }
 

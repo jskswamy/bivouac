@@ -1,9 +1,13 @@
 package lifecycle
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
 
 // Listener is one listening socket reported by `ss -tlnp`.
@@ -100,4 +104,25 @@ func parseListeners(out string) []Listener {
 		listeners = append(listeners, Listener{Addr: addr, Port: port, Process: proc})
 	}
 	return listeners
+}
+
+// Listeners asks the instance what is listening.
+//
+// `ss` rather than `lsof` or `netstat`: it is in iproute2, which is
+// present on every Ubuntu image cloudlab boots, and needs no package
+// from the template. Run unprivileged, so the process column is empty
+// for sockets this user does not own -- the port is what connect
+// needs, and the name is a convenience when it happens to be visible.
+func Listeners(ctx context.Context, ip, user string) ([]Listener, error) {
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = client.Close() }()
+
+	out, err := client.Run("bash -lc " + reconcile.ShellQuote("ss -tlnp"))
+	if err != nil {
+		return nil, fmt.Errorf("listing listening sockets: %w\n%s", err, out)
+	}
+	return parseListeners(out), nil
 }
