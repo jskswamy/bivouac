@@ -7,25 +7,47 @@ import (
 	"strings"
 )
 
-// RepoRoot walks up from repoFlag (if set) or cwd to find a git repo
-// root, via `git rev-parse --show-toplevel`. It is used only by commands
-// that need actual repo content (currently: up).
+// RepoRoot walks up from repoFlag (if set) or cwd to find the MAIN git
+// repository root -- not a linked worktree. Used by every command that needs
+// actual repo content: up, provision, session start, and resolveSessionArg,
+// which fronts pull, merge, delete, ssh, tmux and herdr.
 func RepoRoot(cwd, repoFlag string) (string, error) {
 	start := cwd
 	if repoFlag != "" {
 		start = repoFlag
 	}
 
+	// --git-common-dir, not --show-toplevel: inside a linked worktree the
+	// latter returns the worktree, and every session command needs the main
+	// repository -- merge replays onto the user's branch, which lives there.
+	// The common dir is the main repo's .git, so its parent is the main tree.
 	// #nosec G204 -- argv-array exec.Command, no shell; start is a local
 	// filesystem path (cwd or --repo), never attacker-controlled.
-	out, err := exec.Command("git", "-C", start, "rev-parse", "--show-toplevel").Output()
+	out, err := exec.Command("git", "-C", start, "rev-parse", "--git-common-dir").Output()
 	if err != nil {
 		if repoFlag != "" {
 			return "", fmt.Errorf("not a git repository: %s", repoFlag)
 		}
 		return "", fmt.Errorf("not inside a git repository; use --repo <path>")
 	}
-	return strings.TrimSpace(string(out)), nil
+	gitDir := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(gitDir) {
+		// Relative (".git") when already at the main tree's root.
+		abs, err := filepath.Abs(filepath.Join(start, gitDir))
+		if err != nil {
+			return "", err
+		}
+		gitDir = abs
+	}
+	root := filepath.Dir(gitDir)
+	// git resolves symlinks in its own output (e.g. --show-toplevel), but a
+	// relative --git-common-dir joined above keeps whatever symlinks were in
+	// start (macOS's /var -> /private/var). Resolve here so callers -- and
+	// the existing tests -- see the same real path either way.
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	return root, nil
 }
 
 // DeriveName derives an instance name from a resolved repo root: the

@@ -106,6 +106,36 @@ func TestRepoRoot_NotAGitRepoWithFlag(t *testing.T) {
 	}
 }
 
+// From inside a linked worktree, git rev-parse --show-toplevel returns the
+// worktree. Session commands need the MAIN repo: merge replays onto the user's
+// branch, which lives there, not in the session's worktree.
+func TestRepoRoot_FromInsideALinkedWorktreeReturnsTheMainRepo(t *testing.T) {
+	base := t.TempDir()
+	main := filepath.Join(base, "main")
+	runGit(t, base, "init", "-q", "-b", "main", main)
+	runGit(t, main, "config", "user.email", "t@example.com")
+	runGit(t, main, "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(main, "a.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, main, "add", "-A")
+	runGit(t, main, "commit", "-q", "-m", "first")
+
+	wt := filepath.Join(main, ".worktrees", "auth")
+	runGit(t, main, "worktree", "add", "-q", wt, "-b", "cloudlab/auth")
+
+	got, err := RepoRoot(wt, "")
+	if err != nil {
+		t.Fatalf("RepoRoot() error = %v", err)
+	}
+	// EvalSymlinks: macOS /var is a symlink to /private/var and git resolves it.
+	wantResolved, _ := filepath.EvalSymlinks(main)
+	gotResolved, _ := filepath.EvalSymlinks(got)
+	if gotResolved != wantResolved {
+		t.Errorf("RepoRoot(worktree) = %q, want the main repo %q", gotResolved, wantResolved)
+	}
+}
+
 func TestDeriveName_FromHTTPSOrigin(t *testing.T) {
 	root := initRepo(t)
 	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
