@@ -326,29 +326,31 @@ func runDownload(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
-// resolveSessionArg resolves the session a session-aware command acts on,
-// along with the repository root it should operate in. Returns
-// *lifecycle.AmbiguousError unchanged, so an interactive caller can offer a
-// picker instead of refusing.
-func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (state.Session, string, error) {
+// resolveSessionArg resolves the session a session-aware command acts on.
+// Returns *lifecycle.AmbiguousError unchanged, so an interactive caller can
+// offer a picker instead of refusing.
+//
+// The repository comes back on the session, not from the caller's
+// surroundings: ADR-0003 makes two clones of one repo share an instance, so
+// the tree you are standing in and the tree the session was started from are
+// two different answers, and only the recorded one has the session's
+// worktree, remote and branch. down and session delete already read it from
+// the record; pull and merge now do too.
+//
+// cwd is still read, for the "standing in a session worktree names that
+// session" rule -- but as a hint about which session, never about which
+// repository. Nothing here needs a repo root, so these commands no longer
+// refuse to run outside a git repository, which matches down.
+func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (state.Session, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return state.Session{}, "", err
-	}
-	repoFlag, _ := cmd.Flags().GetString("repo")
-	root, err := identity.RepoRoot(cwd, repoFlag)
-	if err != nil {
-		return state.Session{}, "", err
+		return state.Session{}, err
 	}
 	explicit := ""
 	if len(args) > 0 {
 		explicit = args[0]
 	}
-	sess, err := lifecycle.ResolveSession(cmd.Context(), cwd, record, explicit)
-	if err != nil {
-		return state.Session{}, root, err
-	}
-	return sess, root, nil
+	return lifecycle.ResolveSession(cmd.Context(), cwd, record, explicit)
 }
 
 func runPull(cmd *cobra.Command, name string, args []string) error {
@@ -359,11 +361,11 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	ctx := provider.WithProgress(cmd.Context(), func(status string) {
 		cmd.Printf("→ %s\n", status)
 	})
-	sess, root, err := resolveSessionArg(cmd, record, args)
+	sess, err := resolveSessionArg(cmd, record, args)
 	if err != nil {
 		return err
 	}
-	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, root, name, sess.Name, sess.Base)
+	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, name, sess.Name, sess.Base)
 	if err != nil {
 		return err
 	}
@@ -388,11 +390,11 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	ctx := provider.WithProgress(cmd.Context(), func(status string) {
 		cmd.Printf("→ %s\n", status)
 	})
-	sess, root, err := resolveSessionArg(cmd, record, args)
+	sess, err := resolveSessionArg(cmd, record, args)
 	if err != nil {
 		return err
 	}
-	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, root, name, sess.Name, sess.Base)
+	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, sess.LocalRepo, name, sess.Name, sess.Base)
 	if err != nil {
 		return err
 	}
@@ -427,7 +429,7 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	sess, _, err := resolveSessionArg(cmd, record, args)
+	sess, err := resolveSessionArg(cmd, record, args)
 	if err != nil {
 		return err
 	}
@@ -475,7 +477,7 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 		// cloudlab session and fail with "instance X has no session X".
 		// Resolution here comes from the cwd, the single session, or the
 		// picker; naming one explicitly is what `cd` into its worktree is for.
-		if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+		if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, name)
 		}
 	}
@@ -496,7 +498,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// With no session resolvable, connect anyway with herdr's own default
 	// session -- connecting is not destructive and must degrade, not refuse.
 	session := ""
-	if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+	if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 		session = sess.Name
 	}
 	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
@@ -600,7 +602,7 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 	// didn't already ask for a specific tmux session -- reconnecting to that
 	// same name is what lands back in the same place.
 	if len(args) == 0 {
-		if sess, _, err := resolveSessionInteractive(cmd, record, nil); err == nil {
+		if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 			session = sess.Name
 		}
 	}

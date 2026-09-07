@@ -404,3 +404,62 @@ func TestChoosePairHost_NoTailscale_ReturnsPublicWithoutPrompting(t *testing.T) 
 		t.Errorf("printed %q, want no prompt when there is nothing to choose", out.String())
 	}
 }
+
+// ADR-0003 makes two clones of one repo share an instance, so the repo a
+// session belongs to and the repo you are standing in are genuinely two
+// different answers. The session's own is the right one: its worktree, its
+// remote and its branch all live there, and merge replays onto its branch.
+//
+// Asserted through the dirty-tree gate because that is the last thing merge
+// does before it connects: dirtying only the session's repo makes a refusal
+// proof that repo was the one inspected. Standing in a clean clone and
+// reaching the connection instead is the bug.
+func TestRunMerge_OperatesOnTheSessionsRepoNotTheCwd(t *testing.T) {
+	session := newTestRepo(t)
+	mustGitCmd(t, session, "commit", "--allow-empty", "--quiet", "-m", "base")
+	base := headOf(t, session)
+
+	// A real clone, so the session's base is reachable from both and the
+	// only thing separating them is which one merge chose to inspect.
+	elsewhere := filepath.Join(t.TempDir(), "clone")
+	mustGitCmd(t, session, "clone", "--quiet", session, elsewhere)
+
+	if err := os.WriteFile(filepath.Join(session, "tracked.txt"), []byte("edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
+	record.PutSession(state.Session{Name: "solo", LocalRepo: session, Base: base})
+	sessionTestStore(t, record)
+
+	t.Chdir(elsewhere)
+	err := runMerge(sessionTestCmd(), "myinstance", nil)
+	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		t.Fatalf("runMerge() error = %v, want a refusal naming the session repo's uncommitted changes", err)
+	}
+}
+
+// newTestRepo is a git repository that can commit: identity configured, and
+// one tracked file for a test to dirty.
+func newTestRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	mustGitCmd(t, repo, "init", "--quiet")
+	mustGitCmd(t, repo, "config", "user.email", "t@example.com")
+	mustGitCmd(t, repo, "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustGitCmd(t, repo, "add", "tracked.txt")
+	mustGitCmd(t, repo, "commit", "--quiet", "-m", "tracked")
+	return repo
+}
+
+func headOf(t *testing.T, repo string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}

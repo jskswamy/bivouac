@@ -300,6 +300,14 @@ inside `.worktrees/<name>` picks `<name>`) or, failing that, from having
 exactly one session on the instance. Two or more candidates and no way to
 tell them apart is a refusal, not a guess.
 
+Which *session* is resolved from the working directory; which *repository* is
+not. That comes from the session's own record, because ADR-0003 has two
+clones of one repo share an instance, so the tree you are standing in and the
+tree a session was started from are two different answers — and only the
+recorded one holds that session's worktree, remote and branch. Nothing in
+this path needs a repo root any more, so these commands no longer refuse to
+run outside a git repository, matching `down`.
+
 **`session pull [session]`** checkpoints uncommitted work on the instance
 (`git add -A` plus a guarded commit, so a clean tree makes no empty commit),
 fetches the branch, verifies the fetched tip is genuinely in the local

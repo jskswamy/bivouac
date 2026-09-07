@@ -50,18 +50,18 @@ func pickSession(cmd *cobra.Command, candidates []string) (string, error) {
 // to hand over the terminal. Ambiguity asks instead of refusing, which is
 // continuous with what the user requested -- but only with a terminal to ask
 // on.
-func resolveSessionInteractive(cmd *cobra.Command, record state.Record, args []string) (state.Session, string, error) {
-	sess, root, err := resolveSessionArg(cmd, record, args)
+func resolveSessionInteractive(cmd *cobra.Command, record state.Record, args []string) (state.Session, error) {
+	sess, err := resolveSessionArg(cmd, record, args)
 	if err == nil {
-		return sess, root, nil
+		return sess, nil
 	}
 	var amb *lifecycle.AmbiguousError
 	if !errors.As(err, &amb) || !isInteractive() {
-		return state.Session{}, root, err
+		return state.Session{}, err
 	}
 	chosen, perr := pickSession(cmd, amb.Candidates)
 	if perr != nil {
-		return state.Session{}, root, perr
+		return state.Session{}, perr
 	}
 	return resolveSessionArg(cmd, record, []string{chosen})
 }
