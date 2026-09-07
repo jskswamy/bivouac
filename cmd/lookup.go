@@ -128,11 +128,14 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:   "down [name]",
-		short: "Stop watch, destroy the VM, and clear state",
+		short: "Rescue any session's work, destroy the VM, and clear state",
 		verb:  "down",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
-		run:   runDown,
+		flags: func(c *cobra.Command) {
+			c.Flags().Bool("force", false, "destroy without rescuing work from the instance")
+		},
+		run: runDown,
 	},
 	{
 		use:    "pull [session]",
@@ -151,6 +154,18 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		named:  false,
 		parent: "session",
 		run:    runMerge,
+	},
+	{
+		use:    "delete [session]",
+		short:  "Discard a session without merging its work, checking the instance first",
+		verb:   "session delete",
+		args:   cobra.MaximumNArgs(1),
+		named:  false,
+		parent: "session",
+		flags: func(c *cobra.Command) {
+			c.Flags().Bool("force", false, "delete even when the session has unmerged work")
+		},
+		run: runSessionDelete,
 	},
 	{
 		use:   "sync [remote-dir]",

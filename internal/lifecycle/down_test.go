@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,19 +12,11 @@ import (
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
-// setupDownTest isolates state and Mutagen. Down's terminateWatch call
-// starts a real Mutagen daemon even when terminating a session that
-// doesn't exist (confirmed empirically against the real binary), so
-// every Down test needs an isolated MUTAGEN_DATA_DIRECTORY and a
-// cleanup that stops it -- otherwise tests leak a daemon rooted in the
-// real developer machine's default data directory.
+// setupDownTest isolates state so each Down test gets its own store
+// rather than sharing the real developer machine's default location.
 func setupDownTest(t *testing.T) *state.Store {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	t.Setenv("MUTAGEN_DATA_DIRECTORY", t.TempDir())
-	t.Cleanup(func() {
-		_ = exec.Command("mutagen", "daemon", "stop").Run()
-	})
 	store, err := state.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +32,7 @@ func TestDown_DestroysAndClearsState(t *testing.T) {
 	}
 
 	p := &fakeProvider{}
-	if err := Down(context.Background(), p, store, record); err != nil {
+	if err := Down(context.Background(), p, store, record, false); err != nil {
 		t.Fatalf("Down() error = %v", err)
 	}
 
@@ -61,7 +52,7 @@ func TestDown_MissingVMStillClearsState(t *testing.T) {
 	}
 
 	p := &fakeProvider{destroyErr: fmt.Errorf("wrapped: %w", provider.ErrNotFound)}
-	if err := Down(context.Background(), p, store, record); err != nil {
+	if err := Down(context.Background(), p, store, record, false); err != nil {
 		t.Fatalf("Down() error = %v, want nil (not-found is success)", err)
 	}
 	if _, ok, _ := store.Get("myinstance"); ok {
@@ -77,7 +68,7 @@ func TestDown_RealDestroyErrorStillClearsStateButIsReturned(t *testing.T) {
 	}
 
 	p := &fakeProvider{destroyErr: errors.New("network error")}
-	err := Down(context.Background(), p, store, record)
+	err := Down(context.Background(), p, store, record, false)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -106,7 +97,7 @@ func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
 	}
 
 	p := &fakeProvider{}
-	if err := Down(context.Background(), p, store, record); err != nil {
+	if err := Down(context.Background(), p, store, record, false); err != nil {
 		t.Fatalf("Down() error = %v", err)
 	}
 	// Absolute path, not a bare name: sudo resets PATH to its own
@@ -145,7 +136,7 @@ func TestDown_LogsOutBeforeDestroying(t *testing.T) {
 	}
 
 	p := &orderedDestroyProvider{order: &order}
-	if err := Down(context.Background(), p, store, record); err != nil {
+	if err := Down(context.Background(), p, store, record, false); err != nil {
 		t.Fatalf("Down() error = %v", err)
 	}
 
@@ -186,10 +177,102 @@ func TestDown_SkipsTailscaleLogoutWhenNeverJoined(t *testing.T) {
 	}
 
 	p := &fakeProvider{}
-	if err := Down(context.Background(), p, store, record); err != nil {
+	if err := Down(context.Background(), p, store, record, false); err != nil {
 		t.Fatalf("Down() error = %v", err)
 	}
 	if called {
 		t.Error("tailscale logout was run despite TailscaleJoined being false")
+	}
+}
+
+// Destroying an instance is irreversible, so a rescue that fails means we
+// do not know the work is safe -- and not knowing must be treated as not
+// safe.
+func TestDown_AbortsWhenRescueFails(t *testing.T) {
+	store := setupDownTest(t)
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "checkpoint exploded", 1
+	})
+
+	// A session must be recorded: an empty Sessions slice tells
+	// rescueBeforeDestroy no session was ever started, and it would skip
+	// the rescue (and this test's fake SSH server) entirely.
+	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: addr, User: "devuser"}
+	record.PutSession(state.Session{Name: "auth", LocalRepo: t.TempDir()})
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	err := Down(context.Background(), p, store, record, false)
+	if err == nil {
+		t.Fatal("Down() = nil, want an error when work could not be rescued")
+	}
+	if p.destroyed {
+		t.Error("Down() destroyed the VM despite a failed rescue")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("error = %q, want it to name the --force escape hatch", err.Error())
+	}
+}
+
+// down must rescue every session. Rescuing one and destroying the droplet
+// holding three is the data loss this whole design exists to prevent.
+func TestDown_RescuesEverySessionBeforeDestroying(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	var rescued []string
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		// The checkpoint names its session in the commit subject.
+		if strings.Contains(cmd, "checkpoint") {
+			for _, n := range []string{"auth", "docs"} {
+				if strings.Contains(cmd, n) {
+					rescued = append(rescued, n)
+				}
+			}
+		}
+		return "", 0
+	})
+
+	record := state.Record{Name: "inst", IP: addr, User: "devuser"}
+	record.PutSession(state.Session{Name: "auth", LocalRepo: t.TempDir()})
+	record.PutSession(state.Session{Name: "docs", LocalRepo: t.TempDir()})
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &fakeProvider{}
+	// Rescue fails (no real git remote), so this must refuse to destroy --
+	// which is also what proves both sessions were attempted.
+	_ = Down(context.Background(), p, store, record, false)
+
+	if len(rescued) < 2 {
+		t.Errorf("checkpointed %v, want both auth and docs attempted", rescued)
+	}
+	if p.destroyed {
+		t.Error("the instance was destroyed even though a rescue failed")
+	}
+}
+
+// A broken or unreachable box must still be destroyable, or the user is
+// left paying for a VM they cannot delete.
+func TestDown_ForceDestroysWithoutRescuing(t *testing.T) {
+	store := setupDownTest(t)
+	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: "203.0.113.5", User: "devuser"}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, true); err != nil {
+		t.Fatalf("Down(force) error = %v, want success", err)
+	}
+	if !p.destroyed {
+		t.Error("Down(force) did not destroy the VM")
 	}
 }

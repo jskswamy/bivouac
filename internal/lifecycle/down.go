@@ -54,14 +54,22 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 	_, _ = client.Run(cmd)
 }
 
-// Down tears an instance down: stops its watch session (best-effort),
-// destroys the VM, and clears its state record. A VM that's already
-// gone (destroyed outside cloudlab) is treated as success, not an
-// error -- state is cleared either way so cloudlab's view converges
-// with reality. If Destroy fails for any other reason, state is still
-// cleared (so a stuck record can't block a retry), but the error is
-// still returned so the user knows to check the provider's dashboard.
-func Down(ctx context.Context, p provider.Provider, store *state.Store, record state.Record) error {
+// Down tears an instance down: rescues any session's work (unless
+// force), stops its watch session (best-effort), destroys the VM, and
+// clears its state record. A VM that's
+// already gone (destroyed outside cloudlab) is treated as success,
+// not an error -- state is cleared either way so cloudlab's view
+// converges with reality. If Destroy fails for any other reason,
+// state is still cleared (so a stuck record can't block a retry), but
+// the error is still returned so the user knows to check the
+// provider's dashboard.
+func Down(ctx context.Context, p provider.Provider, store *state.Store, record state.Record, force bool) error {
+	if !force {
+		if err := rescueBeforeDestroy(ctx, record); err != nil {
+			return err
+		}
+	}
+
 	terminateWatch(ctx, record.Name)
 	deregisterTailscale(ctx, record)
 
@@ -70,4 +78,33 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 		return fmt.Errorf("destroying VM %s: %w (state cleared -- check the provider dashboard)", record.VMID, err)
 	}
 	return store.Delete(record.Name)
+}
+
+// rescueBeforeDestroy makes every session's work durable before the instance
+// is destroyed. All of them, not the first: destroying a droplet holding three
+// sessions after rescuing one is the data loss this design exists to prevent.
+//
+// Any failure stops the destroy. A partial rescue is worse than none, because
+// it looks like success. One session failing to rescue does not skip the
+// rest, though: stopping early would leave a later session's work unchecked
+// and unreported, on top of the one that already failed.
+//
+// Session and LocalRepo come from the state record rather than from the
+// caller's surroundings: down resolves an instance by name and can be run
+// from any directory, so neither the session's name nor the repository it
+// belongs to is derivable from where the command happens to be typed.
+func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
+	if len(record.Sessions) == 0 {
+		// No session was ever started on this instance, so there is
+		// nothing an agent could have left behind.
+		return nil
+	}
+	var firstErr error
+	for _, s := range record.Sessions {
+		provider.ReportProgress(ctx, "rescuing "+s.Name+" before destroy")
+		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, record.Name, s.Name); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: cloudlab down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
+		}
+	}
+	return firstErr
 }

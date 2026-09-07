@@ -57,6 +57,11 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
+	force, err := cmd.Flags().GetBool("force")
+	if err != nil {
+		return err
+	}
+
 	ok, err := confirm(cmd, downSummary(record))
 	if err != nil {
 		return err
@@ -66,7 +71,7 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 		return nil
 	}
 
-	if err := lifecycle.Down(cmd.Context(), p, store, record); err != nil {
+	if err := lifecycle.Down(cmd.Context(), p, store, record, force); err != nil {
 		return err
 	}
 	cmd.Printf("Instance %s is down\n", name)
@@ -467,6 +472,39 @@ func forgetMergedSession(store *state.Store, record state.Record, session string
 	}
 	record.RemoveSession(session)
 	return store.Put(record)
+}
+
+func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
+	store, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	sess, _, err := resolveSessionArg(cmd, record, args)
+	if err != nil {
+		return err
+	}
+	force, err := cmd.Flags().GetBool("force")
+	if err != nil {
+		return err
+	}
+	// The record entry goes whenever the teardown got far enough to return
+	// nil, warning or not. DeleteSession removes the local remote on its way
+	// out, so an entry left behind after that is one nothing can ever rescue
+	// again -- and `down` would refuse on it forever, recommending the --force
+	// that skips the rescue for every other session on the instance too.
+	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, name, sess, force)
+	if err != nil {
+		return err
+	}
+	record.RemoveSession(sess.Name)
+	if err := store.Put(record); err != nil {
+		return err
+	}
+	if warning != "" {
+		cmd.Println(warning)
+	}
+	cmd.Printf("session %s deleted\n", sess.Name)
+	return nil
 }
 
 func runSSH(cmd *cobra.Command, name string, args []string) error {

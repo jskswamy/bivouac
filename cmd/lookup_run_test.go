@@ -106,6 +106,46 @@ func TestRunSession_RejectsANameThatCannotBeABranchOrPath(t *testing.T) {
 	}
 }
 
+// A forced delete against a dead instance tears the local half down -- remote
+// included -- so the record entry must go with it. An entry left behind names
+// a session whose local remote no longer exists, which nothing can ever rescue
+// again: every later `cloudlab down` refuses on it and recommends the --force
+// that skips the rescue for every other session on the instance too.
+func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testing.T) {
+	localRepo := t.TempDir()
+	mustGitCmd(t, localRepo, "init", "--quiet")
+
+	// Port 1 refuses immediately: the instance side cannot be reached, which
+	// is the case that used to return an error and strand the entry.
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1:1", User: "devuser"}
+	record.PutSession(state.Session{Name: "auth", LocalRepo: localRepo})
+	store := sessionTestStore(t, record)
+
+	cmd := sessionTestCmd()
+	cmd.Flags().Bool("force", false, "")
+	if err := cmd.Flags().Set("force", "true"); err != nil {
+		t.Fatal(err)
+	}
+	// --repo pins resolution to the throwaway repository, so nothing here can
+	// reach the repository the test itself is running inside.
+	if err := cmd.Flags().Set("repo", localRepo); err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	cmd.SetOut(out)
+
+	if err := runSessionDelete(cmd, "myinstance", []string{"auth"}); err != nil {
+		t.Fatalf("runSessionDelete() error = %v, want the unreachable instance reported as a warning, not an error", err)
+	}
+	got, _, _ := store.Get("myinstance")
+	if _, ok := got.FindSession("auth"); ok {
+		t.Error("the session survived in the record after its local remote was torn down -- nothing could ever rescue it again")
+	}
+	if !strings.Contains(out.String(), "/home/devuser/sessions/auth/") {
+		t.Errorf("output = %q, want it to name the directory left behind on the instance", out.String())
+	}
+}
+
 // After a successful merge the session exists on neither machine. A record
 // that still names it makes the next `down` refuse to destroy and recommend
 // --force, which is the one path that loses work.

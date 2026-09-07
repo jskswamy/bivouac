@@ -24,6 +24,7 @@ type fakeProvider struct {
 	created     bool
 	gotSpec     provider.InstanceSpec
 	destroyedID string
+	destroyed   bool
 	destroyErr  error
 	getVM       provider.VM
 	getErr      error
@@ -36,6 +37,7 @@ func (f *fakeProvider) Create(ctx context.Context, spec provider.InstanceSpec) (
 }
 func (f *fakeProvider) Destroy(ctx context.Context, id string) error {
 	f.destroyedID = id
+	f.destroyed = true
 	return f.destroyErr
 }
 func (f *fakeProvider) Get(ctx context.Context, id string) (provider.VM, error) {
