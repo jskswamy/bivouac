@@ -50,12 +50,8 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 		// Issues too, on the same reasoning the commit checks above rest on:
 		// delete is how work is thrown away, and the difference from merge
 		// should never be discovered afterwards.
-		if client, err := reconcile.Connect(ctx, ip, user); err == nil {
-			err := requireBeadsLanded(ctx, client, s.LocalRepo, RemoteRepoPath(user, s.Name, repoName), s.Name)
-			_ = client.Close()
-			if err != nil {
-				return "", err
-			}
+		if err := checkBeadsLanded(ctx, ip, user, s.LocalRepo, RemoteRepoPath(user, s.Name, repoName), s.Name); err != nil {
+			return "", err
 		}
 	}
 

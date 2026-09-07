@@ -104,12 +104,8 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 		// the verb that makes their loss permanent. RescueSession's own
 		// beads step warns rather than failing, because a broken issue sync
 		// must not stop a pull -- but it must stop a destroy.
-		if client, err := reconcile.Connect(ctx, record.IP, record.User); err == nil {
-			err := requireBeadsLanded(ctx, client, s.LocalRepo, RemoteRepoPath(record.User, s.Name, record.Name), s.Name)
-			_ = client.Close()
-			if err != nil && firstErr == nil {
-				firstErr = err
-			}
+		if err := checkBeadsLanded(ctx, record.IP, record.User, s.LocalRepo, RemoteRepoPath(record.User, s.Name, record.Name), s.Name); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 	return firstErr

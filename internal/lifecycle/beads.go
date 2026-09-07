@@ -152,6 +152,24 @@ func pullBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, s
 	return true
 }
 
+// checkBeadsLanded connects to the instance and runs requireBeadsLanded,
+// shared by delete and down so a Connect failure is handled identically in
+// both: it warns rather than skipping the issue check silently. Both
+// call sites run this immediately after RescueSession, which would already
+// have failed loudly against an unreachable instance -- so this stays
+// best-effort and never turns into a refusal on its own -- but silence was
+// the bug: an unknown was treated as safe inside the one guard whose
+// contract is the opposite.
+func checkBeadsLanded(ctx context.Context, ip, user, localRepo, repo, session string) error {
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		provider.ReportWarning(ctx, "beads: could not connect to check whether session "+session+"'s issues have landed ("+err.Error()+"); skipping the issue check")
+		return nil
+	}
+	defer func() { _ = client.Close() }()
+	return requireBeadsLanded(ctx, client, localRepo, repo, session)
+}
+
 // requireBeadsLanded refuses when the instance may still hold issue work this
 // machine does not have.
 //
