@@ -1,0 +1,7 @@
+{
+  "TCP": {
+    "9876": {
+      "TCPForward": "localhost:9876"
+    }
+  }
+}
