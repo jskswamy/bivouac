@@ -124,7 +124,54 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 		cmd.Printf("Status:   %s\n", st.LiveStatus)
 	}
 	printSessions(cmd, record)
+
+	// Only when state says there is a tailnet: serving is tailnet-only,
+	// so an instance that never joined has nothing to report and should
+	// not pay an SSH round trip to learn that.
+	if record.TailscaleJoined {
+		entries, serveErr := lifecycle.ServeStatus(cmd.Context(), record.IP, record.User)
+		// The tailnet IP is only needed to print an address beside each
+		// entry, so it is fetched only when there is an entry to print --
+		// skipping a second SSH round trip both when the instance is
+		// unreachable (serveErr already answers that) and in the common
+		// case of nothing being served.
+		var tailnetIP string
+		if serveErr == nil && len(entries) > 0 {
+			tailnetIP, _ = lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
+		}
+		printServing(cmd, entries, tailnetIP, serveErr)
+	}
 	return nil
+}
+
+// printServing renders the instance's published ports. Separate from
+// runStatus for the same reason printSessions is: it can then be tested
+// without a provider or an instance.
+//
+// An error is reported as unknown rather than returned. status is a
+// read-only report and an unreachable instance is an expected state for
+// it -- the live provider check above already renders that way, and a
+// serve lookup must not be the thing that makes status fail.
+func printServing(cmd *cobra.Command, entries []lifecycle.ServeEntry, tailnetIP string, err error) {
+	if err != nil {
+		cmd.Printf("Serving:  unknown (instance unreachable)\n")
+		return
+	}
+	if len(entries) == 0 {
+		cmd.Printf("Serving:  none\n")
+		return
+	}
+	cmd.Printf("Serving:\n")
+	for _, e := range entries {
+		// The ports are known even when the tailnet lookup that would
+		// address them is not -- worth showing rather than discarding,
+		// but never as a bare ":8888" with no host.
+		addr := "(tailnet address unknown)"
+		if tailnetIP != "" {
+			addr = tailnetIP + ":" + strconv.Itoa(e.Port)
+		}
+		cmd.Printf("  %-6d %s\n", e.Port, addr)
+	}
 }
 
 // printSessions renders an instance's sessions. Separate from runStatus so it

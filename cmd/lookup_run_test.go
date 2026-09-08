@@ -673,6 +673,68 @@ func TestChooseServeEntry(t *testing.T) {
 	}
 }
 
+func TestPrintServing_ListsEntries(t *testing.T) {
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	printServing(cmd, []lifecycle.ServeEntry{{Port: 8888, Forward: "localhost:8888"}}, "100.81.106.84", nil)
+
+	got := out.String()
+	if !strings.Contains(got, "Serving:") || !strings.Contains(got, "8888") {
+		t.Errorf("printServing() = %q, want a Serving block naming 8888", got)
+	}
+}
+
+func TestPrintServing_UnreachableDoesNotFail(t *testing.T) {
+	// status must keep working when the instance is down; it already
+	// renders a failed live check as "unknown" rather than erroring.
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	printServing(cmd, nil, "", errors.New("dial tcp: connection refused"))
+
+	got := out.String()
+	if !strings.Contains(got, "unknown") {
+		t.Errorf("printServing() = %q, want it to report unknown rather than the raw error", got)
+	}
+}
+
+func TestPrintServing_NoneServed(t *testing.T) {
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	printServing(cmd, nil, "100.81.106.84", nil)
+
+	if got := out.String(); !strings.Contains(got, "none") {
+		t.Errorf("printServing() = %q, want it to say none", got)
+	}
+}
+
+func TestPrintServing_EntriesButNoTailnetIP(t *testing.T) {
+	// ServeStatus succeeded, TailscaleIP did not. The ports are known
+	// and worth showing; the address is not, and must not render as a
+	// bare ":8888".
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	printServing(cmd, []lifecycle.ServeEntry{{Port: 8888, Forward: "localhost:8888"}}, "", nil)
+
+	got := out.String()
+	if !strings.Contains(got, "8888") {
+		t.Errorf("printServing() = %q, want the port still listed", got)
+	}
+	if strings.Contains(got, ":8888") && !strings.Contains(got, "localhost:8888") {
+		t.Errorf("printServing() = %q, want no bare \":8888\" with an empty host", got)
+	}
+	if !strings.Contains(got, "unknown") {
+		t.Errorf("printServing() = %q, want the missing address called out", got)
+	}
+}
+
 func headOf(t *testing.T, repo string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()

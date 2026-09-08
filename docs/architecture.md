@@ -410,17 +410,29 @@ manually by `cloudlab tailscale`).
 | `session list` | global | Every session on every instance, with its branch, unmerged count and worktree state |
 | `sync [remote-dir] --dir <local-dir>` | per-instance | One-shot rsync push of a local directory. `--dir` defaults to the current directory; `remote-dir` defaults to the mirrored remote path. For data that isn't in git |
 | `download <remote-dir> [local-dir]` | per-instance | One-shot rsync pull. `local-dir` defaults to `./<basename>` |
-| `status [name]` | per-instance | Instance detail from state, a live provider check, and the instance's own sessions |
+| `status [name]` | per-instance | Instance detail from state, a live provider check, the instance's own sessions, and (when tailnet-joined) its served ports |
 | `down [name]` | per-instance | Rescue every session's work, deregister from the tailnet, destroy the VM, clear state. Confirms first; `--force` skips the rescue |
 | `list` | global | All instances across all repos (name, provider, IP) |
 | `secrets init/edit/keys` | global | Manage the personal, sops-encrypted secrets file |
 | `shell [name]` | per-instance | **Not implemented.** Reconcile, then open a *local* subshell with instance envs injected (`DOCKER_HOST`, ...) |
 | `connect [name] --port <n>` | per-instance | Reach a service on the instance: takes a port, or discovers what's listening and asks if there's more than one. The service's bind address decides what happens next — a tailnet-routable address prints a URL and exits; a loopback-bound one, or no tailnet at all, runs a foreground `ssh -L` and prints the local URL to forward through instead |
+| `serve [port]` | per-instance | Publish a service on the tailnet via `tailscale serve`, discovering the port the same way `connect` does. The instance comes from `--name` or the cwd, same as the `tmux` row above; `[port]` is optional. Requires the instance to be tailnet-joined |
+| `unserve [port]` | per-instance | Stop publishing one port. With none served it says so; with several and no port given, it asks |
 
 `[name]` is optional on every per-instance command and defaults to the
 current repo's derived instance name; see
 [Instance identity](#instance-identity). `--repo` and `--name` are
 persistent flags on the root command.
+
+`connect` vs `serve`: both name a service the same way, but differ in how
+long the result lasts and who can reach it. `connect` lasts only as long as
+the command runs and is reachable only from the machine that ran it — kill
+the command (or its forward) and the door closes. `serve` lasts until
+`unserve` is run and is reachable from the whole tailnet, not just the
+machine that published it. `serve`/`unserve` never run `tailscale serve
+reset`: reset clears every entry on the instance, including ones the user
+set up by hand outside cloudlab, so both commands only ever add or remove
+their own single entry.
 
 `shell` vs `ssh`: `shell` is designed never to touch the network to open an
 interactive session — it configures your **local** shell to talk to the
