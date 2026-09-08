@@ -40,13 +40,14 @@ func resolveInstance(name string) (*state.Store, state.Record, error) {
 	return store, record, nil
 }
 
-// resolveProvider builds a DigitalOcean provider from
-// DIGITALOCEAN_TOKEN, for commands that need to call the live API
-// (down, status).
-func resolveProvider() (provider.Provider, error) {
-	token := os.Getenv("DIGITALOCEAN_TOKEN")
-	if token == "" {
-		return nil, fmt.Errorf("DIGITALOCEAN_TOKEN not set")
+// resolveProvider builds a DigitalOcean provider from the token
+// resolveToken finds, for the three commands that call the live API
+// (up, down, status). Every other command works off state.Record and
+// SSH and needs no token at all.
+func resolveProvider(ctx context.Context) (provider.Provider, error) {
+	token, err := resolveToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return digitalocean.New(token), nil
 }
@@ -56,7 +57,10 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := resolveProvider()
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
+	p, err := resolveProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -103,12 +107,26 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := resolveProvider()
-	if err != nil {
-		return err
-	}
+	ctx := provider.WithProgress(cmd.Context(), func(status string) {
+		cmd.Printf("→ %s\n", status)
+	})
 
-	st := lifecycle.Status(cmd.Context(), p, record)
+	// status's only use of the API is the live status field; every other
+	// line it prints comes from local state. lifecycle.Status already
+	// reports a failed live check rather than failing the call -- an
+	// absent token is the same kind of fact, so it degrades the same way
+	// rather than making the whole report unavailable on a machine with
+	// no key present. up and down still fail hard: neither can create or
+	// destroy a droplet without the API, so for them a missing token is
+	// not a degraded report but no work at all.
+	st := lifecycle.InstanceStatus{Record: record}
+	liveReason := "live check failed"
+	if p, provErr := resolveProvider(ctx); provErr != nil {
+		st.LiveErr = provErr
+		liveReason = "no live check"
+	} else {
+		st = lifecycle.Status(ctx, p, record)
+	}
 	cmd.Printf("Name:     %s\n", st.Record.Name)
 	cmd.Printf("Provider: %s\n", st.Record.Provider)
 	cmd.Printf("Region:   %s\n", st.Record.Region)
@@ -122,7 +140,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("RepoPath: %s\n", repoPath)
 	cmd.Printf("IP:       %s\n", st.Record.IP)
 	if st.LiveErr != nil {
-		cmd.Printf("Status:   unknown (live check failed: %v)\n", st.LiveErr)
+		cmd.Printf("Status:   unknown (%s: %v)\n", liveReason, st.LiveErr)
 	} else {
 		cmd.Printf("Status:   %s\n", st.LiveStatus)
 	}

@@ -155,6 +155,77 @@ reference, so you can point `template` at your own flake's
 `homeConfigurations` output. Note that `arch` is ignored in that case: the
 `-<system>` suffix is only appended for the two built-in names.
 
+## The DigitalOcean token
+
+Three commands talk to the DigitalOcean API and need a token: `up`, `down`
+and `status`. Everything else — `ssh`, `herdr`, `tmux`, `session start`,
+`sync`, `connect`, `serve` and the rest — works from local state and SSH,
+and needs no token at all.
+
+cloudlab looks in two places, in this order:
+
+1. **`DIGITALOCEAN_TOKEN` in the environment**, if it is set and non-empty.
+2. **`digitalocean_token` in your secrets file**, decrypted just-in-time.
+
+Put the token in the secrets file with `cloudlab secrets edit`:
+
+```yaml
+digitalocean_token: dop_v1_…
+```
+
+### Why the environment wins
+
+The order is deliberate, and it is the opposite of the usual instinct that a
+file should beat an environment variable.
+
+Decryption goes through age, and commonly through an `age-plugin-yubikey`
+identity whose touch policy can require physical presence. cloudlab exists so
+that agents can work unattended; an agent cannot touch a key. Reading the
+secrets file first would make every `up` and `down` block on a key that is not
+plugged in, which is precisely the situation this ordering avoids.
+
+So the two sources are for two different callers. The secrets file is the
+durable home for the token on a machine you sit at. `DIGITALOCEAN_TOKEN` is the
+override an unattended agent, a CI job or a container sets, and it keeps that
+path free of any hardware prompt.
+
+Neither is unconditionally "the secure one". An exported environment variable
+is weaker at rest and is inherited by every child process of that shell,
+including any agent you launch from it; the encrypted file is stronger at rest
+but useless where nobody can authorise a decryption. Pick per machine.
+
+Because only `up` and `down` require the token, an interactive day costs at
+most two decryptions — one when you bring an instance up and one when you take
+it down. If your identity's touch policy makes even that unwelcome, note that
+the policy is chosen when the age identity is generated
+(`age-plugin-yubikey --touch-policy always|cached|never`), and that is the
+right place to change it. cloudlab deliberately does not cache the decrypted
+token: doing so would quietly undo a policy you set in hardware.
+
+`digitalocean_token` differs from every other key in the secrets file in one
+way worth knowing: it authenticates cloudlab's own API calls from your machine
+and is **never** sent to an instance. `tailscale_authkey` and the DoltHub
+credentials are streamed to the VM; this one never leaves your laptop.
+
+### When neither source has it
+
+`up` and `down` fail, naming both places that were tried — neither can create
+or destroy a droplet without the API.
+
+`status` degrades instead. Every field it prints except the live status comes
+from local state, so it reports what it knows and marks the one unavailable
+field:
+
+```
+$ cloudlab status myinstance
+Name:     myinstance
+...
+IP:       203.0.113.7
+Status:   unknown (no live check: no DigitalOcean token: DIGITALOCEAN_TOKEN is unset, and …)
+```
+
+This is the same way `status` already renders an instance it cannot reach.
+
 ## Personal base config and reuse across projects
 
 Most of your `cloudlab.pkl` settings — your SSH key, your usual droplet

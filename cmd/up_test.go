@@ -67,7 +67,10 @@ func TestUpCommand_NotInRepoErrors(t *testing.T) {
 }
 
 func TestUpCommand_MissingTokenErrors(t *testing.T) {
-	chdir(t, initTestRepo(t))
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	minimalCloudlabPkl(t, dir)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()
@@ -133,7 +136,10 @@ func TestUpCommand_ConfirmationSummary_ShownBeforePrompt(t *testing.T) {
 }
 
 func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
-	chdir(t, initTestRepo(t))
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	minimalCloudlabPkl(t, dir)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()

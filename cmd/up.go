@@ -10,7 +10,6 @@ import (
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
 	"github.com/spf13/cobra"
 )
 
@@ -43,15 +42,24 @@ func newUpCmd() *cobra.Command {
 				}
 			}
 
-			token := os.Getenv("DIGITALOCEAN_TOKEN")
-			if token == "" {
-				return fmt.Errorf("DIGITALOCEAN_TOKEN not set (needed to create instance %q)", name)
-			}
-
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
 			cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
 			if err != nil {
 				return err
+			}
+
+			ctx := provider.WithProgress(cmd.Context(), func(status string) {
+				cmd.Printf("→ %s\n", status)
+			})
+			// Resolved before the confirmation prompt, as the inline env
+			// read this replaces was: there is no point asking whether to
+			// create an instance that cannot be created. The cost is that a
+			// secrets-file token is decrypted even when the answer turns out
+			// to be no -- the cheaper order of the two, since up is confirmed
+			// far more often than it is aborted.
+			p, err := resolveProvider(ctx)
+			if err != nil {
+				return fmt.Errorf("%w (needed to create instance %q)", err, name)
 			}
 
 			ok, err := confirm(cmd, upSummary(name, cfg))
@@ -63,10 +71,6 @@ func newUpCmd() *cobra.Command {
 				return nil
 			}
 
-			p := digitalocean.New(token)
-			ctx := provider.WithProgress(cmd.Context(), func(status string) {
-				cmd.Printf("→ %s\n", status)
-			})
 			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
 				return err
 			}

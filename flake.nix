@@ -137,6 +137,14 @@
               pkgs.gopls
               pkgs.rsync
               pkgs.mutagen
+              # internal/secrets shells out to sops, and its tests (plus
+              # cmd's and internal/lifecycle's) build real encrypted
+              # fixtures with age-keygen. Same call as beads-pkg.nix
+              # below: without these in the shell the suite fails in the
+              # environment CONTRIBUTING.md tells you to use, which is
+              # worse than skipping.
+              pkgs.sops
+              pkgs.age
               (pklFor system pkgs)
               direnv-instant.packages.${system}.default
             ]

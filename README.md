@@ -152,12 +152,21 @@ and the errors you might see. Worked examples live in
 
 `cloudlab secrets init/edit/keys` manage a personal,
 [sops](https://github.com/getsops/sops)-encrypted file at
-`~/.config/cloudlab/secrets.yaml`. Today it holds `tailscale_authkey` and,
-for `beads = "dolthub"`, a DoltHub credential (`dolthub_creds` and
-`dolthub_creds_id`). `up`/`cloudlab tailscale` and `beads = "dolthub"`
-decrypt these just-in-time, stream them to the instance's tmpfs over SSH
+`~/.config/cloudlab/secrets.yaml`. It holds `tailscale_authkey`,
+`digitalocean_token`, and — for `beads = "dolthub"` — a DoltHub credential
+(`dolthub_creds` and `dolthub_creds_id`).
+
+`up`/`cloudlab tailscale` and `beads = "dolthub"` decrypt the Tailscale and
+DoltHub secrets just-in-time, stream them to the instance's tmpfs over SSH
 stdin, and zero immediately after — never a command-line argument, never
 plaintext on disk on either machine.
+
+`digitalocean_token` is the exception: it authenticates cloudlab's own API
+calls from your machine and never reaches an instance. `DIGITALOCEAN_TOKEN`
+in the environment takes precedence over it, so unattended agents never need
+a hardware key — see [the token section in
+`docs/config.md`](docs/config.md#the-digitalocean-token) for why the order
+runs that way.
 
 ## Documentation
 
