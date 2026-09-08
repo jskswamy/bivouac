@@ -154,6 +154,8 @@ func excludeWorktreeDir(ctx context.Context, localRepo string) error {
 	}
 
 	exclude := filepath.Join(gitDir, "info", "exclude")
+	// #nosec G304 -- path derived from git's own --git-common-dir, same
+	// as the OpenFile below which already carries this annotation.
 	if existing, err := os.ReadFile(exclude); err == nil {
 		if slices.Contains(nonEmptyLines(string(existing)), worktreeDirPattern) {
 			return nil
