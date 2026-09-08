@@ -16,6 +16,7 @@ type fakeRunner struct {
 	commands []string
 	failAt   int // index into commands to fail on; -1 means never fail
 	failErr  error
+	failOut  string // what the failing call writes; "boom" when unset
 }
 
 func newFakeRunner() *fakeRunner {
@@ -26,6 +27,9 @@ func (f *fakeRunner) Run(cmd string) (string, error) {
 	i := len(f.commands)
 	f.commands = append(f.commands, cmd)
 	if i == f.failAt {
+		if f.failOut != "" {
+			return f.failOut, f.failErr
+		}
 		return "boom", f.failErr
 	}
 	return "ok", nil
@@ -81,6 +85,61 @@ func TestBootstrap_SurfacesAnInitFailureWithoutAddingTheRemote(t *testing.T) {
 	if !errors.Is(err, ErrInitFailed) {
 		t.Errorf("errors.Is(err, ErrInitFailed) = false, want true -- callers tell this apart "+
 			"from a remote-add failure to decide whether the instance has a database at all: err = %v", err)
+	}
+}
+
+// An instance with no `bd` on PATH is the one init failure a caller can give
+// a real instruction for, so it has to be distinguishable from every other
+// one. Each entry is a different shell's way of saying it -- the instance's
+// login shell is not cloudlab's to choose.
+func TestBootstrap_MarksAMissingBdOnTheInstance(t *testing.T) {
+	for _, out := range []string{
+		"bash: line 1: bd: command not found",
+		"zsh:1: command not found: bd",
+		"sh: 1: bd: not found",
+	} {
+		t.Run(out, func(t *testing.T) {
+			fr := newFakeRunner()
+			fr.failAt = 0
+			fr.failErr = errors.New("Process exited with status 127")
+			fr.failOut = out
+
+			err := Bootstrap(fr, "/repo", "git+file:///session-repo", "")
+			if err == nil {
+				t.Fatal("Bootstrap() error = nil, want the init failure")
+			}
+			if !errors.Is(err, ErrBdMissing) {
+				t.Errorf("errors.Is(err, ErrBdMissing) = false, want true -- the caller "+
+					"names `cloudlab provision` only for this failure: err = %v", err)
+			}
+			if !errors.Is(err, ErrInitFailed) {
+				t.Errorf("errors.Is(err, ErrInitFailed) = false, want true -- a missing bd "+
+					"is still an init failure, and the remote must still be dropped: err = %v", err)
+			}
+		})
+	}
+}
+
+// Every other init failure -- a broken database, a full disk, a bad file URL
+// -- leaves the instance with `bd` installed, so recommending `cloudlab
+// provision` there would send the user to reinstall something they already
+// have while the real cause goes unnamed.
+func TestBootstrap_OtherInitFailuresAreNotABdMissing(t *testing.T) {
+	fr := newFakeRunner()
+	fr.failAt = 0
+	fr.failErr = errors.New("Process exited with status 1")
+	fr.failOut = "error: dolt clone failed: remote not found"
+
+	err := Bootstrap(fr, "/repo", "git+file:///session-repo", "")
+	if err == nil {
+		t.Fatal("Bootstrap() error = nil, want the init failure")
+	}
+	if errors.Is(err, ErrBdMissing) {
+		t.Errorf("errors.Is(err, ErrBdMissing) = true, want false -- bd ran and reported "+
+			"its own failure, so provision is not the fix: err = %v", err)
+	}
+	if !errors.Is(err, ErrInitFailed) {
+		t.Errorf("errors.Is(err, ErrInitFailed) = false, want true: err = %v", err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // instanceRunner is the shape of reconcile.Client.Run: run a command on the
@@ -79,6 +80,34 @@ func Seed(ctx context.Context, localRepo, session, url string) error {
 // wired.
 var ErrInitFailed = errors.New("initialising issues on the instance")
 
+// ErrBdMissing narrows ErrInitFailed to the one cause a caller can hand the
+// user an instruction for: the instance has no `bd` on PATH at all. It is
+// always wrapped alongside ErrInitFailed, never instead of it -- the remote
+// still has to be dropped exactly as for any other init failure.
+//
+// This is the ordinary state of any instance provisioned before beads was
+// added to the templates flake, so it is worth telling apart from a bd that
+// ran and failed on its own terms, where reinstalling it fixes nothing.
+var ErrBdMissing = errors.New("no bd installed on the instance")
+
+// bdMissing reads the shell's "no such command" complaint out of a failed
+// init's output.
+//
+// Matched on the output rather than on exit status 127: the status is only
+// reachable by type-asserting *ssh.ExitError, which would drag the ssh
+// package into this one and, worse, past instanceRunner -- the seam that
+// lets every function here be driven by a fake. A fake cannot produce an
+// *ssh.ExitError, so the check would be the one thing untestable in a file
+// built around being testable.
+//
+// Two phrasings cover the shells an instance might log in with: bash and zsh
+// both say "command not found", dash and sh say "<name>: not found". The
+// instance's login shell is not cloudlab's to choose, and a shell that
+// phrases it a third way simply falls through to the generic message.
+func bdMissing(out string) bool {
+	return strings.Contains(out, "command not found") || strings.Contains(out, "bd: not found")
+}
+
 // Bootstrap clones the seeded database into the instance's checkout, and in
 // "dolthub" mode adds the external remote as a second destination afterwards.
 //
@@ -96,6 +125,9 @@ var ErrInitFailed = errors.New("initialising issues on the instance")
 // get added".
 func Bootstrap(client instanceRunner, repo, fileURL, externalURL string) error {
 	if out, err := client.Run(initCmd(repo, fileURL)); err != nil {
+		if bdMissing(out) {
+			return fmt.Errorf("%w: %w: %w\n%s", ErrInitFailed, ErrBdMissing, err, out)
+		}
 		return fmt.Errorf("%w: %w\n%s", ErrInitFailed, err, out)
 	}
 	if externalURL == "" {

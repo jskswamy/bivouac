@@ -102,7 +102,7 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 // apart.
 func bootstrapBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, session, external string) {
 	if err := beads.Bootstrap(client, repo, beads.FileURL(repo), external); err != nil {
-		provider.ReportWarning(ctx, "beads: "+err.Error())
+		provider.ReportWarning(ctx, bootstrapWarning(err))
 		if !errors.Is(err, beads.ErrInitFailed) {
 			// The instance has a real database; the session's git+ssh
 			// transport still carries issues home, so it stays wired.
@@ -115,6 +115,37 @@ func bootstrapBeads(ctx context.Context, client *reconcile.Client, localRepo, re
 		return
 	}
 	warnOnBeadsVersionMismatch(ctx, client, repo)
+}
+
+// bootstrapWarning says what a Bootstrap failure cost and, where there is
+// one, what to do about it.
+//
+// session start reports success either way -- beads never fails a session --
+// so the warning is the only place the user learns that the session they are
+// about to work in has nowhere to keep its issues. Saying so is the part
+// that matters; the shell's "Process exited with status 127" says neither
+// what was lost nor what to try.
+//
+// The provision advice is narrowed to ErrBdMissing because it is wrong
+// anywhere else: every other init failure leaves bd installed and reports
+// its own cause, which reinstalling cannot address and this message must not
+// bury.
+//
+// The default-branch caveat is here because provision alone often does not
+// fix it, and a reader who has just run it and seen no change deserves to
+// know why rather than concluding the advice was wrong. Instances resolve
+// their home-manager config from the templates flake on the repository's
+// default branch, so beads packaging that has not been pushed there is
+// invisible to any number of provision runs.
+func bootstrapWarning(err error) string {
+	if !errors.Is(err, beads.ErrBdMissing) {
+		return "beads: " + err.Error()
+	}
+	return "beads: this session has no issue tracking -- the instance has no `bd` installed" +
+		"\nrun `cloudlab provision` to install it, then start the session again" +
+		"\nif it is still missing after that, the instance builds its home-manager config from" +
+		" the templates flake on this repository's default branch, so the beads packaging has" +
+		" to be pushed there before provision can see it"
 }
 
 // warnOnBeadsVersionMismatch compares bd's version on both machines, once

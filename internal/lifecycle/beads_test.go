@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -309,8 +311,54 @@ func TestBootstrapBeads_WarnsWhenBootstrapFails(t *testing.T) {
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
 	bootstrapBeads(ctx, client, localRepo, "/home/devuser/sessions/s/repo", session, "")
 
-	if !strings.Contains(errOut.String(), "command not found") {
-		t.Errorf("errOut = %q, want it to carry the Bootstrap failure", errOut.String())
+	got := errOut.String()
+	if !strings.Contains(got, "no issue tracking") {
+		t.Errorf("errOut = %q, want it to say the session has no issue tracking -- session "+
+			"start reports success either way, so the consequence has to be stated", got)
+	}
+	if !strings.Contains(got, "cloudlab provision") {
+		t.Errorf("errOut = %q, want it to name `cloudlab provision` as the fix", got)
+	}
+}
+
+// The shell's own words are the wrong thing to hand someone: "Process exited
+// with status 127" names neither what was lost nor what to do, and this
+// failure is the ordinary state of any instance provisioned before beads
+// reached the templates flake.
+func TestBootstrapWarning_ExplainsAMissingBdInsteadOfQuotingTheShell(t *testing.T) {
+	err := fmt.Errorf("%w: %w: %w\n%s",
+		beads.ErrInitFailed, beads.ErrBdMissing,
+		errors.New("Process exited with status 127"),
+		"bash: line 1: bd: command not found")
+
+	got := bootstrapWarning(err)
+
+	for _, want := range []string{"no issue tracking", "cloudlab provision", "default branch"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("bootstrapWarning() = %q, want it to mention %q", got, want)
+		}
+	}
+	if strings.Contains(got, "status 127") {
+		t.Errorf("bootstrapWarning() = %q, want the shell's exit status left out -- it is "+
+			"the noise this message exists to replace", got)
+	}
+}
+
+// Reinstalling bd fixes nothing when bd is what reported the failure, so
+// every other init failure keeps its own cause instead of being redirected
+// to provision.
+func TestBootstrapWarning_KeepsTheCauseForEveryOtherFailure(t *testing.T) {
+	err := fmt.Errorf("%w: %w\n%s", beads.ErrInitFailed,
+		errors.New("Process exited with status 1"), "error: dolt clone failed")
+
+	got := bootstrapWarning(err)
+
+	if !strings.Contains(got, "dolt clone failed") {
+		t.Errorf("bootstrapWarning() = %q, want it to keep the real cause", got)
+	}
+	if strings.Contains(got, "cloudlab provision") {
+		t.Errorf("bootstrapWarning() = %q, want no provision advice -- bd ran and failed on "+
+			"its own terms, so reinstalling it sends the user nowhere", got)
 	}
 }
 
