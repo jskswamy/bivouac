@@ -415,7 +415,7 @@ manually by `cloudlab tailscale`).
 | `list` | global | All instances across all repos (name, provider, IP) |
 | `secrets init/edit/keys` | global | Manage the personal, sops-encrypted secrets file |
 | `shell [name]` | per-instance | **Not implemented.** Reconcile, then open a *local* subshell with instance envs injected (`DOCKER_HOST`, ...) |
-| `connect [name]` | per-instance, python | **Not implemented.** Jupyter tunnel |
+| `connect [name] --port <n>` | per-instance | Reach a service on the instance: takes a port, or discovers what's listening and asks if there's more than one. The service's bind address decides what happens next — a tailnet-routable address prints a URL and exits; a loopback-bound one, or no tailnet at all, runs a foreground `ssh -L` and prints the local URL to forward through instead |
 
 `[name]` is optional on every per-instance command and defaults to the
 current repo's derived instance name; see
@@ -491,7 +491,7 @@ work.
 
 ## Not built (deliberately)
 
-- **`shell` and `connect`** are stubs. They resolve an instance and exit with
+- **`shell`** is a stub. It resolves an instance and exits with
   "not implemented yet".
 - **No second provider implementation.** The interface exists so adding one
   later doesn't require touching instance identity, templates, or state.

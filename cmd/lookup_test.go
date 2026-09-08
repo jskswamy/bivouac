@@ -22,7 +22,7 @@ func TestLookupCommands_NameFlagResolves(t *testing.T) {
 		{[]string{"tailscale", "--name", "myrepo"}, "tailscale", `no instance named "myrepo"`},
 		{[]string{"pair", "--name", "myrepo"}, "pair", `no instance named "myrepo"`},
 		{[]string{"session", "start", "auth-refactor", "--name", "myrepo"}, "session", `no instance named "myrepo"`},
-		{[]string{"connect", "--name", "myrepo"}, "connect", "connect: not implemented yet"},
+		{[]string{"connect", "--name", "myrepo"}, "connect", `no instance named "myrepo"`},
 		{[]string{"status", "--name", "myrepo"}, "status", `no instance named "myrepo"`},
 		{[]string{"down", "--name", "myrepo"}, "down", `no instance named "myrepo"`},
 		{[]string{"sync", "./data", "--name", "myrepo"}, "sync", `no instance named "myrepo"`},

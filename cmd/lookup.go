@@ -105,10 +105,15 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:   "connect [name]",
-		short: "Open a Jupyter tunnel to the instance (python template only)",
+		short: "Reach a service on the instance by port, over the tailnet or an SSH forward",
 		verb:  "connect",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
+		flags: func(c *cobra.Command) {
+			c.Flags().Int("port", 0, "remote port to reach (omit to choose from what is listening)")
+			c.Flags().Bool("all", false, "include the instance's own sockets (sshd, resolved, tailscaled) in the choices")
+		},
+		run: runConnect,
 	},
 	{
 		use:   "status [name]",

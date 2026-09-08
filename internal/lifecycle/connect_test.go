@@ -58,6 +58,26 @@ func TestConnectTarget(t *testing.T) {
 		})
 	}
 }
+
+// forwardArgs is Forward's pure argv builder, extracted for the same reason
+// sshArgs/tmuxArgs/herdrArgs are: the decision (which flags, in what shape)
+// is what is worth testing, while Forward itself execs a real ssh binary.
+func TestForwardArgs(t *testing.T) {
+	got := forwardArgs("203.0.113.5", "devuser", 8888)
+	// The 127.0.0.1 prefix is load-bearing, not cosmetic: without it ssh
+	// binds every address family and keeps running when only one
+	// collides, which defeats ExitOnForwardFailure entirely.
+	want := []string{"-N", "-o", "ExitOnForwardFailure=yes", "-L", "127.0.0.1:8888:localhost:8888", "devuser@203.0.113.5"}
+	if len(got) != len(want) {
+		t.Fatalf("forwardArgs() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("forwardArgs()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestConnectTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
 	// http://host:22 is what made curl read sshd's version banner as an
 	// HTTP/0.9 response. A bare host:port says nothing untrue.
@@ -67,5 +87,27 @@ func TestConnectTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
 	}
 	if forward {
 		t.Error("mustForward = true, want false — 0.0.0.0 is routable")
+	}
+}
+
+func TestVisibleListeners(t *testing.T) {
+	// The real fixture's shape: seven sockets, one of them the user's.
+	all := []Listener{
+		{Addr: "127.0.0.53%lo", Port: 53},
+		{Addr: "0.0.0.0", Port: 22},
+		{Addr: "127.0.0.1", Port: 24543, Process: "moshi-hook"},
+		{Addr: "100.81.106.84", Port: 35669},
+		{Addr: "127.0.0.54", Port: 53},
+		{Addr: "fd7a:115c:a1e0::db38:6a55", Port: 52076},
+		{Addr: "::", Port: 22},
+	}
+
+	visible := VisibleListeners(all, false)
+	if len(visible) != 1 || visible[0].Port != 24543 {
+		t.Errorf("VisibleListeners(all=false) = %+v, want only the moshi-hook socket on 24543", visible)
+	}
+
+	if got := VisibleListeners(all, true); len(got) != len(all) {
+		t.Errorf("VisibleListeners(all=true) returned %d, want all %d", len(got), len(all))
 	}
 }

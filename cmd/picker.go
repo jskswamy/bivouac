@@ -23,6 +23,21 @@ func isInteractive() bool {
 	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
 }
 
+// readIndex reads one 1-based choice, validating it against max.
+// Shared by the pickers so the parse-and-validate half lives once;
+// each picker owns only how it renders its own candidates.
+func readIndex(cmd *cobra.Command, max int) (int, error) {
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && line == "" {
+		return 0, fmt.Errorf("reading choice: %w", err)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil || n < 1 || n > max {
+		return 0, fmt.Errorf("%q is not one of 1-%d", strings.TrimSpace(line), max)
+	}
+	return n, nil
+}
+
 // pickSession prints a numbered list and reads one choice.
 //
 // A numbered prompt rather than a full TUI: it is a handful of lines, needs no
@@ -35,15 +50,32 @@ func pickSession(cmd *cobra.Command, candidates []string) (string, error) {
 	}
 	cmd.Print("Which one? ")
 
-	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-	if err != nil && line == "" {
-		return "", fmt.Errorf("reading choice: %w", err)
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(line))
-	if err != nil || n < 1 || n > len(candidates) {
-		return "", fmt.Errorf("%q is not one of 1-%d", strings.TrimSpace(line), len(candidates))
+	n, err := readIndex(cmd, len(candidates))
+	if err != nil {
+		return "", err
 	}
 	return candidates[n-1], nil
+}
+
+// pickListener prints a numbered list of listening ports and reads one
+// choice. Same shape as pickSession -- a numbered prompt rather than a
+// TUI, testable by writing to a buffer.
+func pickListener(cmd *cobra.Command, listeners []lifecycle.Listener) (lifecycle.Listener, error) {
+	cmd.Println("Listening on the instance:")
+	for i, l := range listeners {
+		proc := l.Process
+		if proc == "" {
+			proc = "-"
+		}
+		cmd.Printf("  %d) %-6d %-12s %s\n", i+1, l.Port, proc, l.Addr)
+	}
+	cmd.Print("Which one? ")
+
+	n, err := readIndex(cmd, len(listeners))
+	if err != nil {
+		return lifecycle.Listener{}, err
+	}
+	return listeners[n-1], nil
 }
 
 // resolveSessionInteractive is resolveSessionArg for commands that are about

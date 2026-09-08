@@ -3,12 +3,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -74,6 +76,114 @@ func TestRunSession_RecordsTheSessionBeforeCreatingIt(t *testing.T) {
 	}
 	if sess.LocalRepo == "" {
 		t.Error("session.LocalRepo is empty after a failed start, so down would not know which repository to fetch into")
+	}
+}
+
+// TestChooseListener covers every branch of the selection ladder, since a
+// prior version of one of them (exactly one listener with no TTY) refused
+// with a message that was flatly false: "several ports are listening" over
+// a list of one. Error messages are compared exactly, not just presence,
+// so a branch drifting back to the wrong wording fails the test that
+// should have caught it the first time.
+func TestChooseListener(t *testing.T) {
+	one := []lifecycle.Listener{{Addr: "127.0.0.1", Port: 8888}}
+	many := []lifecycle.Listener{
+		{Addr: "127.0.0.1", Port: 8888},
+		{Addr: "0.0.0.0", Port: 3000},
+	}
+
+	tests := []struct {
+		name            string
+		listeners       []lifecycle.Listener
+		port            int
+		discoveryFailed bool
+		interactive     bool
+		wantListener    lifecycle.Listener
+		wantErr         error  // sentinel, checked with errors.Is
+		wantErrMsg      string // exact message, checked when non-empty
+	}{
+		{
+			name:            "discovery failed, no port given",
+			listeners:       nil,
+			port:            0,
+			discoveryFailed: true,
+			interactive:     true,
+			wantErr:         errDiscoveryNoPort,
+		},
+		{
+			name:            "discovery failed, port given forwards blind",
+			listeners:       nil,
+			port:            8888,
+			discoveryFailed: true,
+			interactive:     true,
+			wantListener:    lifecycle.Listener{Addr: "127.0.0.1", Port: 8888},
+		},
+		{
+			name:         "port matches a listener",
+			listeners:    many,
+			port:         3000,
+			interactive:  true,
+			wantListener: lifecycle.Listener{Addr: "0.0.0.0", Port: 3000},
+		},
+		{
+			name:       "port does not match any listener",
+			listeners:  many,
+			port:       9999,
+			wantErrMsg: "nothing is listening on port 9999 — run `cloudlab connect` with no --port to see what is",
+		},
+		{
+			name:      "zero listeners",
+			listeners: nil,
+			wantErr:   errNoListeners,
+		},
+		{
+			name:         "exactly one listener, no TTY",
+			listeners:    one,
+			interactive:  false,
+			wantListener: one[0],
+		},
+		{
+			name:         "exactly one listener, with a TTY",
+			listeners:    one,
+			interactive:  true,
+			wantListener: one[0],
+		},
+		{
+			name:        "several listeners, no TTY",
+			listeners:   many,
+			interactive: false,
+			wantErrMsg:  "several ports are listening; pass --port (no terminal to ask on)",
+		},
+		{
+			name:        "several listeners, with a TTY asks the user",
+			listeners:   many,
+			interactive: true,
+			wantErr:     errAskUser,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := chooseListener(tt.listeners, tt.port, tt.discoveryFailed, tt.interactive)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("chooseListener() err = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if tt.wantErrMsg != "" {
+				if err == nil || err.Error() != tt.wantErrMsg {
+					t.Fatalf("chooseListener() err = %v, want message %q", err, tt.wantErrMsg)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("chooseListener() unexpected err = %v", err)
+			}
+			if got != tt.wantListener {
+				t.Fatalf("chooseListener() = %+v, want %+v", got, tt.wantListener)
+			}
+		})
 	}
 }
 
@@ -453,6 +563,39 @@ func newTestRepo(t *testing.T) string {
 	mustGitCmd(t, repo, "add", "tracked.txt")
 	mustGitCmd(t, repo, "commit", "--quiet", "-m", "tracked")
 	return repo
+}
+
+func TestPickListener_ValidChoice(t *testing.T) {
+	listeners := []lifecycle.Listener{
+		{Addr: "0.0.0.0", Port: 8888, Process: "python3.12"},
+		{Addr: "127.0.0.1", Port: 3000, Process: "node"},
+	}
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("2\n"))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	got, err := pickListener(cmd, listeners)
+	if err != nil {
+		t.Fatalf("pickListener() error = %v", err)
+	}
+	if got.Port != 3000 {
+		t.Errorf("pickListener() = port %d, want 3000", got.Port)
+	}
+	if !strings.Contains(out.String(), "8888") || !strings.Contains(out.String(), "node") {
+		t.Errorf("pickListener() did not list the candidates:\n%s", out.String())
+	}
+}
+
+func TestPickListener_OutOfRange(t *testing.T) {
+	listeners := []lifecycle.Listener{{Addr: "0.0.0.0", Port: 8888}}
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("7\n"))
+	cmd.SetOut(&bytes.Buffer{})
+
+	if _, err := pickListener(cmd, listeners); err == nil {
+		t.Error("pickListener() error = nil, want an error for a choice outside 1-1")
+	}
 }
 
 func headOf(t *testing.T, repo string) string {

@@ -11,9 +11,9 @@ provider boundary is designed to add others without touching the rest of the
 tool — see [ADR-0008](docs/adr/0008-provider-abstraction.md).
 
 > **Status:** `up`, `provision`, `down`, `list`, `status`, `ssh`, `tmux`,
-> `herdr`, `pair`, `tailscale`, `secrets`, `sync`/`download` and the git
-> session flow (`session start` / `pull` / `merge`) are implemented. `shell`
-> and `connect` are still stubs — they parse, resolve an instance, and exit
+> `herdr`, `pair`, `tailscale`, `secrets`, `connect`, `sync`/`download` and
+> the git session flow (`session start` / `pull` / `merge`) are implemented.
+> `shell` is still a stub — it parses, resolves an instance, and exits
 > with "not implemented yet". See [`docs/architecture.md`](docs/architecture.md)
 > and [`docs/adr/`](docs/adr/) for the full design.
 
@@ -26,6 +26,7 @@ cloudlab up                    # boots a VM (per cloudlab.pkl) and reconciles
 cloudlab session start agent   # seeds the repo onto the instance via git and
                                # checks it out on branch cloudlab/agent
 cloudlab ssh                   # interactive shell on the instance
+cloudlab connect --port 8888   # reach a service on the instance
 cloudlab session list          # every session on every instance, at a glance
 cloudlab session pull          # fetch the session's commits without merging
 cloudlab session merge         # replay, sign, verify, then retire the session

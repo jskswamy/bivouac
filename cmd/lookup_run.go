@@ -457,6 +457,139 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	return nil
 }
 
+// errDiscoveryNoPort, errNoListeners and errAskUser are sentinels
+// chooseListener returns when finishing the decision needs something it
+// doesn't have: the discovery error itself and the instance name (both
+// kept by the caller, which wraps them into the final message), or a
+// terminal to prompt on. Named errors here are less code than widening
+// the signature to a third return value every unambiguous caller would
+// have to ignore.
+var (
+	errDiscoveryNoPort = errors.New("discovery failed, no port given")
+	errNoListeners     = errors.New("no listeners")
+	errAskUser         = errors.New("ask the user")
+)
+
+// chooseListener decides which listener runConnect targets, given what
+// discovery found (or didn't). It is the pure half of that decision --
+// pulled out so the ladder itself is table-testable without a fake SSH
+// server, the same reason sshArgs/tmuxArgs/herdrArgs/pairArgs exist as
+// pure functions in internal/lifecycle. The interactive prompt is not
+// pure (it reads a terminal), so ambiguity with more than one candidate
+// comes back as errAskUser for the caller to act on, rather than being
+// resolved here.
+func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, interactive bool) (lifecycle.Listener, error) {
+	switch {
+	case discoveryFailed && port == 0:
+		return lifecycle.Listener{}, errDiscoveryNoPort
+	case discoveryFailed:
+		// No listing to check against, so the bind address is unknown.
+		// Forward rather than guess: a forward reaches a service on any
+		// address, while a tailnet URL reaches only a routable one.
+		return lifecycle.Listener{Addr: "127.0.0.1", Port: port}, nil
+	case port != 0:
+		for _, l := range listeners {
+			if l.Port == port {
+				return l, nil
+			}
+		}
+		return lifecycle.Listener{}, fmt.Errorf("nothing is listening on port %d — run `cloudlab connect` with no --port to see what is", port)
+	case len(listeners) == 0:
+		return lifecycle.Listener{}, errNoListeners
+	case len(listeners) == 1:
+		// One candidate is not a choice -- neither a prompt nor a
+		// refusal is warranted when there is nothing to pick between.
+		return listeners[0], nil
+	case !interactive:
+		return lifecycle.Listener{}, fmt.Errorf("several ports are listening; pass --port (no terminal to ask on)")
+	default:
+		return lifecycle.Listener{}, errAskUser
+	}
+}
+
+// runConnect reaches a service on the instance. With a port it goes
+// straight there; without one it asks the instance what is listening.
+func runConnect(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+
+	// args[0] is the instance name (named: true), so a port comes from
+	// the flag rather than a positional -- same reason runSSH takes
+	// --dir rather than a second positional.
+	port, err := cmd.Flags().GetInt("port")
+	if err != nil {
+		return err
+	}
+
+	// Discovery is best-effort. `ss` comes from iproute2 and is present
+	// on every image cloudlab boots, but an unusual base image or a
+	// locked-down PATH should not make connect unusable when the caller
+	// already knows the port.
+	listeners, lerr := lifecycle.Listeners(cmd.Context(), record.IP, record.User)
+
+	// --port addresses a socket directly, so it searches everything: a
+	// user who names 22 has said what they want, and hiding it would
+	// only produce a puzzling "nothing is listening" for a port they can
+	// see is open. The filter narrows what gets *offered*, not what can
+	// be reached.
+	all, err := cmd.Flags().GetBool("all")
+	if err != nil {
+		return err
+	}
+	offered := lifecycle.VisibleListeners(listeners, all || port != 0)
+
+	chosen, err := chooseListener(offered, port, lerr != nil, isInteractive())
+	switch {
+	case errors.Is(err, errDiscoveryNoPort):
+		return fmt.Errorf("%w\npass --port to connect without discovery", lerr)
+	case errors.Is(err, errNoListeners):
+		// Say so when the filter is why nothing is on offer, rather than
+		// claiming an instance running seven sockets is running none.
+		if hidden := len(listeners) - len(offered); hidden > 0 {
+			return fmt.Errorf("nothing of yours is listening on %s (%d infrastructure socket(s) hidden — pass --all to see them)", name, hidden)
+		}
+		return fmt.Errorf("nothing is listening on %s", name)
+	case errors.Is(err, errAskUser):
+		if chosen, err = pickListener(cmd, offered); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	}
+
+	// Skip the round trip entirely when state already says there is no
+	// tailnet -- an extra SSH connect plus `tailscale ip` to relearn
+	// what record.TailscaleJoined already told us. Mirrors the same
+	// guard on choosePairHost below.
+	var tailnetIP string
+	if record.TailscaleJoined {
+		tailnetIP, err = lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
+		if err != nil {
+			// Not reachable over the tailnet is an expected state, not a
+			// failure -- ConnectTarget treats an empty tailnetIP as "forward
+			// instead of routing there directly".
+			tailnetIP = ""
+		}
+	}
+
+	url, mustForward := lifecycle.ConnectTarget(tailnetIP, chosen)
+	if !mustForward {
+		cmd.Println(url)
+		return nil
+	}
+	cmd.Printf("%s (forwarding over SSH — Ctrl-C to stop)\n", url)
+	// Over the tailnet when there is one. Reaching this line means
+	// TailscaleIP already answered, so falling back to the public IP
+	// here would route around a link just proven to be up.
+	host := record.IP
+	if tailnetIP != "" {
+		host = tailnetIP
+	}
+	return lifecycle.Forward(cmd.Context(), host, record.User, chosen.Port)
+}
+
 func runSSH(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {

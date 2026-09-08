@@ -8,8 +8,8 @@ import (
 	"sort"
 )
 
-// Record is one instance's state: which provider created it, its VM and
-// network details, and the PIDs of its background sync/tunnel processes.
+// Record is one instance's state: which provider created it and its VM
+// and network details.
 type Record struct {
 	Name            string    `json:"name"`
 	Provider        string    `json:"provider"`
@@ -20,7 +20,6 @@ type Record struct {
 	Template        string    `json:"template"`
 	User            string    `json:"user"`
 	RepoPath        string    `json:"repo_path"`
-	TunnelPID       int       `json:"tunnel_pid"`
 	TailscaleJoined bool      `json:"tailscale_joined"`
 	Sessions        []Session `json:"sessions"`
 }
