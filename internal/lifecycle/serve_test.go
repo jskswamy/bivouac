@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,5 +78,82 @@ func TestUnserveArgs(t *testing.T) {
 	// reset clears entries the user created by hand; it must never appear.
 	if strings.Contains(got, "reset") {
 		t.Errorf("unserveArgs() = %q, must not use `serve reset`", got)
+	}
+}
+
+func TestServe_RunsTailscaleServe(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var got []string
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		got = append(got, cmd)
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/usr/bin/tailscale\n", 0
+		}
+		return "", 0
+	})
+
+	if err := Serve(context.Background(), addr, "devuser", 8888); err != nil {
+		t.Fatalf("Serve() error = %v", err)
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "serve --bg --tcp 8888 tcp://localhost:8888") {
+		t.Errorf("Serve() ran %q, want the --bg --tcp publish command", joined)
+	}
+}
+
+func TestUnserve_TurnsOffOneEntry(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var got []string
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		got = append(got, cmd)
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/usr/bin/tailscale\n", 0
+		}
+		return "", 0
+	})
+
+	if err := Unserve(context.Background(), addr, "devuser", 8888); err != nil {
+		t.Fatalf("Unserve() error = %v", err)
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "--tcp 8888 off") {
+		t.Errorf("Unserve() ran %q, want the per-entry off command", joined)
+	}
+	if strings.Contains(joined, "serve reset") {
+		t.Errorf("Unserve() ran %q, which would clear entries cloudlab did not create", joined)
+	}
+}
+
+func TestServeStatus_ParsesRemoteJSON(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	raw, err := os.ReadFile(filepath.Join("testdata", "serve-status-tcp.json"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	var got []string
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		got = append(got, cmd)
+		if strings.Contains(cmd, "command -v tailscale") {
+			return "/usr/bin/tailscale\n", 0
+		}
+		return string(raw), 0
+	})
+
+	entries, err := ServeStatus(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("ServeStatus() error = %v", err)
+	}
+	if len(entries) != 1 || entries[0].Port != 9876 {
+		t.Errorf("ServeStatus() = %+v, want one entry on 9876", entries)
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "sudo /usr/bin/tailscale serve status --json") {
+		t.Errorf("ServeStatus() ran %q, want the sudo status --json invocation", joined)
 	}
 }

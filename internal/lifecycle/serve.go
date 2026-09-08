@@ -1,10 +1,13 @@
 package lifecycle
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
+
+	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
 
 // ServeEntry is one port published on the tailnet by `tailscale serve`.
@@ -61,4 +64,65 @@ func serveArgs(bin string, port int) string {
 // does not record which ones cloudlab added.
 func unserveArgs(bin string, port int) string {
 	return fmt.Sprintf("sudo %s serve --tcp %d off", bin, port)
+}
+
+// serveSession connects, resolves the tailscale binary, and hands both
+// to fn. All three exported calls need exactly this preamble, and
+// resolving the binary rather than assuming a path is what makes them
+// work on an instance where tailscale came from nix.
+func serveSession(ctx context.Context, ip, user string, fn func(client *reconcile.Client, bin string) error) error {
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	bin, err := RemoteTailscaleBin(client)
+	if err != nil {
+		return err
+	}
+	return fn(client, bin)
+}
+
+// Serve publishes the instance's localhost:port on the tailnet.
+//
+// sudo: tailscaled runs as root and gates serve config changes on it;
+// cloud-init grants this user passwordless sudo (see cloud-init.sh).
+func Serve(ctx context.Context, ip, user string, port int) error {
+	return serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
+		if out, err := client.Run("bash -lc " + reconcile.ShellQuote(serveArgs(bin, port))); err != nil {
+			return fmt.Errorf("serving port %d on the tailnet: %w\n%s", port, err, out)
+		}
+		return nil
+	})
+}
+
+// Unserve stops publishing one port, leaving every other entry alone.
+func Unserve(ctx context.Context, ip, user string, port int) error {
+	return serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
+		if out, err := client.Run("bash -lc " + reconcile.ShellQuote(unserveArgs(bin, port))); err != nil {
+			return fmt.Errorf("stopping serve on port %d: %w\n%s", port, err, out)
+		}
+		return nil
+	})
+}
+
+// ServeStatus reports every port published on the instance, including
+// entries cloudlab did not create -- tailscale does not record who added
+// one, and showing only a subset would make `unserve` look broken.
+func ServeStatus(ctx context.Context, ip, user string) ([]ServeEntry, error) {
+	var entries []ServeEntry
+	err := serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
+		out, err := client.Run("bash -lc " + reconcile.ShellQuote("sudo "+bin+" serve status --json"))
+		if err != nil {
+			return fmt.Errorf("reading serve status: %w\n%s", err, out)
+		}
+		parsed, err := parseServeStatus(out)
+		if err != nil {
+			return err
+		}
+		entries = parsed
+		return nil
+	})
+	return entries, err
 }
