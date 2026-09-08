@@ -67,6 +67,12 @@ func initRepo(t *testing.T, repo string) {
 	mustGit(t, repo, "checkout", "--quiet", "-b", "main")
 	mustGit(t, repo, "config", "user.email", "t@example.com")
 	mustGit(t, repo, "config", "user.name", "t")
+	// Signing is opt-in per test -- TestVerifySignatures_AcceptsSignedCommits
+	// turns it on itself right after this call. Pinned off here because the
+	// machine's own commit.gpgsign otherwise reaches into the temp repo and
+	// silently signs the commits a test calls unsigned, which is every commit
+	// these helpers make on a maintainer's laptop.
+	mustGit(t, repo, "config", "commit.gpgsign", "false")
 	writeAndCommit(t, repo, "README", "first", "first")
 }
 
