@@ -1,4 +1,9 @@
-{ pkgs, lib, config, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 let
   # The instance's own non-root user (see internal/identity.RemoteUser
   # and cloud-init.sh, which creates it) -- read from the SSH session's
