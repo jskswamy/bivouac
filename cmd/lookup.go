@@ -117,6 +117,17 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run: runConnect,
 	},
 	{
+		use:   "serve [port]",
+		short: "Publish a service on your tailnet, where it outlives this command",
+		verb:  "serve",
+		args:  cobra.MaximumNArgs(1),
+		named: false,
+		flags: func(c *cobra.Command) {
+			c.Flags().Bool("all", false, "include the instance's own sockets (sshd, resolved, tailscaled) in the choices")
+		},
+		run: runServe,
+	},
+	{
 		use:   "status [name]",
 		short: "Show instance detail: IP, uptime, cost, live status",
 		verb:  "status",

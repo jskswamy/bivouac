@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/identity"
@@ -507,6 +508,57 @@ func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, i
 	}
 }
 
+// discoverAndChoose runs the shared listener discovery both connect and
+// serve need: list what is listening, hide the machine's own sockets
+// unless asked, and settle on one candidate. It also hands back the raw
+// offered/listeners slices, since connect reports afterward when a sole
+// candidate was auto-selected and how many sockets a filter hid -- serve
+// has no equivalent use for them and discards them.
+//
+// tolerateDiscoveryFailure is what separates the two callers. connect can
+// still forward to a port the user named without a listing, since a
+// forward reaches any bind address; serve cannot, because the bind address
+// is exactly what decides whether an entry is needed at all.
+func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, port int, all, tolerateDiscoveryFailure bool) (chosen lifecycle.Listener, offered, listeners []lifecycle.Listener, err error) {
+	// Discovery is best-effort when tolerated. `ss` comes from iproute2 and
+	// is present on every image cloudlab boots, but an unusual base image
+	// or a locked-down PATH should not make connect unusable when the
+	// caller already knows the port. serve cannot make the same trade --
+	// the bind address is exactly what decides whether an entry is needed
+	// at all -- so a failed listing is fatal there instead.
+	listeners, lerr := lifecycle.Listeners(cmd.Context(), record.IP, record.User)
+	if lerr != nil && !tolerateDiscoveryFailure {
+		return lifecycle.Listener{}, nil, nil, lerr
+	}
+
+	// A named port addresses a socket directly, so it searches everything:
+	// a user who names one has said what they want, and hiding it would
+	// only produce a puzzling "nothing is listening" for a port they can
+	// see is open. The filter narrows what gets *offered*, not what can
+	// be reached.
+	offered = lifecycle.VisibleListeners(listeners, all || port != 0)
+
+	chosen, err = chooseListener(offered, port, tolerateDiscoveryFailure && lerr != nil, isInteractive())
+	switch {
+	case errors.Is(err, errDiscoveryNoPort):
+		return lifecycle.Listener{}, offered, listeners, fmt.Errorf("%w\npass --port to connect without discovery", lerr)
+	case errors.Is(err, errNoListeners):
+		// Say so when the filter is why nothing is on offer, rather than
+		// claiming an instance running seven sockets is running none.
+		if hidden := len(listeners) - len(offered); hidden > 0 {
+			return lifecycle.Listener{}, offered, listeners, fmt.Errorf("nothing of yours is listening on %s (%d infrastructure socket(s) hidden — pass --all to see them)", name, hidden)
+		}
+		return lifecycle.Listener{}, offered, listeners, fmt.Errorf("nothing is listening on %s", name)
+	case errors.Is(err, errAskUser):
+		if chosen, err = pickListener(cmd, offered); err != nil {
+			return lifecycle.Listener{}, offered, listeners, err
+		}
+	case err != nil:
+		return lifecycle.Listener{}, offered, listeners, err
+	}
+	return chosen, offered, listeners, nil
+}
+
 // runConnect reaches a service on the instance. With a port it goes
 // straight there; without one it asks the instance what is listening.
 func runConnect(cmd *cobra.Command, name string, args []string) error {
@@ -522,40 +574,13 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	// Discovery is best-effort. `ss` comes from iproute2 and is present
-	// on every image cloudlab boots, but an unusual base image or a
-	// locked-down PATH should not make connect unusable when the caller
-	// already knows the port.
-	listeners, lerr := lifecycle.Listeners(cmd.Context(), record.IP, record.User)
-
-	// --port addresses a socket directly, so it searches everything: a
-	// user who names 22 has said what they want, and hiding it would
-	// only produce a puzzling "nothing is listening" for a port they can
-	// see is open. The filter narrows what gets *offered*, not what can
-	// be reached.
 	all, err := cmd.Flags().GetBool("all")
 	if err != nil {
 		return err
 	}
-	offered := lifecycle.VisibleListeners(listeners, all || port != 0)
 
-	chosen, err := chooseListener(offered, port, lerr != nil, isInteractive())
-	switch {
-	case errors.Is(err, errDiscoveryNoPort):
-		return fmt.Errorf("%w\npass --port to connect without discovery", lerr)
-	case errors.Is(err, errNoListeners):
-		// Say so when the filter is why nothing is on offer, rather than
-		// claiming an instance running seven sockets is running none.
-		if hidden := len(listeners) - len(offered); hidden > 0 {
-			return fmt.Errorf("nothing of yours is listening on %s (%d infrastructure socket(s) hidden — pass --all to see them)", name, hidden)
-		}
-		return fmt.Errorf("nothing is listening on %s", name)
-	case errors.Is(err, errAskUser):
-		if chosen, err = pickListener(cmd, offered); err != nil {
-			return err
-		}
-	case err != nil:
+	chosen, offered, listeners, err := discoverAndChoose(cmd, record, name, port, all, true)
+	if err != nil {
 		return err
 	}
 
@@ -635,6 +660,69 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 		host = tailnetIP
 	}
 	return lifecycle.Forward(cmd.Context(), host, record.User, localPort, chosen.Port)
+}
+
+// serveTarget returns the tailnet URL a listener will answer at, and
+// whether publishing it requires a serve entry at all.
+//
+// Split out as a pure function for the same reason ConnectTarget was:
+// the routable-versus-loopback rule is the part worth testing, and it
+// needs no network to test.
+func serveTarget(tailnetIP string, l lifecycle.Listener) (string, bool) {
+	scheme := ""
+	if l.HTTP() {
+		scheme = "http://"
+	}
+	return scheme + tailnetIP + ":" + strconv.Itoa(l.Port), l.LoopbackOnly()
+}
+
+// runServe publishes a service on the tailnet, where it outlives this
+// command. Discovery is identical to connect's: the two commands differ
+// in how long the result lasts, not in how you name what you want.
+func runServe(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+	// Checked before any SSH work: serving is meaningless without a
+	// tailnet, and this says so instead of surfacing a tailscale error.
+	if !record.TailscaleJoined {
+		return fmt.Errorf("%s is not on a tailnet — serving publishes there, so run `cloudlab tailscale` first", name)
+	}
+
+	port := 0
+	if len(args) > 0 {
+		if port, err = strconv.Atoi(args[0]); err != nil {
+			return fmt.Errorf("%q is not a port number", args[0])
+		}
+	}
+	all, err := cmd.Flags().GetBool("all")
+	if err != nil {
+		return err
+	}
+
+	chosen, _, _, err := discoverAndChoose(cmd, record, name, port, all, false)
+	if err != nil {
+		return err
+	}
+
+	tailnetIP, err := lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
+	if err != nil || tailnetIP == "" {
+		return fmt.Errorf("could not resolve %s's tailnet address — is tailscaled running there?", name)
+	}
+
+	url, needsEntry := serveTarget(tailnetIP, chosen)
+	if !needsEntry {
+		cmd.Printf("%s is already reachable on the tailnet, no serving needed\n", url)
+		return nil
+	}
+	if err := lifecycle.Serve(cmd.Context(), record.IP, record.User, chosen.Port); err != nil {
+		return err
+	}
+	cmd.Printf("Serving 127.0.0.1:%d on your tailnet\n", chosen.Port)
+	cmd.Printf("  %s\n", url)
+	cmd.Printf("Stop with: cloudlab unserve %d\n", chosen.Port)
+	return nil
 }
 
 func runSSH(cmd *cobra.Command, name string, args []string) error {

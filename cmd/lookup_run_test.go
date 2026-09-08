@@ -598,6 +598,35 @@ func TestPickListener_OutOfRange(t *testing.T) {
 	}
 }
 
+func TestServeTarget_RoutableNeedsNoEntry(t *testing.T) {
+	// Already reachable at the tailnet address, so a serve entry would
+	// be clutter someone has to clean up later.
+	url, needsEntry := serveTarget("100.81.106.84", lifecycle.Listener{Addr: "0.0.0.0", Port: 3000})
+	if needsEntry {
+		t.Error("needsEntry = true, want false for a routable service")
+	}
+	if url != "http://100.81.106.84:3000" {
+		t.Errorf("url = %q, want the tailnet URL", url)
+	}
+}
+
+func TestServeTarget_LoopbackNeedsAnEntry(t *testing.T) {
+	url, needsEntry := serveTarget("100.81.106.84", lifecycle.Listener{Addr: "127.0.0.1", Port: 8888})
+	if !needsEntry {
+		t.Error("needsEntry = false, want true — loopback is not reachable on the tailnet")
+	}
+	if url != "http://100.81.106.84:8888" {
+		t.Errorf("url = %q, want the tailnet URL it will be reachable at once served", url)
+	}
+}
+
+func TestServeTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
+	url, _ := serveTarget("100.81.106.84", lifecycle.Listener{Addr: "127.0.0.1", Port: 22})
+	if url != "100.81.106.84:22" {
+		t.Errorf("url = %q, want no http:// on a port that does not speak HTTP", url)
+	}
+}
+
 func headOf(t *testing.T, repo string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
