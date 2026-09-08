@@ -109,7 +109,14 @@
                 # vuln.go.dev -- fine in CI (sandbox = false) and in a
                 # typical local `nix flake check`/pre-commit run, but will
                 # fail offline.
-                entry = "env PATH=${pkgs.go}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
+                #
+                # CGO_ENABLED=0 because this hook runs with PATH narrowed to
+                # Go's own bin, so there is no C compiler on it. Linux
+                # stdlib builds os/user and net through cgo by default, so
+                # the scan died with `cgo: C compiler "gcc" not found` on
+                # ubuntu while passing on macOS. cloudlab imports no cgo,
+                # so turning it off scans exactly the same code.
+                entry = "env CGO_ENABLED=0 PATH=${pkgs.go}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
                 files = "\\.go$";
                 pass_filenames = false;
               };
