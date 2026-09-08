@@ -1,6 +1,10 @@
 package lifecycle
 
-import "testing"
+import (
+	"errors"
+	"net"
+	"testing"
+)
 
 func TestConnectTarget(t *testing.T) {
 	cases := []struct {
@@ -48,7 +52,7 @@ func TestConnectTarget(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			url, forward := ConnectTarget(c.tailnetIP, c.listener)
+			url, forward := ConnectTarget(c.tailnetIP, c.listener, c.listener.Port)
 			if url != c.wantURL {
 				t.Errorf("url = %q, want %q", url, c.wantURL)
 			}
@@ -63,7 +67,7 @@ func TestConnectTarget(t *testing.T) {
 // sshArgs/tmuxArgs/herdrArgs are: the decision (which flags, in what shape)
 // is what is worth testing, while Forward itself execs a real ssh binary.
 func TestForwardArgs(t *testing.T) {
-	got := forwardArgs("203.0.113.5", "devuser", 8888)
+	got := forwardArgs("203.0.113.5", "devuser", 8888, 8888)
 	// The 127.0.0.1 prefix is load-bearing, not cosmetic: without it ssh
 	// binds every address family and keeps running when only one
 	// collides, which defeats ExitOnForwardFailure entirely.
@@ -81,7 +85,7 @@ func TestForwardArgs(t *testing.T) {
 func TestConnectTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
 	// http://host:22 is what made curl read sshd's version banner as an
 	// HTTP/0.9 response. A bare host:port says nothing untrue.
-	url, forward := ConnectTarget("100.81.106.84", Listener{Addr: "0.0.0.0", Port: 22})
+	url, forward := ConnectTarget("100.81.106.84", Listener{Addr: "0.0.0.0", Port: 22}, 22)
 	if url != "100.81.106.84:22" {
 		t.Errorf("url = %q, want %q — no scheme for a port that does not speak HTTP", url, "100.81.106.84:22")
 	}
@@ -109,5 +113,81 @@ func TestVisibleListeners(t *testing.T) {
 
 	if got := VisibleListeners(all, true); len(got) != len(all) {
 		t.Errorf("VisibleListeners(all=true) returned %d, want all %d", len(got), len(all))
+	}
+}
+
+func TestForwardArgs_DistinctLocalPort(t *testing.T) {
+	// The near and far side differ when the local number is taken. The
+	// spec must map local->remote, not repeat either one.
+	got := forwardArgs("203.0.113.5", "devuser", 24544, 24543)
+	want := "127.0.0.1:24544:localhost:24543"
+	if got[4] != want {
+		t.Errorf("forward spec = %q, want %q", got[4], want)
+	}
+}
+
+func TestConnectTarget_ForwardURLUsesLocalPort(t *testing.T) {
+	// Printing the remote port here would send the user to a port
+	// nothing is listening on locally.
+	url, forward := ConnectTarget("100.81.106.84", Listener{Addr: "127.0.0.1", Port: 24543}, 24544)
+	if !forward {
+		t.Fatal("mustForward = false, want true for a loopback service")
+	}
+	if url != "http://localhost:24544" {
+		t.Errorf("url = %q, want the LOCAL port 24544, not the remote 24543", url)
+	}
+}
+
+func TestFreeLocalPort_PreferredWhenFree(t *testing.T) {
+	// Ask the OS for a port, release it, then confirm FreeLocalPort
+	// hands back that same number rather than wandering off.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserving a port: %v", err)
+	}
+	p := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+
+	got, err := FreeLocalPort(p, false)
+	if err != nil {
+		t.Fatalf("FreeLocalPort() error = %v", err)
+	}
+	if got != p {
+		t.Errorf("FreeLocalPort(%d) = %d, want the preferred port back", p, got)
+	}
+}
+
+func TestFreeLocalPort_FallsBackWhenTaken(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("holding a port: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	held := l.Addr().(*net.TCPAddr).Port
+
+	got, err := FreeLocalPort(held, false)
+	if err != nil {
+		t.Fatalf("FreeLocalPort() error = %v", err)
+	}
+	if got == held {
+		t.Errorf("FreeLocalPort(%d) = %d, want a different port — that one is held", held, got)
+	}
+	if got == 0 {
+		t.Error("FreeLocalPort() = 0, want a real port")
+	}
+}
+
+func TestFreeLocalPort_ExplicitRequestIsRefusedNotRedirected(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("holding a port: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	held := l.Addr().(*net.TCPAddr).Port
+
+	// mustUse: the caller named this port, so silently using another
+	// would forward somewhere they did not ask for.
+	if _, err := FreeLocalPort(held, true); !errors.Is(err, ErrLocalPortBusy) {
+		t.Errorf("FreeLocalPort(%d, mustUse) error = %v, want ErrLocalPortBusy", held, err)
 	}
 }

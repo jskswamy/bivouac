@@ -559,6 +559,22 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
+	// Say what was picked when the user did not pick it. A sole
+	// candidate is auto-selected rather than prompted for, and the
+	// filter is usually why there is only one -- without this line the
+	// menu simply vanishes and the command starts reaching something
+	// the user never named.
+	if port == 0 && len(offered) == 1 {
+		what := chosen.Process
+		if what == "" {
+			what = "unknown process"
+		}
+		cmd.Printf("Only one service is listening: %d (%s)\n", chosen.Port, what)
+		if hidden := len(listeners) - len(offered); hidden > 0 {
+			cmd.Printf("  %d infrastructure socket(s) hidden — pass --all to see them\n", hidden)
+		}
+	}
+
 	// Skip the round trip entirely when state already says there is no
 	// tailnet -- an extra SSH connect plus `tailscale ip` to relearn
 	// what record.TailscaleJoined already told us. Mirrors the same
@@ -574,11 +590,42 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 		}
 	}
 
-	url, mustForward := lifecycle.ConnectTarget(tailnetIP, chosen)
+	// Routable: nothing to set up, so nothing can fail after this line.
+	// chosen.Port stands in for the local port here only to satisfy the
+	// signature -- this branch never forwards, so it goes unused.
+	routableURL, mustForward := lifecycle.ConnectTarget(tailnetIP, chosen, chosen.Port)
 	if !mustForward {
-		cmd.Println(url)
+		cmd.Println(routableURL)
 		return nil
 	}
+
+	// The near side is settled BEFORE anything is printed. Otherwise the
+	// "forwarding over SSH" line goes out first and a failed bind
+	// contradicts it two lines later, which is the success-shaped-output
+	// problem this command has already been bitten by once.
+	wanted, err := cmd.Flags().GetInt("local-port")
+	if err != nil {
+		return err
+	}
+	mustUse := wanted != 0
+	if !mustUse {
+		wanted = chosen.Port
+	}
+	localPort, err := lifecycle.FreeLocalPort(wanted, mustUse)
+	if err != nil {
+		if errors.Is(err, lifecycle.ErrLocalPortBusy) {
+			return fmt.Errorf("%w — something already holds it locally; pass a different --local-port, or omit the flag to let cloudlab pick a free one", err)
+		}
+		return err
+	}
+	// Only when cloudlab picked the number. Saying "is taken, forwarding
+	// through N instead" to someone who asked for N reads as though the
+	// request was overridden.
+	if !mustUse && localPort != chosen.Port {
+		cmd.Printf("Local port %d is taken, forwarding through %d instead\n", chosen.Port, localPort)
+	}
+
+	url, _ := lifecycle.ConnectTarget(tailnetIP, chosen, localPort)
 	cmd.Printf("%s (forwarding over SSH — Ctrl-C to stop)\n", url)
 	// Over the tailnet when there is one. Reaching this line means
 	// TailscaleIP already answered, so falling back to the public IP
@@ -587,7 +634,7 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 	if tailnetIP != "" {
 		host = tailnetIP
 	}
-	return lifecycle.Forward(cmd.Context(), host, record.User, chosen.Port)
+	return lifecycle.Forward(cmd.Context(), host, record.User, localPort, chosen.Port)
 }
 
 func runSSH(cmd *cobra.Command, name string, args []string) error {

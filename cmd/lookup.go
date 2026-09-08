@@ -111,6 +111,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		named: true,
 		flags: func(c *cobra.Command) {
 			c.Flags().Int("port", 0, "remote port to reach (omit to choose from what is listening)")
+			c.Flags().Int("local-port", 0, "local port to forward through (default: the remote port, or a free one if that is taken)")
 			c.Flags().Bool("all", false, "include the instance's own sockets (sshd, resolved, tailscaled) in the choices")
 		},
 		run: runConnect,
