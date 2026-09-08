@@ -164,7 +164,7 @@ func TestChooseListener(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := chooseListener(tt.listeners, tt.port, tt.discoveryFailed, tt.interactive)
+			got, err := chooseListener(tt.listeners, tt.port, tt.discoveryFailed, tt.interactive, connectPortVocabulary)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("chooseListener() err = %v, want %v", err, tt.wantErr)
@@ -184,6 +184,29 @@ func TestChooseListener(t *testing.T) {
 				t.Fatalf("chooseListener() = %+v, want %+v", got, tt.wantListener)
 			}
 		})
+	}
+}
+
+// TestChooseListener_ServeVocabulary covers the two messages serve's
+// caller-specific wording changes: serve has no --port flag (its port is
+// a positional), and its own recovery command is `cloudlab serve`, not
+// `cloudlab connect`.
+func TestChooseListener_ServeVocabulary(t *testing.T) {
+	many := []lifecycle.Listener{
+		{Addr: "127.0.0.1", Port: 8888},
+		{Addr: "0.0.0.0", Port: 3000},
+	}
+
+	_, err := chooseListener(many, 0, false, false, servePortVocabulary)
+	wantMsg := "several ports are listening; name a port (no terminal to ask on)"
+	if err == nil || err.Error() != wantMsg {
+		t.Errorf("chooseListener() err = %v, want %q", err, wantMsg)
+	}
+
+	_, err = chooseListener(many, 9999, false, true, servePortVocabulary)
+	wantMsg = "nothing is listening on port 9999 — run `cloudlab serve` with no port to see what is"
+	if err == nil || err.Error() != wantMsg {
+		t.Errorf("chooseListener() err = %v, want %q", err, wantMsg)
 	}
 }
 
@@ -620,6 +643,16 @@ func TestServeTarget_LoopbackNeedsAnEntry(t *testing.T) {
 	}
 }
 
+func TestServeTarget_IPv6RoutableNeedsNoEntry(t *testing.T) {
+	// The plan's Global Constraints name "::" alongside "0.0.0.0" as a
+	// routable-gets-no-entry bind address; only the v4 wildcard had
+	// coverage.
+	_, needsEntry := serveTarget("100.81.106.84", lifecycle.Listener{Addr: "::", Port: 3000})
+	if needsEntry {
+		t.Error("needsEntry = true, want false for an IPv6-wildcard-bound service")
+	}
+}
+
 func TestServeTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
 	url, _ := serveTarget("100.81.106.84", lifecycle.Listener{Addr: "127.0.0.1", Port: 22})
 	if url != "100.81.106.84:22" {
@@ -641,6 +674,7 @@ func TestChooseServeEntry(t *testing.T) {
 		wantErrMsg  string
 	}{
 		{name: "nothing served", entries: nil, wantErr: errNoServed},
+		{name: "nothing served, port named", entries: nil, port: 8888, wantErr: errNoServed},
 		{name: "sole entry needs no choosing", entries: one, wantPort: 8888},
 		{name: "explicit port matches", entries: two, port: 3000, wantPort: 3000},
 		{name: "explicit port not served", entries: two, port: 9999,

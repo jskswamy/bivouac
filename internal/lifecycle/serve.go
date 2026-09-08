@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
@@ -31,7 +32,18 @@ type serveStatusJSON struct {
 // Sorted because Go randomises map iteration: unsorted, the numbered
 // picker would list the same entries in a different order on each run,
 // so choice 1 would not mean the same thing twice.
+//
+// jsonOut is `client.Run`'s combined stdout+stderr, not guaranteed-clean
+// JSON: a routine stderr line (e.g. "sudo: unable to resolve host ...")
+// that doesn't change the exit status would otherwise make Unmarshal fail
+// and report a perfectly reachable instance as unreachable. Every other
+// consumer of Run in this package tolerates the same noise (parseListeners
+// skips non-LISTEN lines, TailscaleIP takes the first line), so this slices
+// from the first `{` before parsing rather than trusting the output is bare.
 func parseServeStatus(jsonOut string) ([]ServeEntry, error) {
+	if i := strings.IndexByte(jsonOut, '{'); i >= 0 {
+		jsonOut = jsonOut[i:]
+	}
 	var raw serveStatusJSON
 	if err := json.Unmarshal([]byte(jsonOut), &raw); err != nil {
 		return nil, fmt.Errorf("parsing `tailscale serve status --json`: %w", err)
@@ -54,7 +66,7 @@ func parseServeStatus(jsonOut string) ([]ServeEntry, error) {
 // holds the terminal, which is what the ssh forward already does and
 // what this exists to avoid.
 func serveArgs(bin string, port int) string {
-	return fmt.Sprintf("sudo %s serve --bg --tcp %d tcp://localhost:%d", bin, port, port)
+	return fmt.Sprintf("sudo %s serve --bg --tcp %d tcp://localhost:%d", reconcile.ShellQuote(bin), port, port)
 }
 
 // unserveArgs removes exactly one entry.
@@ -63,7 +75,7 @@ func serveArgs(bin string, port int) string {
 // instance, including any the user set up by hand, and `serve status`
 // does not record which ones cloudlab added.
 func unserveArgs(bin string, port int) string {
-	return fmt.Sprintf("sudo %s serve --tcp %d off", bin, port)
+	return fmt.Sprintf("sudo %s serve --tcp %d off", reconcile.ShellQuote(bin), port)
 }
 
 // serveSession connects, resolves the tailscale binary, and hands both
@@ -113,7 +125,7 @@ func Unserve(ctx context.Context, ip, user string, port int) error {
 func ServeStatus(ctx context.Context, ip, user string) ([]ServeEntry, error) {
 	var entries []ServeEntry
 	err := serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
-		out, err := client.Run("bash -lc " + reconcile.ShellQuote("sudo "+bin+" serve status --json"))
+		out, err := client.Run("bash -lc " + reconcile.ShellQuote("sudo "+reconcile.ShellQuote(bin)+" serve status --json"))
 		if err != nil {
 			return fmt.Errorf("reading serve status: %w\n%s", err, out)
 		}

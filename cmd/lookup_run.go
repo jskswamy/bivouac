@@ -519,15 +519,36 @@ var (
 	errNoServed        = errors.New("nothing is being served")
 )
 
-// chooseListener decides which listener runConnect targets, given what
-// discovery found (or didn't). It is the pure half of that decision --
-// pulled out so the ladder itself is table-testable without a fake SSH
-// server, the same reason sshArgs/tmuxArgs/herdrArgs/pairArgs exist as
-// pure functions in internal/lifecycle. The interactive prompt is not
-// pure (it reads a terminal), so ambiguity with more than one candidate
+// portVocabulary is a caller's own words for "give me a port" and "go
+// find out what's available", so chooseListener's messages can speak
+// connect's flag or serve's positional without knowing which one called
+// it. connect and serve name a port two different ways -- a --port flag
+// versus a bare positional -- and a message that assumes the former
+// sends a serve user chasing a flag cobra will reject.
+type portVocabulary struct {
+	pick     string // e.g. "pass --port" or "name a port"
+	recovery string // e.g. "run `cloudlab connect` with no --port to see what is"
+}
+
+var connectPortVocabulary = portVocabulary{
+	pick:     "pass --port",
+	recovery: "run `cloudlab connect` with no --port to see what is",
+}
+
+var servePortVocabulary = portVocabulary{
+	pick:     "name a port",
+	recovery: "run `cloudlab serve` with no port to see what is",
+}
+
+// chooseListener decides which listener runConnect (or runServe) targets,
+// given what discovery found (or didn't). It is the pure half of that
+// decision -- pulled out so the ladder itself is table-testable without a
+// fake SSH server, the same reason sshArgs/tmuxArgs/herdrArgs/pairArgs
+// exist as pure functions in internal/lifecycle. The interactive prompt is
+// not pure (it reads a terminal), so ambiguity with more than one candidate
 // comes back as errAskUser for the caller to act on, rather than being
 // resolved here.
-func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, interactive bool) (lifecycle.Listener, error) {
+func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, interactive bool, vocab portVocabulary) (lifecycle.Listener, error) {
 	switch {
 	case discoveryFailed && port == 0:
 		return lifecycle.Listener{}, errDiscoveryNoPort
@@ -542,7 +563,7 @@ func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, i
 				return l, nil
 			}
 		}
-		return lifecycle.Listener{}, fmt.Errorf("nothing is listening on port %d — run `cloudlab connect` with no --port to see what is", port)
+		return lifecycle.Listener{}, fmt.Errorf("nothing is listening on port %d — %s", port, vocab.recovery)
 	case len(listeners) == 0:
 		return lifecycle.Listener{}, errNoListeners
 	case len(listeners) == 1:
@@ -550,15 +571,20 @@ func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, i
 		// refusal is warranted when there is nothing to pick between.
 		return listeners[0], nil
 	case !interactive:
-		return lifecycle.Listener{}, fmt.Errorf("several ports are listening; pass --port (no terminal to ask on)")
+		return lifecycle.Listener{}, fmt.Errorf("several ports are listening; %s (no terminal to ask on)", vocab.pick)
 	default:
 		return lifecycle.Listener{}, errAskUser
 	}
 }
 
-// chooseServeEntry is chooseListener's sibling for ports that are
-// already published. Same branch structure, different candidates:
-// unserve chooses from what is served, not from what is listening.
+// chooseServeEntry is chooseListener's sibling for ports that are already
+// published, but not the same shape: it has no discovery-failure branches
+// (unserve always lists what tailscale has on file, nothing to fall back
+// blind on), and the empty check runs FIRST rather than after the
+// port-match check. That order is deliberate -- `unserve 8888` against an
+// instance serving nothing should get the friendly "nothing is being
+// served" message from runUnserve's errNoServed branch, not a bare "port
+// 8888 is not being served" that implies something else is.
 func chooseServeEntry(entries []lifecycle.ServeEntry, port int, interactive bool) (lifecycle.ServeEntry, error) {
 	switch {
 	case len(entries) == 0:
@@ -582,15 +608,19 @@ func chooseServeEntry(entries []lifecycle.ServeEntry, port int, interactive bool
 // discoverAndChoose runs the shared listener discovery both connect and
 // serve need: list what is listening, hide the machine's own sockets
 // unless asked, and settle on one candidate. It also hands back the raw
-// offered/listeners slices, since connect reports afterward when a sole
-// candidate was auto-selected and how many sockets a filter hid -- serve
-// has no equivalent use for them and discards them.
+// offered/listeners slices, since both callers report afterward when a
+// sole candidate was auto-selected and how many sockets a filter hid.
 //
 // tolerateDiscoveryFailure is what separates the two callers. connect can
 // still forward to a port the user named without a listing, since a
 // forward reaches any bind address; serve cannot, because the bind address
 // is exactly what decides whether an entry is needed at all.
-func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, port int, all, tolerateDiscoveryFailure bool) (chosen lifecycle.Listener, offered, listeners []lifecycle.Listener, err error) {
+//
+// vocab supplies chooseListener's caller-specific wording -- connect names
+// a port with --port, serve with a bare positional -- so the same ladder
+// can tell either caller's user how to retry without borrowing the other
+// command's syntax.
+func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, port int, all, tolerateDiscoveryFailure bool, vocab portVocabulary) (chosen lifecycle.Listener, offered, listeners []lifecycle.Listener, err error) {
 	// Discovery is best-effort when tolerated. `ss` comes from iproute2 and
 	// is present on every image cloudlab boots, but an unusual base image
 	// or a locked-down PATH should not make connect unusable when the
@@ -609,7 +639,7 @@ func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, por
 	// be reached.
 	offered = lifecycle.VisibleListeners(listeners, all || port != 0)
 
-	chosen, err = chooseListener(offered, port, tolerateDiscoveryFailure && lerr != nil, isInteractive())
+	chosen, err = chooseListener(offered, port, tolerateDiscoveryFailure && lerr != nil, isInteractive(), vocab)
 	switch {
 	case errors.Is(err, errDiscoveryNoPort):
 		return lifecycle.Listener{}, offered, listeners, fmt.Errorf("%w\npass --port to connect without discovery", lerr)
@@ -650,7 +680,7 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	chosen, offered, listeners, err := discoverAndChoose(cmd, record, name, port, all, true)
+	chosen, offered, listeners, err := discoverAndChoose(cmd, record, name, port, all, true, connectPortVocabulary)
 	if err != nil {
 		return err
 	}
@@ -772,9 +802,25 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	chosen, _, _, err := discoverAndChoose(cmd, record, name, port, all, false)
+	chosen, offered, listeners, err := discoverAndChoose(cmd, record, name, port, all, false, servePortVocabulary)
 	if err != nil {
 		return err
+	}
+
+	// Say what was picked when the user did not pick it -- the same notice
+	// runConnect prints, and more warranted here: a forward dies with the
+	// command, but this publishes on the tailnet until `unserve` undoes it,
+	// so silently picking the wrong service is a mistake that outlives the
+	// command that made it.
+	if port == 0 && len(offered) == 1 {
+		what := chosen.Process
+		if what == "" {
+			what = "unknown process"
+		}
+		cmd.Printf("Only one service is listening: %d (%s)\n", chosen.Port, what)
+		if hidden := len(listeners) - len(offered); hidden > 0 {
+			cmd.Printf("  %d infrastructure socket(s) hidden — pass --all to see them\n", hidden)
+		}
 	}
 
 	tailnetIP, err := lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
@@ -790,7 +836,7 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 	if err := lifecycle.Serve(cmd.Context(), record.IP, record.User, chosen.Port); err != nil {
 		return err
 	}
-	cmd.Printf("Serving 127.0.0.1:%d on your tailnet\n", chosen.Port)
+	cmd.Printf("Serving %s:%d on your tailnet\n", chosen.Addr, chosen.Port)
 	cmd.Printf("  %s\n", url)
 	cmd.Printf("Stop with: cloudlab unserve %d\n", chosen.Port)
 	return nil
@@ -804,6 +850,13 @@ func runUnserve(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {
 		return err
+	}
+	// Same guard as runServe/runStatus: serving is tailnet-only, so an
+	// instance that never joined has nothing to unserve and should not
+	// pay a full SSH connect plus a `command -v tailscale` probe just to
+	// be told that.
+	if !record.TailscaleJoined {
+		return fmt.Errorf("%s is not on a tailnet — nothing is being served there", name)
 	}
 
 	port := 0

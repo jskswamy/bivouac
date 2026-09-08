@@ -61,6 +61,21 @@ func TestParseServeStatus_Garbage(t *testing.T) {
 	}
 }
 
+func TestParseServeStatus_LeadingStderrNoise(t *testing.T) {
+	// client.Run returns combined stdout+stderr, so a routine warning
+	// (sudo's hostname resolution complaint under bash -lc, here) that
+	// doesn't change the exit status must not make this fail.
+	in := "sudo: unable to resolve host cloudlab-1: Name or service not known\n" +
+		`{"TCP":{"9876":{"TCPForward":"localhost:9876"}}}`
+	got, err := parseServeStatus(in)
+	if err != nil {
+		t.Fatalf("parseServeStatus() error = %v, want the noise skipped", err)
+	}
+	if len(got) != 1 || got[0].Port != 9876 {
+		t.Errorf("parseServeStatus() = %+v, want one entry on 9876", got)
+	}
+}
+
 func TestServeArgs(t *testing.T) {
 	got := serveArgs("/usr/bin/tailscale", 8888)
 	for _, want := range []string{"sudo", "/usr/bin/tailscale", "serve", "--bg", "--tcp 8888", "tcp://localhost:8888"} {
@@ -153,7 +168,7 @@ func TestServeStatus_ParsesRemoteJSON(t *testing.T) {
 		t.Errorf("ServeStatus() = %+v, want one entry on 9876", entries)
 	}
 	joined := strings.Join(got, "\n")
-	if !strings.Contains(joined, "sudo /usr/bin/tailscale serve status --json") {
+	if !strings.Contains(joined, "sudo") || !strings.Contains(joined, "/usr/bin/tailscale") || !strings.Contains(joined, "serve status --json") {
 		t.Errorf("ServeStatus() ran %q, want the sudo status --json invocation", joined)
 	}
 }
