@@ -128,6 +128,14 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run: runServe,
 	},
 	{
+		use:   "unserve [port]",
+		short: "Stop publishing a service on your tailnet",
+		verb:  "unserve",
+		args:  cobra.MaximumNArgs(1),
+		named: false,
+		run:   runUnserve,
+	},
+	{
 		use:   "status [name]",
 		short: "Show instance detail: IP, uptime, cost, live status",
 		verb:  "status",

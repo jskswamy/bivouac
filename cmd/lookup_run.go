@@ -469,6 +469,7 @@ var (
 	errDiscoveryNoPort = errors.New("discovery failed, no port given")
 	errNoListeners     = errors.New("no listeners")
 	errAskUser         = errors.New("ask the user")
+	errNoServed        = errors.New("nothing is being served")
 )
 
 // chooseListener decides which listener runConnect targets, given what
@@ -505,6 +506,29 @@ func chooseListener(listeners []lifecycle.Listener, port int, discoveryFailed, i
 		return lifecycle.Listener{}, fmt.Errorf("several ports are listening; pass --port (no terminal to ask on)")
 	default:
 		return lifecycle.Listener{}, errAskUser
+	}
+}
+
+// chooseServeEntry is chooseListener's sibling for ports that are
+// already published. Same branch structure, different candidates:
+// unserve chooses from what is served, not from what is listening.
+func chooseServeEntry(entries []lifecycle.ServeEntry, port int, interactive bool) (lifecycle.ServeEntry, error) {
+	switch {
+	case len(entries) == 0:
+		return lifecycle.ServeEntry{}, errNoServed
+	case port != 0:
+		for _, e := range entries {
+			if e.Port == port {
+				return e, nil
+			}
+		}
+		return lifecycle.ServeEntry{}, fmt.Errorf("port %d is not being served — run `cloudlab unserve` with no port to see what is", port)
+	case len(entries) == 1:
+		return entries[0], nil
+	case !interactive:
+		return lifecycle.ServeEntry{}, fmt.Errorf("several ports are being served; name one (no terminal to ask on)")
+	default:
+		return lifecycle.ServeEntry{}, errAskUser
 	}
 }
 
@@ -722,6 +746,47 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 	cmd.Printf("Serving 127.0.0.1:%d on your tailnet\n", chosen.Port)
 	cmd.Printf("  %s\n", url)
 	cmd.Printf("Stop with: cloudlab unserve %d\n", chosen.Port)
+	return nil
+}
+
+// runUnserve stops publishing a port. It can only stop SERVED entries —
+// a running `connect` forward is a foreground process in another
+// terminal with no PID recorded, so the empty-state message says so
+// rather than leaving someone to wonder why unserve did nothing.
+func runUnserve(cmd *cobra.Command, name string, args []string) error {
+	_, record, err := resolveInstance(name)
+	if err != nil {
+		return err
+	}
+
+	port := 0
+	if len(args) > 0 {
+		if port, err = strconv.Atoi(args[0]); err != nil {
+			return fmt.Errorf("%q is not a port number", args[0])
+		}
+	}
+
+	entries, err := lifecycle.ServeStatus(cmd.Context(), record.IP, record.User)
+	if err != nil {
+		return err
+	}
+
+	chosen, err := chooseServeEntry(entries, port, isInteractive())
+	switch {
+	case errors.Is(err, errNoServed):
+		return fmt.Errorf("nothing is being served on %s — a running `cloudlab connect` forward stops with Ctrl-C in its own terminal", name)
+	case errors.Is(err, errAskUser):
+		if chosen, err = pickServeEntry(cmd, entries); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	}
+
+	if err := lifecycle.Unserve(cmd.Context(), record.IP, record.User, chosen.Port); err != nil {
+		return err
+	}
+	cmd.Printf("Stopped serving %d\n", chosen.Port)
 	return nil
 }
 

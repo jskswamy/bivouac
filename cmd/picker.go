@@ -78,6 +78,22 @@ func pickListener(cmd *cobra.Command, listeners []lifecycle.Listener) (lifecycle
 	return listeners[n-1], nil
 }
 
+// pickServeEntry prints the served ports and reads one choice. Shares
+// readIndex with the other pickers; only the rendering differs.
+func pickServeEntry(cmd *cobra.Command, entries []lifecycle.ServeEntry) (lifecycle.ServeEntry, error) {
+	cmd.Println("Serving on the instance:")
+	for i, e := range entries {
+		cmd.Printf("  %d) %-6d %s\n", i+1, e.Port, e.Forward)
+	}
+	cmd.Print("Which one? ")
+
+	n, err := readIndex(cmd, len(entries))
+	if err != nil {
+		return lifecycle.ServeEntry{}, err
+	}
+	return entries[n-1], nil
+}
+
 // resolveSessionInteractive is resolveSessionArg for commands that are about
 // to hand over the terminal. Ambiguity asks instead of refusing, which is
 // continuous with what the user requested -- but only with a terminal to ask

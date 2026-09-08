@@ -627,6 +627,52 @@ func TestServeTarget_NonHTTPPortGetsNoScheme(t *testing.T) {
 	}
 }
 
+func TestChooseServeEntry(t *testing.T) {
+	two := []lifecycle.ServeEntry{{Port: 8888}, {Port: 3000}}
+	one := []lifecycle.ServeEntry{{Port: 8888}}
+
+	cases := []struct {
+		name        string
+		entries     []lifecycle.ServeEntry
+		port        int
+		interactive bool
+		wantPort    int
+		wantErr     error
+		wantErrMsg  string
+	}{
+		{name: "nothing served", entries: nil, wantErr: errNoServed},
+		{name: "sole entry needs no choosing", entries: one, wantPort: 8888},
+		{name: "explicit port matches", entries: two, port: 3000, wantPort: 3000},
+		{name: "explicit port not served", entries: two, port: 9999,
+			wantErrMsg: "port 9999 is not being served"},
+		{name: "several with a terminal", entries: two, interactive: true, wantErr: errAskUser},
+		{name: "several without a terminal", entries: two,
+			wantErrMsg: "several ports are being served; name one (no terminal to ask on)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := chooseServeEntry(c.entries, c.port, c.interactive)
+			switch {
+			case c.wantErr != nil:
+				if !errors.Is(err, c.wantErr) {
+					t.Fatalf("error = %v, want %v", err, c.wantErr)
+				}
+			case c.wantErrMsg != "":
+				if err == nil || !strings.Contains(err.Error(), c.wantErrMsg) {
+					t.Fatalf("error = %v, want it to contain %q", err, c.wantErrMsg)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("unexpected error = %v", err)
+				}
+				if got.Port != c.wantPort {
+					t.Errorf("port = %d, want %d", got.Port, c.wantPort)
+				}
+			}
+		})
+	}
+}
+
 func headOf(t *testing.T, repo string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
