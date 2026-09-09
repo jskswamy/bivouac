@@ -269,3 +269,48 @@ func TestDescribeSessions_ProbesConcurrentlyAndKeepsOrder(t *testing.T) {
 			"running in sequence", elapsed, remoteProbeTimeout)
 	}
 }
+
+// The bound has to survive the case the blackhole test cannot reach: a host
+// that accepts the connection and then stalls. ConnectTimeout is already
+// spent by then, so the context cap is the only thing left holding the
+// probe, and it is the cap that has never been exercised -- every other
+// test here fails fast enough that ssh exits on its own.
+//
+// A loaded instance is exactly this shape, and it is the state an instance
+// is in whenever its sessions are busy, so it is worth a test rather than
+// an assumption that killing git also disposes of the ssh it spawned.
+func TestDescribeSession_GivesUpWhenTheConnectionStallsAfterConnecting(t *testing.T) {
+	hangingSSH := filepath.Join(t.TempDir(), "hang-ssh")
+	if err := os.WriteFile(hangingSSH, []byte("#!/bin/sh\nsleep 600\n"), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	// GIT_SSH_COMMAND outranks the core.sshCommand the probe sets, so this
+	// stands in for a connected-but-unresponsive instance.
+	t.Setenv("GIT_SSH_COMMAND", hangingSSH)
+
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+	mustGit(t, repo, "remote", "add", sessionRemote("auth"), "ssh://user@example.invalid/repo")
+
+	done := make(chan SessionInfo, 1)
+	start := time.Now()
+	go func() {
+		done <- DescribeSession(context.Background(), "inst", state.Session{
+			Name: "auth", LocalRepo: repo, Base: gitOut(t, repo, "rev-parse", "HEAD"),
+		})
+	}()
+
+	select {
+	case info := <-done:
+		if elapsed := time.Since(start); elapsed > remoteProbeTimeout+10*time.Second {
+			t.Errorf("returned after %s, want the %s probe bound to hold", elapsed, remoteProbeTimeout)
+		}
+		if info.RemoteKnown {
+			t.Error("RemoteKnown = true for a stalled connection, want false")
+		}
+	case <-time.After(remoteProbeTimeout + 20*time.Second):
+		t.Fatalf("DescribeSession never returned: the %s bound does not hold when the "+
+			"connection stalls after connecting -- killing git leaves ssh holding the pipe",
+			remoteProbeTimeout)
+	}
+}
