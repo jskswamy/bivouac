@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -476,5 +477,72 @@ func TestConnect_HostKeyMismatch_ErrorHasRecreateHint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "known_hosts") {
 		t.Errorf("error = %q, want a hint about removing the stale known_hosts entry", err.Error())
+	}
+}
+
+// An instance stops answering for reasons that are indistinguishable from
+// here -- it ran out of memory, a daemon wedged, the tailnet dropped, the
+// connection went half-open. Run must not wait on any of them forever: a
+// report that never returns is worse than one that says unknown.
+//
+// The server below accepts the connection and then never replies, which is
+// the shape all of those failures take once the dial has already succeeded.
+func TestRunContext_ReturnsWhenTheInstanceStopsAnswering(t *testing.T) {
+	startFakeAgent(t)
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		<-release
+		return "", 0
+	})
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := client.RunContext(ctx, "anything")
+		done <- runErr
+	}()
+
+	select {
+	case runErr := <-done:
+		if runErr == nil {
+			t.Error("RunContext() error = nil for a command that never answered, want an error")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("RunContext never returned: the deadline does not bound a connected but " +
+			"unresponsive instance, so every caller can hang indefinitely")
+	}
+}
+
+// Run keeps its signature so no caller has to change, and keeps its old
+// behaviour of waiting: bounding it is the caller's decision, taken where
+// there is enough context to know what a sensible bound is.
+func TestRun_StillWorksWithoutADeadline(t *testing.T) {
+	startFakeAgent(t)
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		return "hello from " + cmd, 0
+	})
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	out, err := client.Run("echo")
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !strings.Contains(out, "hello from echo") {
+		t.Errorf("Run() = %q, want it to carry the command's output", out)
 	}
 }

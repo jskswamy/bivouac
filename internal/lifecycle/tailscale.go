@@ -45,8 +45,8 @@ import (
 // home-manager profile, so a bare `sudo tailscale` fails with "command
 // not found" however the surrounding shell is invoked. Wrapping in
 // `bash -lc` fixes PATH for the shell, not for what sudo then execs.
-func RemoteTailscaleBin(client *reconcile.Client) (string, error) {
-	out, err := client.Run("bash -lc " + reconcile.ShellQuote("command -v tailscale"))
+func RemoteTailscaleBin(ctx context.Context, client *reconcile.Client) (string, error) {
+	out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote("command -v tailscale"))
 	if err != nil {
 		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first:\n%s", out)
 	}
@@ -71,14 +71,14 @@ func TailscaleIP(ctx context.Context, ip, user string) (string, error) {
 	}
 	defer func() { _ = client.Close() }()
 
-	bin, err := RemoteTailscaleBin(client)
+	bin, err := RemoteTailscaleBin(ctx, client)
 	if err != nil {
 		return "", nil
 	}
 	// `tailscale ip -4` prints nothing but an error when the daemon is
 	// down or logged out, which is exactly the empty-string case.
 	inner := "sudo " + reconcile.ShellQuote(bin) + " ip -4"
-	out, err := client.Run("bash -lc " + reconcile.ShellQuote(inner))
+	out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(inner))
 	if err != nil {
 		return "", nil
 	}
@@ -132,7 +132,7 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	// Resolved before the key is shipped, so an instance without
 	// tailscale installed fails without a secret having been written to
 	// it first.
-	tailscaleBin, err := RemoteTailscaleBin(client)
+	tailscaleBin, err := RemoteTailscaleBin(ctx, client)
 	if err != nil {
 		return err
 	}

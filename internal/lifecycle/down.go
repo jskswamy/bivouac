@@ -35,7 +35,7 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 	// "command not found" (see RemoteTailscaleBin). sudo itself is
 	// needed because tailscaled's LocalAPI gates logout on
 	// root-or-operator, same as tailscale up.
-	tailscaleBin, err := RemoteTailscaleBin(client)
+	tailscaleBin, err := RemoteTailscaleBin(ctx, client)
 	if err != nil {
 		return
 	}

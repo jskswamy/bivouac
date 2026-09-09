@@ -277,15 +277,51 @@ func (c *Client) WriteSecretFile(remotePath string, content []byte) error {
 // Run executes cmd on the instance and returns its combined stdout and
 // stderr. A non-zero exit becomes a non-nil error; output is still
 // populated so the caller can include it in its own error message.
+//
+// Waits as long as the command takes. Provisioning legitimately runs for
+// minutes, so the bound belongs to callers that know one applies -- see
+// RunContext.
 func (c *Client) Run(cmd string) (output string, err error) {
+	return c.RunContext(context.Background(), cmd)
+}
+
+// RunContext is Run, abandoned when ctx is done.
+//
+// Connect bounds the dial and the handshake, and nothing bounded what came
+// after: a connection that succeeds and then goes quiet left every caller
+// waiting forever. An instance stops answering for reasons this side cannot
+// tell apart -- memory exhaustion, a wedged daemon, the tailnet dropping, a
+// half-open connection -- so the answer is not to detect the cause but to
+// stop waiting on any of them.
+//
+// Closing the session is what unblocks CombinedOutput, so the goroutine
+// ends rather than leaking. The deferred Close then runs against an already
+// closed session, which reports io.EOF and is ignored, exactly as it is for
+// a session that ended normally.
+func (c *Client) RunContext(ctx context.Context, cmd string) (output string, err error) {
 	session, err := c.conn.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("opening session: %w", err)
 	}
 	defer func() { _ = session.Close() }()
 
-	out, runErr := session.CombinedOutput(cmd)
-	return string(out), runErr
+	type result struct {
+		out []byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		out, runErr := session.CombinedOutput(cmd)
+		done <- result{out: out, err: runErr}
+	}()
+
+	select {
+	case r := <-done:
+		return string(r.out), r.err
+	case <-ctx.Done():
+		_ = session.Close()
+		return "", fmt.Errorf("instance stopped responding while running a command: %w", ctx.Err())
+	}
 }
 
 // RunStreaming executes cmd on the instance, writing its stdout/stderr

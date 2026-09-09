@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/identity"
@@ -102,6 +103,16 @@ func downSummary(record state.Record) string {
 	return b.String()
 }
 
+// servingLookupTimeout bounds what status is willing to wait for the
+// instance's published ports.
+//
+// Generous enough for a loaded instance -- the box this was found on was
+// swapping under three concurrent sessions and still answered other
+// commands in single-digit seconds -- and short enough that a report stays
+// a report. Anything slower is indistinguishable from unreachable, and
+// status says so rather than waiting to find out.
+const servingLookupTimeout = 20 * time.Second
+
 func runStatus(cmd *cobra.Command, name string, args []string) error {
 	_, record, err := resolveInstance(name)
 	if err != nil {
@@ -150,7 +161,27 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	// so an instance that never joined has nothing to report and should
 	// not pay an SSH round trip to learn that.
 	if record.TailscaleJoined {
-		entries, serveErr := lifecycle.ServeStatus(cmd.Context(), record.IP, record.User)
+		// Bounded because status is a report. An instance stops answering
+		// for reasons this side cannot tell apart -- it ran out of memory,
+		// a daemon wedged, the tailnet went down, the connection went
+		// half-open -- and status should survive all of them rather than
+		// try to diagnose any. Without this the report printed everything
+		// up to Serving and then hung, which is worse than the "unknown"
+		// it was already written to fall back to.
+		//
+		// Derived from ctx rather than cmd.Context(): ctx carries the
+		// progress reporter built above, and starting again from the bare
+		// command context would silently drop it.
+		serveCtx, cancel := context.WithTimeout(ctx, servingLookupTimeout)
+		defer cancel()
+
+		// Said before the wait, not after. This is the one step in status
+		// that can take twenty seconds, and an unexplained pause after the
+		// last printed line is what a hang looks like -- the report should
+		// not have to be timed to tell the difference.
+		provider.ReportProgress(ctx, "checking published ports")
+
+		entries, serveErr := lifecycle.ServeStatus(serveCtx, record.IP, record.User)
 		// The tailnet IP is only needed to print an address beside each
 		// entry, so it is fetched only when there is an entry to print --
 		// skipping a second SSH round trip both when the instance is
@@ -158,7 +189,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 		// case of nothing being served.
 		var tailnetIP string
 		if serveErr == nil && len(entries) > 0 {
-			tailnetIP, _ = lifecycle.TailscaleIP(cmd.Context(), record.IP, record.User)
+			tailnetIP, _ = lifecycle.TailscaleIP(serveCtx, record.IP, record.User)
 		}
 		printServing(cmd, entries, tailnetIP, serveErr)
 	}

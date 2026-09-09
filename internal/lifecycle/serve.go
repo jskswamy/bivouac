@@ -82,18 +82,18 @@ func unserveArgs(bin string, port int) string {
 // to fn. All three exported calls need exactly this preamble, and
 // resolving the binary rather than assuming a path is what makes them
 // work on an instance where tailscale came from nix.
-func serveSession(ctx context.Context, ip, user string, fn func(client *reconcile.Client, bin string) error) error {
+func serveSession(ctx context.Context, ip, user string, fn func(ctx context.Context, client *reconcile.Client, bin string) error) error {
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = client.Close() }()
 
-	bin, err := RemoteTailscaleBin(client)
+	bin, err := RemoteTailscaleBin(ctx, client)
 	if err != nil {
 		return err
 	}
-	return fn(client, bin)
+	return fn(ctx, client, bin)
 }
 
 // Serve publishes the instance's localhost:port on the tailnet.
@@ -101,8 +101,8 @@ func serveSession(ctx context.Context, ip, user string, fn func(client *reconcil
 // sudo: tailscaled runs as root and gates serve config changes on it;
 // cloud-init grants this user passwordless sudo (see cloud-init.sh).
 func Serve(ctx context.Context, ip, user string, port int) error {
-	return serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
-		if out, err := client.Run("bash -lc " + reconcile.ShellQuote(serveArgs(bin, port))); err != nil {
+	return serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
+		if out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(serveArgs(bin, port))); err != nil {
 			return fmt.Errorf("serving port %d on the tailnet: %w\n%s", port, err, out)
 		}
 		return nil
@@ -111,8 +111,8 @@ func Serve(ctx context.Context, ip, user string, port int) error {
 
 // Unserve stops publishing one port, leaving every other entry alone.
 func Unserve(ctx context.Context, ip, user string, port int) error {
-	return serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
-		if out, err := client.Run("bash -lc " + reconcile.ShellQuote(unserveArgs(bin, port))); err != nil {
+	return serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
+		if out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(unserveArgs(bin, port))); err != nil {
 			return fmt.Errorf("stopping serve on port %d: %w\n%s", port, err, out)
 		}
 		return nil
@@ -124,8 +124,8 @@ func Unserve(ctx context.Context, ip, user string, port int) error {
 // one, and showing only a subset would make `unserve` look broken.
 func ServeStatus(ctx context.Context, ip, user string) ([]ServeEntry, error) {
 	var entries []ServeEntry
-	err := serveSession(ctx, ip, user, func(client *reconcile.Client, bin string) error {
-		out, err := client.Run("bash -lc " + reconcile.ShellQuote("sudo "+reconcile.ShellQuote(bin)+" serve status --json"))
+	err := serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
+		out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote("sudo "+reconcile.ShellQuote(bin)+" serve status --json"))
 		if err != nil {
 			return fmt.Errorf("reading serve status: %w\n%s", err, out)
 		}
