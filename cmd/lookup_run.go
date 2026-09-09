@@ -204,22 +204,44 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		return
 	}
 	cmd.Printf("Sessions:\n")
-	for _, s := range record.Sessions {
-		info := lifecycle.DescribeSession(cmd.Context(), record.Name, s)
+	for _, info := range lifecycle.DescribeSessions(cmd.Context(), record.Name, record.Sessions) {
 		wtState := "clean"
 		if !info.WorktreeExists {
 			wtState = "no worktree"
 		} else if info.WorktreeDirty {
 			wtState = "dirty"
 		}
-		// "?" rather than 0 when the count could not be computed at all -- see
-		// the matching comment in runSessionList; this stays consistent with it.
-		unmerged := "?"
-		if info.UnmergedKnown {
-			unmerged = fmt.Sprintf("%d", info.Unmerged)
-		}
-		cmd.Printf("  %-16s %-16s %s unmerged, %s\n", info.Name, info.Branch, unmerged, wtState)
+		cmd.Printf("  %-16s %-16s %s, %s\n", info.Name, info.Branch, unmergedLabel(info), wtState)
 	}
+}
+
+// unmergedLabel renders what a session's work amounts to, in the one column
+// a user scans to decide whether to pull.
+//
+// Three things can be true and the label has to keep them apart, because
+// collapsing any two of them is the bug this replaced: an exact count, a
+// known-ahead session whose commits have not been fetched so cannot be
+// counted, and an instance that never answered.
+//
+// The unreachable case keeps its number when it has one -- the local branch
+// is still the freshest thing this machine holds -- but says where it came
+// from. A bare "0" from an instance nobody could reach is precisely how a
+// waiting commit went unnoticed.
+func unmergedLabel(i lifecycle.SessionInfo) string {
+	count := "?"
+	if i.UnmergedKnown {
+		count = fmt.Sprintf("%d", i.Unmerged)
+	}
+	if !i.RemoteKnown {
+		return count + " unmerged (instance unreachable)"
+	}
+	if !i.UnmergedKnown {
+		if i.RemoteAhead {
+			return "ahead (pull to count)"
+		}
+		return "? unmerged"
+	}
+	return count + " unmerged"
 }
 
 // beadsModeFor reads the beads setting out of the repository's cloudlab.pkl.
@@ -310,9 +332,7 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 
 	var infos []lifecycle.SessionInfo
 	for _, r := range records {
-		for _, s := range r.Sessions {
-			infos = append(infos, lifecycle.DescribeSession(cmd.Context(), r.Name, s))
-		}
+		infos = append(infos, lifecycle.DescribeSessions(cmd.Context(), r.Name, r.Sessions)...)
 	}
 	if len(infos) == 0 {
 		cmd.Println("no sessions")
@@ -325,14 +345,7 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 		} else if i.WorktreeDirty {
 			wtState = "dirty"
 		}
-		// "?" rather than 0 when the count could not be computed at all --
-		// printing 0 would read as "nothing to lose", which a git failure does
-		// not establish.
-		unmerged := "?"
-		if i.UnmergedKnown {
-			unmerged = fmt.Sprintf("%d", i.Unmerged)
-		}
-		cmd.Printf("%-16s %-24s %-16s %s unmerged, %s\n", i.Name, i.Instance, i.Branch, unmerged, wtState)
+		cmd.Printf("%-16s %-24s %-16s %s, %s\n", i.Name, i.Instance, i.Branch, unmergedLabel(i), wtState)
 	}
 	return nil
 }

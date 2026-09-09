@@ -825,3 +825,53 @@ func TestBeadsModeFor_SilentWhenTheConfigResolves(t *testing.T) {
 		t.Errorf("errOut = %q, want silence when the config resolves", errOut.String())
 	}
 }
+
+// The reported bug was a display that could not tell "the instance has
+// nothing" from "nobody asked the instance". Each case below is one of the
+// three answers that must stay distinguishable in the column a user scans
+// before deciding to pull.
+func TestUnmergedLabel_KeepsTheThreeAnswersApart(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		info lifecycle.SessionInfo
+		want string
+	}{
+		{
+			name: "counted",
+			info: lifecycle.SessionInfo{RemoteKnown: true, UnmergedKnown: true, Unmerged: 2, RemoteAhead: true},
+			want: "2 unmerged",
+		},
+		{
+			name: "nothing waiting",
+			info: lifecycle.SessionInfo{RemoteKnown: true, UnmergedKnown: true, Unmerged: 0},
+			want: "0 unmerged",
+		},
+		{
+			name: "ahead but never fetched",
+			info: lifecycle.SessionInfo{RemoteKnown: true, RemoteAhead: true},
+			want: "ahead (pull to count)",
+		},
+		{
+			name: "instance never answered",
+			info: lifecycle.SessionInfo{UnmergedKnown: true, Unmerged: 0},
+			want: "0 unmerged (instance unreachable)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := unmergedLabel(tc.info); got != tc.want {
+				t.Errorf("unmergedLabel() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The two that must never render alike: an instance holding a commit and an
+// instance nobody could reach both used to print a bare "0".
+func TestUnmergedLabel_UnreachableNeverLooksSettled(t *testing.T) {
+	settled := unmergedLabel(lifecycle.SessionInfo{RemoteKnown: true, UnmergedKnown: true})
+	unreachable := unmergedLabel(lifecycle.SessionInfo{UnmergedKnown: true})
+	if settled == unreachable {
+		t.Errorf("both rendered %q -- a listing that cannot reach the instance must not "+
+			"read the same as one reporting no work", settled)
+	}
+}
