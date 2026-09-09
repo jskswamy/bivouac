@@ -33,6 +33,12 @@ let
   # would mean an instance provisioned before someone enabled beads could not
   # sync until it was reprovisioned.
   beads = pkgs.callPackage ./beads-pkg.nix { };
+
+  # Pinned rather than taken from nixpkgs, which is two releases behind.
+  # The version has to match the client that attaches: `herdr machine add`
+  # replaces a server it cannot talk to, deploying its own binary outside
+  # nix and stopping the unit below. See herdr-pkg.nix.
+  herdr = pkgs.callPackage ./herdr-pkg.nix { };
 in
 {
   options.cloudlab.tailscale = lib.mkOption {
@@ -52,7 +58,7 @@ in
     pkgs.devbox
     # Started as a headless server by the systemd --user unit below, so
     # one is listening before anyone attaches.
-    pkgs.herdr
+    herdr
     # Lets the getmoshi.app mobile client (SSH & Mosh from iOS/Android)
     # connect to this instance -- moshi itself is a client-side app,
     # this host only needs the mosh server side it speaks to.
@@ -106,7 +112,7 @@ in
   config.systemd.user.services.herdr = {
     Unit.Description = "Herdr headless server";
     Service = {
-      ExecStart = "${pkgs.herdr}/bin/herdr server";
+      ExecStart = "${herdr}/bin/herdr server";
       SuccessExitStatus = "1";
       Restart = "on-failure";
     };
