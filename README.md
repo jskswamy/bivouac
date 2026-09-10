@@ -36,6 +36,8 @@ cloudlab session merge         # replay, sign, verify, then retire the session
 cloudlab provision             # re-apply cloudlab.pkl after editing it
 cloudlab sync --dir ./dataset  # one-shot rsync push of anything outside git
 cloudlab download ~/results    # one-shot rsync pull back
+cloudlab status                # what this instance is, and what it has cost so far
+cloudlab list --cost           # every instance, with what each is running up
 cloudlab down                  # rescues every session's work, then destroys the VM
 ```
 
@@ -72,6 +74,14 @@ start a session:
   unmerged commit count, worktree state — for when you've lost track of
   what's running where. `status` shows the same detail scoped to one
   instance.
+
+`status` also reports what the instance has cost so far: its uptime since the
+provider created it, multiplied by the size's hourly price and capped at the
+monthly one, which is how DigitalOcean actually bills. `list --cost` does the
+same across every instance and totals it. Cost is the one thing in either
+report that needs an API token — `status` degrades to "unknown" without one,
+since its live check was always incidental, while `list --cost` fails, because
+the token is exactly what you asked it to use. Plain `list` stays offline.
 
 The instance never pushes anywhere and never talks to a shared remote — no
 GitHub credentials, host keys or signing keys ever reach the VM.

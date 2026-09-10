@@ -444,9 +444,9 @@ already runs.
 | `session list` | global | Every session on every instance, with its branch, unmerged count and worktree state |
 | `sync [remote-dir] --dir <local-dir>` | per-instance | One-shot rsync push of a local directory. `--dir` defaults to the current directory; `remote-dir` defaults to the mirrored remote path. For data that isn't in git |
 | `download <remote-dir> [local-dir]` | per-instance | One-shot rsync pull. `local-dir` defaults to `./<basename>` |
-| `status [name]` | per-instance | Instance detail from state, a live provider check, the instance's own sessions, and (when tailnet-joined) its served ports |
+| `status [name]` | per-instance | Instance detail from state, a live provider check, accrued cost, the instance's own sessions, and (when tailnet-joined) its served ports |
 | `down [name]` | per-instance | Rescue every session's work, deregister from the tailnet, destroy the VM, clear state. Confirms first; `--force` skips the rescue |
-| `list` | global | All instances across all repos (name, provider, IP) |
+| `list` | global | All instances across all repos (name, provider, IP). `--cost` adds live status and accrued cost, which is the one thing here that needs an API token |
 | `secrets init/edit/keys` | global | Manage the personal, sops-encrypted secrets file |
 | `shell [name]` | per-instance | **Not implemented.** Reconcile, then open a *local* subshell with instance envs injected (`DOCKER_HOST`, ...) |
 | `connect [name] --port <n>` | per-instance | Reach a service on the instance: takes a port, or discovers what's listening and asks if there's more than one. The service's bind address decides what happens next — a tailnet-routable address prints a URL and exits; a loopback-bound one, or no tailnet at all, runs a foreground `ssh -L` and prints the local URL to forward through instead |

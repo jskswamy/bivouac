@@ -716,7 +716,7 @@ func TestPrintServing_ListsEntries(t *testing.T) {
 	printServing(cmd, []lifecycle.ServeEntry{{Port: 8888, Forward: "localhost:8888"}}, "100.81.106.84", nil)
 
 	got := out.String()
-	if !strings.Contains(got, "Serving:") || !strings.Contains(got, "8888") {
+	if !strings.Contains(got, "SERVING") || !strings.Contains(got, "8888") {
 		t.Errorf("printServing() = %q, want a Serving block naming 8888", got)
 	}
 }

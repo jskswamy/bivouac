@@ -122,7 +122,8 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 		cmd.Printf("→ %s\n", status)
 	})
 
-	// status's only use of the API is the live status field; every other
+	// status uses the API for the live status field and for cost, which
+	// is derived from the droplet's creation time and price; every other
 	// line it prints comes from local state. lifecycle.Status already
 	// reports a failed live check rather than failing the call -- an
 	// absent token is the same kind of fact, so it degrades the same way
@@ -131,30 +132,12 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	// destroy a droplet without the API, so for them a missing token is
 	// not a degraded report but no work at all.
 	st := lifecycle.InstanceStatus{Record: record}
-	liveReason := "live check failed"
 	if p, provErr := resolveProvider(ctx); provErr != nil {
 		st.LiveErr = provErr
-		liveReason = "no live check"
 	} else {
 		st = lifecycle.Status(ctx, p, record)
 	}
-	cmd.Printf("Name:     %s\n", st.Record.Name)
-	cmd.Printf("Provider: %s\n", st.Record.Provider)
-	cmd.Printf("Region:   %s\n", st.Record.Region)
-	cmd.Printf("Size:     %s\n", st.Record.Size)
-	cmd.Printf("Template: %s\n", st.Record.Template)
-	cmd.Printf("User:     %s\n", st.Record.User)
-	repoPath := st.Record.RepoPath
-	if repoPath == "" {
-		repoPath = "(unknown -- provisioned before this field existed)"
-	}
-	cmd.Printf("RepoPath: %s\n", repoPath)
-	cmd.Printf("IP:       %s\n", st.Record.IP)
-	if st.LiveErr != nil {
-		cmd.Printf("Status:   unknown (%s: %v)\n", liveReason, st.LiveErr)
-	} else {
-		cmd.Printf("Status:   %s\n", st.LiveStatus)
-	}
+	printStatus(cmd, st)
 	printSessions(cmd, record)
 
 	// Only when state says there is a tailnet: serving is tailnet-only,
@@ -194,85 +177,6 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 		printServing(cmd, entries, tailnetIP, serveErr)
 	}
 	return nil
-}
-
-// printServing renders the instance's published ports. Separate from
-// runStatus for the same reason printSessions is: it can then be tested
-// without a provider or an instance.
-//
-// An error is reported as unknown rather than returned. status is a
-// read-only report and an unreachable instance is an expected state for
-// it -- the live provider check above already renders that way, and a
-// serve lookup must not be the thing that makes status fail.
-func printServing(cmd *cobra.Command, entries []lifecycle.ServeEntry, tailnetIP string, err error) {
-	if err != nil {
-		cmd.Printf("Serving:  unknown (instance unreachable)\n")
-		return
-	}
-	if len(entries) == 0 {
-		cmd.Printf("Serving:  none\n")
-		return
-	}
-	cmd.Printf("Serving:\n")
-	for _, e := range entries {
-		// The ports are known even when the tailnet lookup that would
-		// address them is not -- worth showing rather than discarding,
-		// but never as a bare ":8888" with no host.
-		addr := "(tailnet address unknown)"
-		if tailnetIP != "" {
-			addr = tailnetIP + ":" + strconv.Itoa(e.Port)
-		}
-		cmd.Printf("  %-6d %s\n", e.Port, addr)
-	}
-}
-
-// printSessions renders an instance's sessions. Separate from runStatus so it
-// can be tested without a provider: runStatus reaches lifecycle.Status, which
-// makes a live API call, and the session section has nothing to do with that.
-func printSessions(cmd *cobra.Command, record state.Record) {
-	if len(record.Sessions) == 0 {
-		cmd.Printf("Sessions: none\n")
-		return
-	}
-	cmd.Printf("Sessions:\n")
-	for _, info := range lifecycle.DescribeSessions(cmd.Context(), record.Name, record.Sessions) {
-		wtState := "clean"
-		if !info.WorktreeExists {
-			wtState = "no worktree"
-		} else if info.WorktreeDirty {
-			wtState = "dirty"
-		}
-		cmd.Printf("  %-16s %-16s %s, %s\n", info.Name, info.Branch, unmergedLabel(info), wtState)
-	}
-}
-
-// unmergedLabel renders what a session's work amounts to, in the one column
-// a user scans to decide whether to pull.
-//
-// Three things can be true and the label has to keep them apart, because
-// collapsing any two of them is the bug this replaced: an exact count, a
-// known-ahead session whose commits have not been fetched so cannot be
-// counted, and an instance that never answered.
-//
-// The unreachable case keeps its number when it has one -- the local branch
-// is still the freshest thing this machine holds -- but says where it came
-// from. A bare "0" from an instance nobody could reach is precisely how a
-// waiting commit went unnoticed.
-func unmergedLabel(i lifecycle.SessionInfo) string {
-	count := "?"
-	if i.UnmergedKnown {
-		count = fmt.Sprintf("%d", i.Unmerged)
-	}
-	if !i.RemoteKnown {
-		return count + " unmerged (instance unreachable)"
-	}
-	if !i.UnmergedKnown {
-		if i.RemoteAhead {
-			return "ahead (pull to count)"
-		}
-		return "? unmerged"
-	}
-	return count + " unmerged"
 }
 
 // beadsModeFor reads the beads setting out of the repository's cloudlab.pkl.

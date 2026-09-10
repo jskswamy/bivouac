@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
@@ -37,5 +38,40 @@ func TestStatus_RecordFieldsSurviveLiveCheckFailure(t *testing.T) {
 	}
 	if got.LiveErr == nil {
 		t.Error("LiveErr = nil, want the Get error")
+	}
+}
+
+func TestStatus_ReportsCostFromTheLiveCheck(t *testing.T) {
+	record := state.Record{Name: "myinstance", VMID: "vm-1"}
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	p := &fakeProvider{getVM: provider.VM{
+		ID:           "vm-1",
+		Status:       "active",
+		CreatedAt:    now.Add(-2 * time.Hour),
+		PriceHourly:  0.5,
+		PriceMonthly: 24,
+	}}
+
+	got := StatusAt(context.Background(), p, record, now)
+
+	if !got.Cost.Known {
+		t.Fatal("Cost.Known = false, want true")
+	}
+	if got.Cost.Accrued != 1 {
+		t.Errorf("Cost.Accrued = %v, want %v", got.Cost.Accrued, 1.0)
+	}
+	if got.Cost.Uptime != 2*time.Hour {
+		t.Errorf("Cost.Uptime = %v, want %v", got.Cost.Uptime, 2*time.Hour)
+	}
+}
+
+func TestStatus_CostUnknownWhenLiveCheckFails(t *testing.T) {
+	record := state.Record{Name: "myinstance", VMID: "vm-1"}
+	p := &fakeProvider{getErr: errors.New("network error")}
+
+	got := Status(context.Background(), p, record)
+
+	if got.Cost.Known {
+		t.Error("Cost.Known = true, want false when there is no live data to cost")
 	}
 }

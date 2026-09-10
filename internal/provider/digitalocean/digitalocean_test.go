@@ -288,3 +288,48 @@ func TestCreate_SSHKeysParsedAsIDOrFingerprint(t *testing.T) {
 		t.Errorf("keys[1] = %#v, want \"aa:bb:cc:dd\"", keys[1])
 	}
 }
+
+func TestGet_CarriesCreationTimeAndPrice(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets/12345", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"active","size_slug":"s-2vcpu-4gb","created_at":"2026-09-08T10:00:00Z","size":{"slug":"s-2vcpu-4gb","price_hourly":0.03571,"price_monthly":24}}}`))
+	})
+
+	vm, err := p.Get(context.Background(), "12345")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	want := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	if !vm.CreatedAt.Equal(want) {
+		t.Errorf("vm.CreatedAt = %v, want %v", vm.CreatedAt, want)
+	}
+	if vm.PriceHourly != 0.03571 {
+		t.Errorf("vm.PriceHourly = %v, want %v", vm.PriceHourly, 0.03571)
+	}
+	if vm.PriceMonthly != 24 {
+		t.Errorf("vm.PriceMonthly = %v, want %v", vm.PriceMonthly, 24.0)
+	}
+}
+
+// A droplet still booting has no size object and an unparsable created_at is
+// possible from any API change; neither is an error, both just mean "unknown"
+// so that cost degrades rather than the whole Get failing.
+func TestGet_MissingSizeAndCreatedAtAreUnknownNotErrors(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/droplets/12345", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"droplet":{"id":12345,"name":"myrepo","status":"new","created_at":"not-a-timestamp"}}`))
+	})
+
+	vm, err := p.Get(context.Background(), "12345")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !vm.CreatedAt.IsZero() {
+		t.Errorf("vm.CreatedAt = %v, want zero time", vm.CreatedAt)
+	}
+	if vm.PriceHourly != 0 || vm.PriceMonthly != 0 {
+		t.Errorf("prices = %v/%v, want 0/0", vm.PriceHourly, vm.PriceMonthly)
+	}
+}

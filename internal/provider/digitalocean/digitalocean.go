@@ -189,7 +189,7 @@ func toVM(d *godo.Droplet) provider.VM {
 	if d.Region != nil {
 		region = d.Region.Slug
 	}
-	return provider.VM{
+	vm := provider.VM{
 		ID:     strconv.Itoa(d.ID),
 		Name:   d.Name,
 		IP:     ip,
@@ -197,4 +197,16 @@ func toVM(d *godo.Droplet) provider.VM {
 		Size:   d.SizeSlug,
 		Status: d.Status,
 	}
+	// Both are best-effort. A droplet that is still being created has no
+	// size object yet, and a created_at this cannot parse is a change in
+	// the API rather than a reason to fail a status read -- either way the
+	// zero value travels on and reads as "unknown" downstream.
+	if t, err := time.Parse(time.RFC3339, d.Created); err == nil {
+		vm.CreatedAt = t
+	}
+	if d.Size != nil {
+		vm.PriceHourly = d.Size.PriceHourly
+		vm.PriceMonthly = d.Size.PriceMonthly
+	}
+	return vm
 }

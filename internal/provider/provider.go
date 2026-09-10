@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 // Provider creates, destroys, and inspects VMs. Only DigitalOcean is
@@ -33,13 +34,22 @@ type InstanceSpec struct {
 }
 
 // VM is a created instance's current state.
+//
+// CreatedAt and the two prices are what an instance costs to keep
+// running, carried on the same read that reports Status because
+// DigitalOcean returns them inline on the droplet. A provider that
+// cannot report one leaves it zero, which every consumer must read as
+// "unknown" rather than "free" -- see lifecycle.ComputeCost.
 type VM struct {
-	ID     string
-	Name   string
-	IP     string
-	Region string
-	Size   string
-	Status string
+	ID           string
+	Name         string
+	IP           string
+	Region       string
+	Size         string
+	Status       string
+	CreatedAt    time.Time
+	PriceHourly  float64
+	PriceMonthly float64
 }
 
 // ErrNotFound is returned by Get/Destroy when the VM no longer exists.
