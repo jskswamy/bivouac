@@ -51,10 +51,22 @@ func checkoutSessionCmd(repo, branch string) string {
 // checkpointCmd commits whatever the agent left uncommitted. The
 // diff --cached --quiet guard makes a clean tree exit 0 without creating an
 // empty commit, so pull can run this unconditionally.
+//
+// --no-verify because this is the safety net, not a contribution. The
+// repository's own pre-commit hooks are written for a developer's machine
+// and run here under a non-interactive `bash -lc` over SSH, where a Go
+// linter cannot find go on PATH -- so they fail, and without this they took
+// the rescue down with them. Gating the checkpoint on lint means the messier
+// the tree, the more likely the thing that saves it refuses.
+//
+// It decides more than a failed pull. DeleteSession and Down both rescue by
+// checkpointing first, so hooks that cannot pass on the instance would turn
+// teardown into a refusal, or into discarding work with --force that was
+// never rescuable. Quality gates belong on the commits a human authors.
 func checkpointCmd(repo, message string) string {
 	inner := "cd " + reconcile.ShellQuote(repo) +
 		" && git add -A" +
-		" && { git diff --cached --quiet || git commit --quiet -m " + reconcile.ShellQuote(message) + "; }"
+		" && { git diff --cached --quiet || git commit --quiet --no-verify -m " + reconcile.ShellQuote(message) + "; }"
 	return "bash -lc " + reconcile.ShellQuote(inner)
 }
 

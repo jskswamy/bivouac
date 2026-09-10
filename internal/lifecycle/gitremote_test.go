@@ -82,6 +82,25 @@ func TestCheckpointCmd_StagesEverythingAndToleratesACleanTree(t *testing.T) {
 	}
 }
 
+// The checkpoint is the safety net, so nothing the repository configures may
+// be able to refuse it. A session whose pre-commit hooks fail on the instance
+// -- golangci-lint cannot find go under a non-interactive `bash -lc`, which
+// is exactly how this runs -- otherwise cannot be rescued at all, and the
+// messier the working tree the more likely the rescue is the thing that
+// refuses.
+//
+// It also decides more than a failed pull. DeleteSession and Down rescue by
+// checkpointing first, so hooks that cannot pass on the instance turn
+// teardown into either a refusal or, with --force, the discarding of work
+// that was never rescuable.
+func TestCheckpointCmd_IsNotBlockedByTheRepositorysHooks(t *testing.T) {
+	got := checkpointCmd("/home/devuser/sessions/s/repo", "cloudlab: checkpoint")
+	if !strings.Contains(got, "--no-verify") {
+		t.Errorf("checkpointCmd() = %q, want --no-verify -- quality gates belong on the "+
+			"commits a human authors, not on the mechanism that stops work disappearing", got)
+	}
+}
+
 // One session, one repository: removing the directory removes the branch,
 // the working tree and the objects together. No shared store survives it, so
 // there is nothing left to prune or delete a branch from.
