@@ -919,6 +919,22 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 		session = sess.Name
 	}
+
+	// Inside herdr, saving the instance as a machine puts it in the sidebar
+	// the user is already looking at -- one window holding local work and
+	// every instance, which is what 0.9.0 added machines for. Outside it
+	// there is nothing to attach to, so launching a client stays right.
+	if lifecycle.InsideHerdr() {
+		label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
+			record.User, session, record.Name)
+		if err != nil {
+			return err
+		}
+		// Named, not selected. Which machine is current is client state
+		// with no CLI behind it, so the last step is the user's keypress.
+		cmd.Printf("%s is in your herdr sidebar — select it to attach\n", label)
+		return nil
+	}
 	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
 }
 

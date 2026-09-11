@@ -32,14 +32,13 @@ func herdrArgs(ip, user, session string) []string {
 // names the herdr session to use/create (see herdrArgs); empty means
 // herdr's own default, unnamed session.
 func Herdr(ctx context.Context, ip, user, session string) error {
-	// herdr sets HERDR_ENV=1 in every pane it hosts, and refuses to
-	// nest a new session inside an existing one -- exec'ing anyway
-	// would surface herdr's own generic "remote client exited with
-	// exit status: 1", giving no hint why. Catching it here instead
-	// gives a clear, specific error without even needing herdr on
-	// PATH.
-	if os.Getenv("HERDR_ENV") != "" {
-		return fmt.Errorf("already inside a herdr session -- herdr disables nested sessions by default; use this session directly, or run `cloudlab ssh`/`cloudlab tmux` instead")
+	// Inside herdr this must not exec a client: herdr refuses nested
+	// sessions, and doing it anyway surfaces its own generic "remote
+	// client exited with exit status: 1". That refusal is now the machine
+	// path's cue instead -- see AttachMachine, and the router in the
+	// command layer that chooses between them.
+	if InsideHerdr() {
+		return fmt.Errorf("already inside a herdr session -- attach the instance as a saved machine instead, or run `cloudlab ssh`/`cloudlab tmux`")
 	}
 	if _, err := exec.LookPath("herdr"); err != nil {
 		return fmt.Errorf("herdr not found on PATH (install it: https://herdr.dev/): %w", err)

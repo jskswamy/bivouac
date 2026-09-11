@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -212,5 +213,284 @@ func TestWorkspaceCreateCmd_RootsTheWorkspaceInTheCheckout(t *testing.T) {
 	}
 	if !strings.Contains(got, "--label") {
 		t.Errorf("workspaceCreateCmd() = %q, want a label so it can be found again", got)
+	}
+}
+
+// fakeHerdr records every local herdr invocation and answers the listing
+// from a script, so the whole ensure flow can be driven without herdr.
+type fakeHerdr struct {
+	listJSON string
+	calls    [][]string
+	failOn   string // first arg to fail on; empty means never
+}
+
+func (f *fakeHerdr) Run(args ...string) (string, error) {
+	f.calls = append(f.calls, args)
+	if len(args) > 1 && args[1] == f.failOn {
+		return "boom", fmt.Errorf("herdr %s failed", args[1])
+	}
+	if len(args) > 1 && args[1] == "list" {
+		return f.listJSON, nil
+	}
+	return "", nil
+}
+
+func (f *fakeHerdr) ran(verb string) bool {
+	for _, c := range f.calls {
+		if len(c) > 1 && c[1] == verb {
+			return true
+		}
+	}
+	return false
+}
+
+func TestEnsureMachine_AddsWhenThereIsNoProfile(t *testing.T) {
+	h := &fakeHerdr{listJSON: "[]"}
+
+	label, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth")
+	if err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if label != "inst/auth" {
+		t.Errorf("label = %q, want inst/auth", label)
+	}
+	if !h.ran("add") {
+		t.Error("want machine add for a session with no profile")
+	}
+	if h.ran("enable") {
+		t.Error("enable must not run when the profile was just added")
+	}
+}
+
+// Running cloudlab herdr twice must not leave two profiles for one session:
+// machine add does not deduplicate, and nothing else would.
+func TestEnsureMachine_IsIdempotent(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"inst/auth",` +
+		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":true}]`}
+
+	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if h.ran("add") {
+		t.Error("machine add ran for a profile that already exists -- that is a duplicate")
+	}
+	if h.ran("enable") {
+		t.Error("machine enable ran for a profile that was already enabled")
+	}
+}
+
+// A disabled profile is re-enabled rather than re-added: adding would make a
+// second profile for the same session and leave the disabled one behind.
+func TestEnsureMachine_EnablesADisabledProfile(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"inst/auth",` +
+		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":false}]`}
+
+	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if !h.ran("enable") {
+		t.Error("want machine enable for a disabled profile")
+	}
+	if h.ran("add") {
+		t.Error("machine add ran for a profile that exists but is disabled")
+	}
+}
+
+// A failure to add must surface. Reporting success would leave the user
+// looking for a sidebar entry that was never created.
+func TestEnsureMachine_ReportsAFailedAdd(t *testing.T) {
+	h := &fakeHerdr{listJSON: "[]", failOn: "add"}
+	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err == nil {
+		t.Error("EnsureMachine() error = nil after machine add failed")
+	}
+}
+
+// RemoveMachine is what stops profiles outliving the sessions they point at.
+func TestRemoveMachine_RemovesOnlyTheMatchingProfile(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[
+	  {"id":"keep","label":"inst/other","target":"ssh://u@1.2.3.4","session":"other","enabled":true},
+	  {"id":"drop","label":"inst/auth","target":"ssh://u@1.2.3.4","session":"auth","enabled":true}]`}
+
+	if err := RemoveMachine(h, "ssh://u@1.2.3.4", "auth"); err != nil {
+		t.Fatalf("RemoveMachine() error = %v", err)
+	}
+	var removed []string
+	for _, c := range h.calls {
+		if len(c) > 2 && c[1] == "remove" {
+			removed = append(removed, c[2])
+		}
+	}
+	if len(removed) != 1 || removed[0] != "drop" {
+		t.Errorf("removed %v, want exactly [drop]", removed)
+	}
+}
+
+// Teardown must not fail because a profile was already gone -- the user may
+// have removed it from the sidebar.
+func TestRemoveMachine_IsSilentWhenThereIsNoProfile(t *testing.T) {
+	h := &fakeHerdr{listJSON: "[]"}
+	if err := RemoveMachine(h, "ssh://u@1.2.3.4", "auth"); err != nil {
+		t.Errorf("RemoveMachine() error = %v for a profile that does not exist", err)
+	}
+	if h.ran("remove") {
+		t.Error("machine remove ran with nothing to remove")
+	}
+}
+
+// fakeRemote stands in for the instance's herdr over SSH.
+type fakeRemote struct {
+	listJSON        string
+	afterCreateJSON string
+	created         bool
+	cmds            []string
+	failOn          string
+}
+
+func (f *fakeRemote) Run(cmd string) (string, error) {
+	f.cmds = append(f.cmds, cmd)
+	if f.failOn != "" && strings.Contains(cmd, f.failOn) {
+		return "boom", fmt.Errorf("remote herdr failed")
+	}
+	if strings.Contains(cmd, "create") {
+		// A real herdr shows the new workspace in the next listing, and
+		// EnsureWorkspace reads the id back from there rather than from the
+		// create reply -- so the double has to do the same or it tests
+		// nothing.
+		f.created = true
+		return `{"result":{"workspace":{"workspace_id":"w9"}}}`, nil
+	}
+	if strings.Contains(cmd, "list") {
+		if f.created {
+			return f.afterCreateJSON, nil
+		}
+		return f.listJSON, nil
+	}
+	return "", nil
+}
+
+func (f *fakeRemote) ran(fragment string) bool {
+	for _, c := range f.cmds {
+		if strings.Contains(c, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestEnsureWorkspace_CreatesOneRootedInTheCheckout(t *testing.T) {
+	r := &fakeRemote{
+		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~"}]}}`,
+		afterCreateJSON: `{"result":{"workspaces":[` +
+			`{"workspace_id":"w1","label":"~"},{"workspace_id":"w9","label":"auth"}]}}`,
+	}
+
+	id, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth")
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if id != "w9" {
+		t.Errorf("id = %q, want w9 read back from the listing", id)
+	}
+	if !r.ran("create") || !r.ran("/home/u/sessions/auth/repo") {
+		t.Errorf("want a create rooted at the checkout, got %v", r.cmds)
+	}
+}
+
+// Reconnecting to a session that already has its workspace must reuse it,
+// not stack up a new one every time.
+func TestEnsureWorkspace_ReusesTheExistingOne(t *testing.T) {
+	r := &fakeRemote{listJSON: `{"result":{"workspaces":[` +
+		`{"workspace_id":"w1","label":"~"},{"workspace_id":"w2","label":"auth"}]}}`}
+
+	id, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth")
+	if err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if id != "w2" {
+		t.Errorf("id = %q, want the existing w2", id)
+	}
+	if r.ran("create") {
+		t.Error("created a second workspace for a session that already had one")
+	}
+}
+
+// The guard used to refuse outright. Inside herdr is now the case the
+// machine path serves, and outside it there is no window to attach to, so
+// launching a client stays right.
+func TestInsideHerdr_RoutesRatherThanRefuses(t *testing.T) {
+	t.Setenv("HERDR_ENV", "1")
+	if !InsideHerdr() {
+		t.Error("InsideHerdr() = false with HERDR_ENV set")
+	}
+	t.Setenv("HERDR_ENV", "")
+	if InsideHerdr() {
+		t.Error("InsideHerdr() = true with HERDR_ENV empty")
+	}
+}
+
+// The target has to be the one a machine profile is matched on, so the same
+// instance produces the same string every time -- otherwise every run looks
+// like a new machine and adds a duplicate.
+func TestMachineTarget_IsStableAndSSHShaped(t *testing.T) {
+	got := MachineTarget("subramk", "206.189.140.27")
+	if got != MachineTarget("subramk", "206.189.140.27") {
+		t.Error("MachineTarget() is not stable across calls")
+	}
+	if !strings.HasPrefix(got, "ssh://") || !strings.Contains(got, "subramk@206.189.140.27") {
+		t.Errorf("MachineTarget() = %q, want an ssh:// target herdr accepts", got)
+	}
+}
+
+// A named herdr session starts with its own default "~" workspace, and
+// cloudlab then adds the checkout-rooted one -- so the sidebar showed two
+// entries per session, one of them useless.
+//
+// The empty default is closed, and only in the run that created ours: a
+// later reconnect must not go tidying workspaces the user has since made.
+func TestEnsureWorkspace_ClosesHerdrsEmptyDefault(t *testing.T) {
+	r := &fakeRemote{
+		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~","pane_count":1}]}}`,
+		afterCreateJSON: `{"result":{"workspaces":[` +
+			`{"workspace_id":"w1","label":"~","pane_count":1},` +
+			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
+	}
+
+	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if !r.ran("close") || !r.ran("w1") {
+		t.Errorf("want the empty ~ closed after creating ours, got %v", r.cmds)
+	}
+}
+
+// Someone working in the default workspace must not have it closed from
+// under them. More than one pane is the cheapest evidence it is in use.
+func TestEnsureWorkspace_LeavesADefaultThatIsInUse(t *testing.T) {
+	r := &fakeRemote{
+		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~","pane_count":3}]}}`,
+		afterCreateJSON: `{"result":{"workspaces":[` +
+			`{"workspace_id":"w1","label":"~","pane_count":3},` +
+			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
+	}
+
+	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if r.ran("close") {
+		t.Error("closed a default workspace that had panes in it")
+	}
+}
+
+// Reconnecting finds our workspace already there and must change nothing.
+func TestEnsureWorkspace_ReconnectDoesNotTidy(t *testing.T) {
+	r := &fakeRemote{listJSON: `{"result":{"workspaces":[` +
+		`{"workspace_id":"w1","label":"~","pane_count":1},` +
+		`{"workspace_id":"w2","label":"auth","pane_count":1}]}}`}
+
+	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
+		t.Fatalf("EnsureWorkspace() error = %v", err)
+	}
+	if r.ran("close") {
+		t.Error("closed a workspace on a plain reconnect")
 	}
 }
