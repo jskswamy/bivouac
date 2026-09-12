@@ -280,6 +280,37 @@ func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testi
 	}
 }
 
+// The instance name handed in is whatever cwd-based resolution guessed,
+// which is wrong when the session being deleted lives on an instance
+// derived from a different repo than the one underfoot. The session name
+// alone must be enough to find it.
+func TestRunSessionDelete_FindsInstanceBySessionNameWhenCwdGuessIsWrong(t *testing.T) {
+	localRepo := t.TempDir()
+	mustGitCmd(t, localRepo, "init", "--quiet")
+
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1:1", User: "devuser"}
+	record.PutSession(state.Session{Name: "planning", LocalRepo: localRepo})
+	store := sessionTestStore(t, record)
+
+	cmd := sessionTestCmd()
+	cmd.Flags().Bool("force", false, "")
+	if err := cmd.Flags().Set("force", "true"); err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	cmd.SetOut(out)
+
+	// "wrong-instance" is what cwd-based resolution derived; it names no
+	// record at all, so the session name is the only thing that can work.
+	if err := runSessionDelete(cmd, "wrong-instance", []string{"planning"}); err != nil {
+		t.Fatalf("runSessionDelete() error = %v, want the session's own instance found by name", err)
+	}
+	got, _, _ := store.Get("myinstance")
+	if _, ok := got.FindSession("planning"); ok {
+		t.Error("session still recorded after delete -- instance was not resolved by session name")
+	}
+}
+
 // After a successful merge the session exists on neither machine. A record
 // that still names it makes the next `down` refuse to destroy and recommend
 // --force, which is the one path that loses work.

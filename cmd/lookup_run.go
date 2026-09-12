@@ -380,6 +380,48 @@ func runDownload(cmd *cobra.Command, name string, args []string) error {
 // session" rule -- but as a hint about which session, never about which
 // repository. Nothing here needs a repo root, so these commands no longer
 // refuse to run outside a git repository, which matches down.
+// resolveInstanceForSession finds the instance that owns the named session,
+// so `session pull/merge/delete <session>` works from wherever it is run --
+// the session name given is not fed into cwd-based identity resolution at
+// all, so a session on an instance derived from a different repo than the
+// one underfoot was unreachable no matter how correct the session name was.
+//
+// --repo/--name exist to override cwd-based resolution on purpose, so an
+// explicit one wins over guessing from the session name.
+func resolveInstanceForSession(cmd *cobra.Command, name string, args []string) (*state.Store, state.Record, error) {
+	repoFlag, _ := cmd.Flags().GetString("repo")
+	nameFlag, _ := cmd.Flags().GetString("name")
+	if repoFlag == "" && nameFlag == "" && len(args) > 0 {
+		store, err := state.Open()
+		if err != nil {
+			return nil, state.Record{}, err
+		}
+		records, err := store.List()
+		if err != nil {
+			return nil, state.Record{}, err
+		}
+		var match state.Record
+		found := 0
+		for _, r := range records {
+			if _, ok := r.FindSession(args[0]); ok {
+				match = r
+				found++
+			}
+		}
+		switch found {
+		case 1:
+			return store, match, nil
+		case 0:
+			// Falls through to the cwd-derived lookup below, whose error
+			// ("no instance named ...", or ResolveSession's "no session
+			// %q") is more specific than a blanket "not found anywhere".
+		default:
+			return nil, state.Record{}, fmt.Errorf("session %q exists on more than one instance; pass --name to pick one", args[0])
+		}
+	}
+	return resolveInstance(name)
+}
+
 func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (state.Session, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -393,7 +435,7 @@ func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (
 }
 
 func runPull(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstanceForSession(cmd, name, args)
 	if err != nil {
 		return err
 	}
@@ -404,7 +446,7 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, name, sess.Name, sess.Base)
+	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, record.Name, sess.Name, sess.Base)
 	if err != nil {
 		return err
 	}
@@ -422,7 +464,7 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 }
 
 func runMerge(cmd *cobra.Command, name string, args []string) error {
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstanceForSession(cmd, name, args)
 	if err != nil {
 		return err
 	}
@@ -433,7 +475,7 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, name, sess)
+	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, record.Name, sess)
 	if err != nil {
 		return err
 	}
@@ -464,7 +506,7 @@ func forgetMergedSession(store *state.Store, record state.Record, session string
 }
 
 func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstanceForSession(cmd, name, args)
 	if err != nil {
 		return err
 	}
@@ -481,7 +523,7 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	// out, so an entry left behind after that is one nothing can ever rescue
 	// again -- and `down` would refuse on it forever, recommending the --force
 	// that skips the rescue for every other session on the instance too.
-	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, name, sess, force)
+	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, record.Name, sess, force)
 	if err != nil {
 		return err
 	}
