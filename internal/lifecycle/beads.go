@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
@@ -24,8 +25,8 @@ import (
 // Pushing dolt data into a git remote with no branches fails outright, so the
 // existing init -> push -> checkout order is a precondition, not a
 // coincidence.
-func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, user, host, session, beadsMode string) {
-	if beadsMode == "off" {
+func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, user, host, session string, beadsMode config.BeadsMode) {
+	if beadsMode == config.BeadsOff {
 		return
 	}
 	detected, err := beads.Detect(ctx, localRepo)
@@ -64,7 +65,7 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 	// external remote to reuse -- cloudlab.pkl says whether to ship a
 	// credential, never what the URL is.
 	external := ""
-	if beadsMode == "dolthub" && detected.Mode == beads.ModeExternal {
+	if beadsMode == config.BeadsDolthub && detected.Mode == beads.ModeExternal {
 		external = detected.ExternalURL
 	}
 	bootstrapBeads(ctx, client, localRepo, repo, session, external)
@@ -181,8 +182,8 @@ func warnOnBeadsVersionMismatch(ctx context.Context, client *reconcile.Client, r
 // from a repository already in ModeExternal, so asking for external sync
 // from a repository that is unsynced or git-only still seeds the session
 // remote and silently gets none of the sharing the user asked for.
-func warnDolthubWithoutExternalRemote(ctx context.Context, beadsMode string, detected beads.Detection) {
-	if beadsMode == "dolthub" && detected.Mode != beads.ModeExternal {
+func warnDolthubWithoutExternalRemote(ctx context.Context, beadsMode config.BeadsMode, detected beads.Detection) {
+	if beadsMode == config.BeadsDolthub && detected.Mode != beads.ModeExternal {
 		provider.ReportWarning(ctx, "beads: beads = \"dolthub\" but this repository has no external dolt remote to reuse (mode: "+
 			detected.Mode.String()+"); issues will sync over the session remote only")
 	}

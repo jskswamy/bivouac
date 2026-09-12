@@ -186,13 +186,13 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 // resolve is a problem `up` and `provision` report properly, with a better
 // message than this could give. The fallback is inert on a repository with no
 // .beads/, which is the overwhelmingly common case.
-func beadsModeFor(ctx context.Context, root string) string {
+func beadsModeFor(ctx context.Context, root string) config.BeadsMode {
 	cfg, err := config.Resolve(ctx, filepath.Join(root, "cloudlab.pkl"))
 	if err != nil {
 		provider.ReportWarning(ctx, "beads: could not resolve "+root+"'s config ("+err.Error()+"); falling back to session mode")
-		return "session"
+		return config.BeadsSession
 	}
-	return cfg.Beads
+	return config.BeadsMode(cfg.Beads)
 }
 
 // runSessionStart backs `cloudlab session start <name>`. Cobra resolves the

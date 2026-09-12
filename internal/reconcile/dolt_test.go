@@ -10,12 +10,13 @@ import (
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 func TestPlaceDoltCredential_DoesNothingOutsideDolthubMode(t *testing.T) {
-	for _, mode := range []string{"session", "off", ""} {
-		t.Run(mode, func(t *testing.T) {
+	for _, mode := range []config.BeadsMode{config.BeadsSession, config.BeadsOff, ""} {
+		t.Run(string(mode), func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			ctx := provider.WithOutput(context.Background(), &out, &errOut)
 			// A nil client would panic if anything ran: the mode check must
