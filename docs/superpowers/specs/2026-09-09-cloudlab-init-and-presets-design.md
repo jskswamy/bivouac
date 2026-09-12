@@ -1,8 +1,8 @@
 # cloudlab init and presets
 
-Status: designed, not implemented
-Date: 2026-09-09
-Tracks: `cloudlab-pwg.1` (this design), `cloudlab-pwg.2`/`.3` (implementation)
+Status: implemented
+Date: 2026-09-09 (implementation notes added 2026-09-12)
+Tracks: `cloudlab-pwg.1` (this design), `cloudlab-pwg.2`/`.3`/`.5` (implementation)
 Supersedes part of: `cloudlab-535`
 
 ## The problem
@@ -200,3 +200,40 @@ one field in a schema that is about to change anyway.
 
 **Normalise file layout on every edit** — restructures a committed file as a
 side effect of editing one setting.
+
+## Where the implementation differs
+
+Two places the code does something this spec does not say, recorded here
+rather than left for a reader to find as a surprise.
+
+**A preset keeps `tailscale`.** The Presets section lists `template`,
+`agents`, `packages` and `beads` as what a preset always captures, and
+omits `tailscale` — which the routing table above calls a project field.
+Taking the omission literally would mean a preset saved from a
+tailnet-joined project quietly produces one that is not, so the code
+treats it as part of the shape.
+
+**`preset edit` does not edit a preset's sizing.** It re-asks the project
+questions, which is what "reuses the init flow rather than reimplementing
+it" buys: the questions cannot drift between creating a preset and
+editing one. A preset's conditional `region`/`size` are outside that set,
+so they are preserved untouched rather than asked about. Changing one
+means deleting the preset and saving a new one from a run that overrides
+the base. A dedicated question here would be exactly the second question
+set the shared flow exists to prevent.
+
+## What the forms taught
+
+Both found by driving the real forms over a pty, neither visible to the
+unit tests beneath them.
+
+`isInteractive` tested for a character device, and `/dev/null` is one, so
+`up < /dev/null` — CI's usual shape — read as interactive and failed
+inside huh rather than with the message naming `cloudlab init`. It asks
+`term.IsTerminal` now.
+
+The list questions were a huh `Text` area, where Enter submits and a new
+line is `alt+enter`: the obvious key ended the question after one entry,
+and the way to type a second was not on screen. They are one
+comma-separated line now, and the key help — which had been turned off —
+stays on.

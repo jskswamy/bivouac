@@ -275,6 +275,76 @@ used as-is. Anything else is resolved relative to the project file's
 own directory — not wherever you happen to run `cloudlab` from — so a
 relative `basePath` always means "the file next to this one."
 
+## Answering questions instead: `cloudlab init`
+
+Writing the file by hand is one way to configure cloudlab. The other is
+to be asked:
+
+```bash
+cloudlab init      # create or edit this project's config, interactively
+```
+
+`up` does the same thing on its own when a repository has no
+`cloudlab.pkl` yet — it asks the questions, writes the files, and then
+brings the instance up, in one command. Both need a terminal: with
+stdin redirected or in CI, they refuse rather than opening a form that
+nothing will ever answer.
+
+### Where the answers go
+
+Answers are split between the two files by what they are, rather than by
+asking you which file to put them in:
+
+| Personal → `base.pkl` | This project → `cloudlab.pkl` |
+|---|---|
+| `region`, `size`, `sshKeys` | `template`, `agents`, `packages`, `beads`, `tailscale` |
+
+`cloudlab.pkl` is committed. Putting your SSH key fingerprint or your own
+preferred droplet size in it would hand both to everyone who clones the
+repo, and they'd provision with your key rather than theirs.
+
+The personal questions are asked once. Every run after that shows what
+they're set to and offers to change them.
+
+### Files that predate the split
+
+A `cloudlab.pkl` written by hand usually holds personal and project
+settings together. `init` notices, says what it found, and offers to lift
+the personal fields into your `base.pkl`. Declining leaves the file
+exactly as it is — restructuring a committed file as a side effect of
+changing one package would be a diff your colleagues have to read for no
+reason.
+
+Either answer resolves to the same config: a project file's scalars
+override the base's and its listings merge additively, so moving a field
+between them changes nothing about the result.
+
+### Presets
+
+At the end of a run, `init` offers to save the project's shape under a
+name. The next project with no config is offered those presets as a
+starting point.
+
+```bash
+cloudlab preset list           # name, what it sets, when it changed
+cloudlab preset show <name>    # print the pkl
+cloudlab preset edit <name>    # the same questions, on that preset
+cloudlab preset delete <name>  # confirms
+```
+
+A preset's settings are **copied into** the new `cloudlab.pkl`, never
+referenced from it. A committed file reading its settings out of a preset
+only you have would be incomplete for everyone else — and silently so,
+since a base config that isn't there is skipped rather than reported. The
+cost is that editing a preset doesn't reach projects already made from
+it, which is the right trade for a file other people clone. It's also why
+`preset delete` needs no dependency check: nothing can be pointing at one.
+
+A preset keeps the project's shape, plus `region`/`size` only where the
+run overrode your personal defaults — the case where a toolchain genuinely
+needs particular sizing, such as one that wants more headroom than your
+usual box. It never keeps `sshKeys`.
+
 ## Writing your `cloudlab.pkl`
 
 Your `cloudlab.pkl` is just field values — no `amends` line, no path to
@@ -300,7 +370,8 @@ different schema than the one its own `cloudlab` binary carries.
 
 See `docs/examples/minimal/cloudlab.pkl` for the simplest possible
 file, and `docs/examples/with-base/` for the base-merge pattern (a
-`base.pkl` and a `cloudlab.pkl` that merges with it).
+`base.pkl` and a `cloudlab.pkl` that merges with it). Or run
+`cloudlab init` and let it write one.
 
 ## A note on trust
 
@@ -317,7 +388,8 @@ allowed to read or fetch) is a natural hardening step.
 
 ## Errors you might see
 
-- **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other.
+- **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other, or run `cloudlab init`.
+- **"this needs a terminal to ask its questions"** — `cloudlab init`, or `up` with no `cloudlab.pkl`, was run with stdin redirected or in CI. Run it from a terminal, or write the file by hand.
 - **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on cloudlab itself.
 - **"must not declare its own `amends` — cloudlab manages the schema reference automatically; remove that line"** — your `cloudlab.pkl` or base config starts with its own `amends`. Delete that line; cloudlab points your file at its own embedded schema automatically.
 - A Pkl evaluation error (malformed file, wrong type for a field) is passed through with the file path it came from — Pkl's own error message names the exact line and problem.

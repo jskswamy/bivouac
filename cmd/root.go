@@ -23,6 +23,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newListCmd())
 	root.AddCommand(newUpCmd())
+	root.AddCommand(newPresetCmd())
 	root.AddCommand(newProvisionCmd())
 	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newLookupCommands()...)
