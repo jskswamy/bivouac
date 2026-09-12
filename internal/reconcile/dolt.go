@@ -28,7 +28,7 @@ func hasBeadsDatabase(repo string) bool {
 
 // validDoltCredsID matches a DoltHub creds id -- the JWK's filename stem --
 // which becomes part of a remote path built by plain string concatenation
-// (doltDir+"/creds/"+credsID+".jwk"). ShellQuote defeats shell
+// (doltDir+"/creds/"+credsID+".jwk"). shellcmd.Quote defeats shell
 // metacharacters in that path but does nothing about path traversal:
 // "install" still resolves ".." components, so an id containing "/" or ".."
 // could write outside the tmpfs credential directory to anywhere the
