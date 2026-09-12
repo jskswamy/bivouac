@@ -148,11 +148,16 @@ func TestJoinTailscale_ReportsProgressBeforeDecrypting(t *testing.T) {
 		t.Fatalf("JoinTailscale() error = %v", err)
 	}
 
-	// Decrypting can block silently on a YubiKey touch prompt -- the
-	// progress line warning about it must fire before that call, not
-	// after, or a caller has no idea their key is waiting on them.
-	if len(got) == 0 || !strings.Contains(got[0], "YubiKey touch") {
-		t.Errorf("progress = %v, want a first entry warning about a YubiKey touch prompt", got)
+	// Decrypting can block silently on a hardware key's touch prompt -- the
+	// progress line warning about it must fire before that call, not after,
+	// or a caller has no idea their key is waiting on them. secrets.Decrypt
+	// reports it now, so this asserts the notice still reaches the user
+	// first and still names which secret is being read.
+	if len(got) == 0 || !strings.Contains(got[0], "prompts") {
+		t.Errorf("progress = %v, want a first entry warning that the key may prompt", got)
+	}
+	if len(got) > 0 && !strings.Contains(got[0], "tailscale_authkey") {
+		t.Errorf("progress[0] = %q, want it to name the secret being decrypted", got[0])
 	}
 }
 

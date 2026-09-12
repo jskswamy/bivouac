@@ -194,3 +194,44 @@ func TestInit_RequiresAtLeastOneRecipient(t *testing.T) {
 		t.Fatal("Init() error = nil, want error with no recipients")
 	}
 }
+
+// A value authored as a YAML block scalar -- plausible when pasting a long
+// auth key into `cloudlab secrets edit` -- really does come back from sops
+// with a trailing newline, unlike a plain scalar. Callers were split on
+// coping with it: two trimmed, two did not, so the same key written two
+// ways reached the instance two different ways.
+//
+// Decrypt strips it, so every caller gets the value and not the YAML
+// authoring style it happened to be written in.
+func TestDecrypt_StripsTheNewlineABlockScalarCarries(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := writeEncryptedFixture(t, t.TempDir(), recipient, "tailscale_authkey: |\n  tskey-abc123-example\n")
+
+	got, err := Decrypt(context.Background(), path, "tailscale_authkey")
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(got) != "tskey-abc123-example" {
+		t.Errorf("Decrypt() = %q, want the value with no trailing newline", got)
+	}
+}
+
+// The reason Decrypt trims with bytes.TrimRight rather than handing back
+// strings.TrimSpace(string(v)): a reslice shares the backing array, so what
+// Zero scrubs is the thing the caller holds. A string copy would be
+// unreachable to Zero forever.
+func TestDecrypt_ResultStaysZeroable(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := writeEncryptedFixture(t, t.TempDir(), recipient, "tailscale_authkey: |\n  tskey-abc123-example\n")
+
+	got, err := Decrypt(context.Background(), path, "tailscale_authkey")
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	Zero(got)
+	for i, b := range got {
+		if b != 0 {
+			t.Fatalf("byte %d = %q after Zero, want the trimmed slice to still be scrubbable", i, b)
+		}
+	}
+}

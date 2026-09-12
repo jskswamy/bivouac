@@ -137,7 +137,6 @@ func placeDoltCredentialFor(ctx context.Context, client *Client, detected beads.
 		provider.ReportWarning(ctx, "beads: "+err.Error()+"; issues will sync over the session remote only")
 		return
 	}
-	provider.ReportProgress(ctx, "decrypting DoltHub credential (check for a YubiKey touch prompt)")
 	cred, err := secrets.Decrypt(ctx, path, "dolthub_creds")
 	if err != nil {
 		provider.ReportWarning(ctx, "beads: no dolthub_creds in "+path+" ("+err.Error()+"); issues will sync over the session remote only")
@@ -154,13 +153,10 @@ func placeDoltCredentialFor(ctx context.Context, client *Client, detected beads.
 		return
 	}
 	defer secrets.Zero(id)
-	// id is decrypted into a byte slice specifically so secrets.Zero can
-	// scrub it; TrimSpace's copy into this string cannot be scrubbed the
-	// same way -- an immutable Go string has no memory Zero can reach. Low
-	// risk in practice, since this is the JWK's filename stem rather than
-	// the credential material itself, but real, the same way secrets.Zero's
-	// own doc comment admits what it cannot reach.
-	credsID := strings.TrimSpace(string(id))
+	// A string copy secrets.Zero cannot reach, which is tolerable only
+	// because this is the JWK's filename stem rather than the credential
+	// material. Decrypt has already trimmed the value.
+	credsID := string(id)
 	if err := sanitizeDoltCredsID(credsID); err != nil {
 		provider.ReportWarning(ctx, "beads: "+err.Error()+"; issues will sync over the session remote only")
 		return

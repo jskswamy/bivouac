@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/tool"
 	"github.com/jskswamy/cloudlab/internal/xdg"
 )
@@ -33,10 +34,26 @@ func Path() (string, error) {
 // after its one use. Fails with a specific error if path doesn't
 // exist yet (checked before ever invoking sops); a missing key
 // surfaces sops's own "component [...] not found" message.
+//
+// The value comes back without a trailing newline. sops emits none for a
+// plain YAML scalar, but a value authored as a block scalar -- which
+// `cloudlab secrets edit` accepts, and which is a natural way to paste a
+// long key -- really does carry one. Trimming here is what stops the same
+// secret behaving differently depending on how it was typed.
+//
+// bytes.TrimRight, not strings.TrimSpace(string(v)): a reslice shares the
+// backing array, so the result stays something Zero can scrub. Converting
+// to a string would put a copy of the plaintext beyond Zero's reach for
+// the life of the process.
 func Decrypt(ctx context.Context, path, key string) ([]byte, error) {
 	if _, err := tool.Require("sops"); err != nil {
 		return nil, err
 	}
+	// Reported here rather than by each caller: sops can block indefinitely
+	// on a hardware key's touch prompt while printing nothing itself, so
+	// without this the user sees a hang. It was hand-written at three call
+	// sites in two different wordings, and the fourth was silent.
+	provider.ReportProgress(ctx, "decrypting "+key+" (check your key if it prompts)")
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("secrets file %s doesn't exist yet (run `cloudlab secrets init`)", path)
@@ -53,7 +70,7 @@ func Decrypt(ctx context.Context, path, key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sops -d --extract %q %s: %w\n%s", key, path, err, stderr.String())
 	}
-	return out, nil
+	return bytes.TrimRight(out, "\n"), nil
 }
 
 // Zero overwrites b's contents with zero bytes in place, so a
