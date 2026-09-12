@@ -22,6 +22,7 @@ tool — see [ADR-0008](docs/adr/0008-provider-abstraction.md).
 
 ```bash
 cd myproject                   # any git repo
+cloudlab init                  # answer a few questions; writes cloudlab.pkl
 cloudlab up                    # boots a VM (per cloudlab.pkl) and reconciles
                                # its Nix/home-manager environment
 cloudlab session start agent   # seeds the repo onto the instance via git and
@@ -118,7 +119,12 @@ complete flake reference, so you can point at your own.
 
 ## Configuring an instance
 
-Drop a `cloudlab.pkl` in your repo root:
+Run `cloudlab init` and answer the questions — it writes the files for
+you, and `up` runs the same thing by itself in a repo that has no config
+yet. `cloudlab preset list/show/edit/delete` manage the shapes it offers
+to save.
+
+Or drop a `cloudlab.pkl` in your repo root by hand:
 
 ```pkl
 region = "nyc3"

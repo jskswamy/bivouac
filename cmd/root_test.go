@@ -27,7 +27,7 @@ func TestRootCommandHelp(t *testing.T) {
 // live under `session` rather than sitting beside up/down/ssh, so this list
 // deliberately does not contain them.
 func TestRootCmd_RegistersAllCommands(t *testing.T) {
-	want := []string{"connect", "down", "download", "herdr", "init", "list", "pair", "provision", "secrets", "serve", "session", "shell", "ssh", "status", "sync", "tailscale", "tmux", "unserve", "up"}
+	want := []string{"connect", "down", "download", "herdr", "init", "list", "pair", "preset", "provision", "secrets", "serve", "session", "shell", "ssh", "status", "sync", "tailscale", "tmux", "unserve", "up"}
 	root := newRootCmd()
 	var got []string
 	for _, c := range root.Commands() {
