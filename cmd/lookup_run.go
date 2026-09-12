@@ -273,6 +273,11 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 		cmd.Println("no sessions")
 		return nil
 	}
+
+	out := cmd.OutOrStdout()
+	s := newStyles(out)
+	headers := []string{"NAME", "INSTANCE", "BRANCH", "UNMERGED", "WORKTREE"}
+	rows := make([][]string, 0, len(infos))
 	for _, i := range infos {
 		wtState := "clean"
 		if !i.WorktreeExists {
@@ -280,9 +285,10 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 		} else if i.WorktreeDirty {
 			wtState = "dirty"
 		}
-		cmd.Printf("%-16s %-24s %-16s %s, %s\n", i.Name, i.Instance, i.Branch, unmergedLabel(i), wtState)
+		rows = append(rows, []string{s.value.Render(i.Name), i.Instance, i.Branch, unmergedLabel(i), wtState})
 	}
-	return nil
+	_, err = fmt.Fprintf(out, "\n%s", renderTable(s, headers, rows, nil))
+	return err
 }
 
 // syncLocalDir returns the local directory sync should push: the

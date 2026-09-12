@@ -16,10 +16,6 @@ import (
 const (
 	statusLabelWidth = 10
 	statusValueWidth = 17
-	// Pads the common cases ("0 unmerged", "3 unmerged") into a column.
-	// The degraded labels are longer than this on purpose and simply run
-	// past it: an instance nobody could reach is worth a ragged edge.
-	statusUnmergedWidth = 13
 )
 
 // printStatus renders the instance report: a heading naming the instance
@@ -113,6 +109,8 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		return
 	}
 	_, _ = fmt.Fprintf(out, "\n  %s\n", s.header.Render("SESSIONS"))
+	headers := []string{"NAME", "BRANCH", "UNMERGED", "WORKTREE"}
+	rows := make([][]string, 0, len(record.Sessions))
 	// DescribeSessions, not a DescribeSession loop: each one probes its
 	// instance over the network, so in sequence the report costs the sum of
 	// every session's timeout.
@@ -123,12 +121,9 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		} else if info.WorktreeDirty {
 			wtState = "dirty"
 		}
-		_, _ = fmt.Fprintf(out, "  %s%s%s%s\n",
-			s.value.Width(statusLabelWidth).Render(info.Name),
-			s.dim.Width(statusValueWidth).Render(info.Branch),
-			s.label.Width(statusUnmergedWidth).Render(unmergedLabel(info)),
-			s.dim.Render(wtState))
+		rows = append(rows, []string{s.value.Render(info.Name), info.Branch, unmergedLabel(info), wtState})
 	}
+	_, _ = fmt.Fprint(out, renderTable(s, headers, rows, nil))
 }
 
 // unmergedLabel renders what a session's work amounts to, in the one column
