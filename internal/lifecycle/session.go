@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,15 +12,16 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // runLocalGit runs a git command on this machine inside localRepo.
+//
+// Combined output: every caller puts the text into a warning or an error,
+// and git says what actually went wrong on stderr. localRepo is the user's
+// own repo path and args are built by this package.
 func runLocalGit(ctx context.Context, localRepo string, args ...string) (string, error) {
-	full := append([]string{"-C", localRepo}, args...)
-	// #nosec G204 -- argv-array exec.Command, no shell; localRepo is the
-	// user's own repo path and args are built by this package.
-	out, err := exec.CommandContext(ctx, "git", full...).CombinedOutput()
-	return string(out), err
+	return tool.RunCombined(ctx, localRepo, "git", args...)
 }
 
 // StartSession creates a session: a repository on the instance for the agent
