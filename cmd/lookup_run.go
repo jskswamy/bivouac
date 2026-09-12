@@ -58,9 +58,7 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 	p, err := resolveProvider(ctx)
 	if err != nil {
 		return err
@@ -118,9 +116,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 
 	// status uses the API for the live status field and for cost, which
 	// is derived from the droplet's creation time and price; every other
@@ -210,9 +206,7 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	if err := lifecycle.CheckSessionName(session); err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -445,9 +439,7 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 	sess, err := resolveSessionArg(cmd, record, args)
 	if err != nil {
 		return err
@@ -474,9 +466,7 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 	sess, err := resolveSessionArg(cmd, record, args)
 	if err != nil {
 		return err
@@ -1051,9 +1041,7 @@ func runTailscale(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := provider.WithProgress(cmd.Context(), func(status string) {
-		cmd.Printf("→ %s\n", status)
-	})
+	ctx := progressCtx(cmd)
 	if err := lifecycle.JoinTailscale(ctx, record.IP, record.User); err != nil {
 		return err
 	}

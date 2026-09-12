@@ -2,15 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/spf13/cobra"
+
+	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/cloudlab/internal/lifecycle"
 )
 
 func newUpCmd() *cobra.Command {
@@ -19,27 +17,9 @@ func newUpCmd() *cobra.Command {
 		Short: "Create the VM, provision it, and bring the instance fully live",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoFlag, _ := cmd.Flags().GetString("repo")
-			nameFlag, _ := cmd.Flags().GetString("name")
-
-			cwd, err := os.Getwd()
+			root, name, err := instanceIdentity(cmd, args)
 			if err != nil {
 				return err
-			}
-			root, err := identity.RepoRoot(cmd.Context(), cwd, repoFlag)
-			if err != nil {
-				return err
-			}
-
-			name := nameFlag
-			if len(args) > 0 {
-				name = args[0]
-			}
-			if name == "" {
-				name, err = identity.DeriveName(cmd.Context(), root)
-				if err != nil {
-					return err
-				}
 			}
 
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
@@ -48,9 +28,7 @@ func newUpCmd() *cobra.Command {
 				return err
 			}
 
-			ctx := provider.WithProgress(cmd.Context(), func(status string) {
-				cmd.Printf("→ %s\n", status)
-			})
+			ctx := progressCtx(cmd)
 			// Resolved before the confirmation prompt, as the inline env
 			// read this replaces was: there is no point asking whether to
 			// create an instance that cannot be created. The cost is that a

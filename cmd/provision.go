@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"context"
-	"os"
 	"path/filepath"
 
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/tui"
 	"github.com/spf13/cobra"
+
+	"github.com/jskswamy/cloudlab/internal/lifecycle"
 )
 
 func newProvisionCmd() *cobra.Command {
@@ -18,38 +14,18 @@ func newProvisionCmd() *cobra.Command {
 		Short: "Reconcile home-manager with the current cloudlab.pkl",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoFlag, _ := cmd.Flags().GetString("repo")
-			nameFlag, _ := cmd.Flags().GetString("name")
-
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			root, err := identity.RepoRoot(cmd.Context(), cwd, repoFlag)
+			root, name, err := instanceIdentity(cmd, args)
 			if err != nil {
 				return err
 			}
 
-			name := nameFlag
-			if len(args) > 0 {
-				name = args[0]
-			}
-			if name == "" {
-				name, err = identity.DeriveName(cmd.Context(), root)
-				if err != nil {
-					return err
-				}
-			}
-
-			ctx := provider.WithProgress(cmd.Context(), func(status string) {
-				cmd.Printf("→ %s\n", status)
-			})
+			ctx := progressCtx(cmd)
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			reconcileErr := tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error {
-				return reconcile.Reconcile(ctx, name, cloudlabPath)
-			})
-			if reconcileErr != nil {
-				return reconcileErr
+			// The same step `up` runs, called rather than rebuilt: it was
+			// a second copy of the label and the closure, and the only
+			// reason this file reached for tui and reconcile directly.
+			if err := lifecycle.DefaultSteps().Reconcile(ctx, name, cloudlabPath); err != nil {
+				return err
 			}
 			cmd.Printf("Provisioned %s\n", name)
 			return nil
