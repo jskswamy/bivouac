@@ -186,3 +186,25 @@ func TestStore_RoundTripsSessions(t *testing.T) {
 		t.Errorf("round-tripped sessions = %+v, want one with Base aaa", got.Sessions)
 	}
 }
+
+// The fallback branch, which every other test in this package steps over by
+// setting XDG_STATE_HOME to a temp dir. It is the only one of cloudlab's XDG
+// resolvers whose fallback is two path segments rather than a single dotted
+// directory, so it is the copy most likely to be got wrong by anything that
+// tries to share the rule.
+func TestOpen_NoXDGStateHome_FallsBackToLocalState(t *testing.T) {
+	// Empty, not unset: every resolver in cloudlab tests the value rather
+	// than its presence, so an empty XDG_STATE_HOME must behave as absent.
+	t.Setenv("XDG_STATE_HOME", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	s, err := Open()
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	want := filepath.Join(home, ".local", "state", "cloudlab", "state.json")
+	if s.path != want {
+		t.Errorf("store path = %q, want %q", s.path, want)
+	}
+}
