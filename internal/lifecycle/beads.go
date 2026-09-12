@@ -261,3 +261,22 @@ func requireBeadsLanded(ctx context.Context, client *reconcile.Client, localRepo
 	}
 	return nil
 }
+
+// dropBeadsRemote removes the session's dolt remote, warning rather than
+// failing.
+//
+// Best-effort on purpose, and shared by merge and delete because both reach
+// this point having already done the thing the user asked for: a merge whose
+// commits have landed and verified, or a session already removed locally,
+// must not report failure because a leftover remote could not be dropped.
+//
+// It does have to be attempted, though. Left behind, the remote makes Wired
+// report true for an unrelated later session started at the same name --
+// including one started with beads = "off", which is the fail-closed guard
+// firing on an explicit opt-out.
+func dropBeadsRemote(ctx context.Context, localRepo, session string) {
+	if err := beads.RemoveRemote(ctx, localRepo, session); err != nil {
+		provider.ReportWarning(ctx, "beads: "+err.Error()+
+			"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
+	}
+}

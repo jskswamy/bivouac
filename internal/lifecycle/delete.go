@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
@@ -79,14 +77,7 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 	_, _ = runLocalGit(ctx, s.LocalRepo, "worktree", "prune")
 	_, _ = runLocalGit(ctx, s.LocalRepo, "branch", "-D", SessionBranch(s.Name))
 	_, _ = runLocalGit(ctx, s.LocalRepo, remoteRemoveArgs(sessionRemote(s.Name))...)
-	// Best-effort, same reasoning as merge's own cleanup: a stale dolt remote
-	// left behind here would make Wired report true for an unrelated later
-	// session started at the same name, including one started with beads =
-	// "off" -- the fail-closed guard firing on an explicit opt-out.
-	if err := beads.RemoveRemote(ctx, s.LocalRepo, s.Name); err != nil {
-		provider.ReportWarning(ctx, "beads: "+err.Error()+
-			"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(s.Name))
-	}
+	dropBeadsRemote(ctx, s.LocalRepo, s.Name)
 	// Same best-effort shape, for the same reason: a saved machine left
 	// pointing at a session that no longer exists is an entry in the
 	// sidebar nothing will ever clean up.
