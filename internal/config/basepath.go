@@ -4,25 +4,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jskswamy/cloudlab/internal/xdg"
 )
 
 // resolveBasePath determines the personal base config's path for a
-// project file at projectPath. Resolution order: override (if set and
-// non-empty) — ~-expanded if home-relative, used as-is if absolute,
-// else resolved relative to projectPath's own directory; else
-// $XDG_CONFIG_HOME/cloudlab/base.pkl; else ~/.config/cloudlab/base.pkl.
+// project file at projectPath. The override wins when set and non-empty
+// — ~-expanded if home-relative, used as-is if absolute, else resolved
+// relative to projectPath's own directory. Otherwise base.pkl comes from
+// cloudlab's config directory; see internal/xdg for that rule.
 func resolveBasePath(projectPath string, override *string) (string, error) {
 	if override != nil && *override != "" {
 		return resolveOverridePath(filepath.Dir(projectPath), *override)
 	}
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "cloudlab", "base.pkl"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "cloudlab", "base.pkl"), nil
+	return xdg.Path(xdg.Config, "base.pkl")
 }
 
 func resolveOverridePath(projectDir, override string) (string, error) {
