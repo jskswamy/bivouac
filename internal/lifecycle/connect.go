@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"strconv"
 
 	"github.com/jskswamy/cloudlab/internal/tool"
@@ -146,12 +144,8 @@ func Forward(ctx context.Context, host, user string, localPort, remotePort int) 
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
-	// #nosec G204 -- argv-array exec.Command, no shell. host is
+	// Argv-array exec, no local shell. host is
 	// provider-assigned or tailnet-resolved and the ports are ints, so
 	// none of them can inject.
-	cmd := exec.CommandContext(ctx, "ssh", forwardArgs(host, user, localPort, remotePort)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return tool.Passthrough(ctx, "ssh", forwardArgs(host, user, localPort, remotePort)...)
 }

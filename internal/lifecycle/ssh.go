@@ -2,8 +2,6 @@ package lifecycle
 
 import (
 	"context"
-	"os"
-	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
 	"github.com/jskswamy/cloudlab/internal/tool"
@@ -37,14 +35,10 @@ func SSH(ctx context.Context, ip, user, dir string) error {
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
-	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// Argv-array exec, no local shell; ip is
 	// provider-assigned, never attacker-controlled. When dir is set,
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but dir is shell-quoted via shellcmd.Quote before being
 	// embedded.
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(ip, user, dir)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return tool.Passthrough(ctx, "ssh", sshArgs(ip, user, dir)...)
 }
