@@ -2,11 +2,11 @@ package lifecycle
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // pairArgs builds the argv Pair passes to the ssh binary: a PTY
@@ -34,8 +34,8 @@ func pairArgs(sshHost, advertiseHost, user string) []string {
 // Tmux/SSH. Blocks in the foreground showing the QR until
 // scanned/claimed, or until Ctrl+C.
 func Pair(ctx context.Context, sshHost, advertiseHost, user string) error {
-	if _, err := exec.LookPath("ssh"); err != nil {
-		return fmt.Errorf("ssh not found on PATH: %w", err)
+	if _, err := tool.Require("ssh"); err != nil {
+		return err
 	}
 	// #nosec G204 -- argv-array exec.Command locally, no local shell;
 	// the remote command IS shell-interpreted by sshd's login shell,

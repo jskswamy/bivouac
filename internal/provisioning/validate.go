@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // Validate checks that cfg's template and flakes[] resolve to real,
 // evaluable flake outputs, without building or switching anything.
 // Returns an error naming every problem found, not just the first.
 func Validate(ctx context.Context, cfg config.Config) error {
-	if _, err := exec.LookPath("nix"); err != nil {
-		return fmt.Errorf("nix CLI not found on PATH (run inside `nix develop`, or install it: https://nixos.org/download): %w", err)
+	if _, err := tool.Require("nix"); err != nil {
+		return err
 	}
 
 	var problems []string

@@ -2,11 +2,11 @@ package lifecycle
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // sshArgs builds the argv SSH passes to the ssh binary: an
@@ -34,8 +34,8 @@ func sshArgs(ip, user, dir string) []string {
 // trust-on-first-connect entry already exists in the user's real
 // ~/.ssh/known_hosts from up's WaitReady/Connect call.
 func SSH(ctx context.Context, ip, user, dir string) error {
-	if _, err := exec.LookPath("ssh"); err != nil {
-		return fmt.Errorf("ssh not found on PATH: %w", err)
+	if _, err := tool.Require("ssh"); err != nil {
+		return err
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, never attacker-controlled. When dir is set,

@@ -40,11 +40,11 @@ var rsyncVersionRe = regexp.MustCompile(`version (\d+)\.(\d+)`)
 // shell inside this repo's nix develop gets rsync 3.x and works, while
 // the same command in any other directory does not.
 func checkRsync() error {
-	path, err := exec.LookPath("rsync")
+	path, err := tool.Require("rsync")
 	if err != nil {
-		return fmt.Errorf("rsync not found on PATH (run inside `nix develop`, or install it): %w", err)
+		return err
 	}
-	// #nosec G204 -- path comes from exec.LookPath, not user input.
+	// #nosec G204 -- path comes from tool.Require, not user input.
 	out, err := exec.Command(path, "--version").Output()
 	if err != nil {
 		// Unreadable version output is not itself fatal: let the real

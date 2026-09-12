@@ -2,11 +2,11 @@ package lifecycle
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // tmuxArgs builds the argv Tmux passes to the ssh binary: a PTY
@@ -29,8 +29,8 @@ func tmuxArgs(ip, user, session string) []string {
 // through -- same shape as SSH. -t forces PTY allocation, which tmux
 // requires.
 func Tmux(ctx context.Context, ip, user, session string) error {
-	if _, err := exec.LookPath("ssh"); err != nil {
-		return fmt.Errorf("ssh not found on PATH: %w", err)
+	if _, err := tool.Require("ssh"); err != nil {
+		return err
 	}
 	// #nosec G204 -- argv-array exec.Command locally, no local shell;
 	// the remote command IS shell-interpreted by sshd's login shell,

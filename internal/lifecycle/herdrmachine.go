@@ -10,6 +10,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // machineProfile is one entry from `herdr machine list --json`: a saved SSH
@@ -470,8 +471,8 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 		return "", "", fmt.Errorf("no session resolved -- `cloudlab herdr` attaches a session, so " +
 			"start one with `cloudlab session start <name>`, or run it from outside herdr for a plain remote client")
 	}
-	if _, err := exec.LookPath("herdr"); err != nil {
-		return "", "", fmt.Errorf("herdr not found on PATH (install it: https://herdr.dev/): %w", err)
+	if _, err := tool.Require("herdr"); err != nil {
+		return "", "", err
 	}
 	target := MachineTarget(user, ip)
 
