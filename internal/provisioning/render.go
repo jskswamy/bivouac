@@ -24,9 +24,16 @@ func NeedsRender(cfg config.Config) bool {
 	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0
 }
 
+// NixpkgsRef is the nixpkgs the rendered flake pins, and so the one a
+// `packages` entry has to exist in. Named once here because validation
+// has to check the same tree the switch will build against -- two
+// spellings could disagree, and the one that would be wrong is the one
+// that only says "ok".
+const NixpkgsRef = "github:NixOS/nixpkgs/nixos-unstable"
+
 var renderTmpl = template.Must(template.New("flake").Parse(`{
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "` + NixpkgsRef + `";
     home-manager.url = "github:nix-community/home-manager";
     template.url = "{{.TemplateURL}}";
 {{range $i, $f := .Flakes}}    flake{{$i}}.url = "{{$f.Url}}";

@@ -387,6 +387,32 @@ file, and `docs/examples/with-base/` for the base-merge pattern (a
 `base.pkl` and a `cloudlab.pkl` that merges with it). Or run
 `cloudlab init` and let it write one.
 
+## Packages are checked before anything is built
+
+`up` and `provision` check the config against the instance's own Nix
+before the home-manager switch starts: the template resolves, every
+`packages` entry exists in nixpkgs, every agent's package exists, and
+each `flakes` entry has the outputs it claims. A problem names the entry
+you typed:
+
+```
+provisioning validation failed:
+  package "ripgrepp": not in nixpkgs (attribute 'ripgrepp' missing)
+```
+
+Every problem is reported at once, so a config with three typos takes one
+round of fixing.
+
+The check runs **on the instance**, not on your machine. That is where
+every build happens, so it is the only Nix whose answer is the one that
+will count — the same nixpkgs, the same system, the same result. It also
+means cloudlab needs no Nix installed locally; `pkl` is the only tool it
+requires that you might not already have.
+
+The trade-off is that the instance has to exist first, so a typo on the
+very first `up` is caught after the VM is created rather than before. It
+is caught in seconds, though, instead of part-way through a build.
+
 ## A note on trust
 
 `cloudlab.pkl` and any base config it merges with are evaluated by the
