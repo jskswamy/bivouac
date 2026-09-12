@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // ErrLocalPortBusy is returned when a caller asked for a specific local
@@ -141,8 +143,8 @@ func forwardArgs(host, user string, localPort, remotePort int) []string {
 // public internet at that point would be routing around a link the
 // caller has just proven is up.
 func Forward(ctx context.Context, host, user string, localPort, remotePort int) error {
-	if _, err := exec.LookPath("ssh"); err != nil {
-		return fmt.Errorf("ssh not found on PATH: %w", err)
+	if _, err := tool.Require("ssh"); err != nil {
+		return err
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell. host is
 	// provider-assigned or tailnet-resolved and the ports are ints, so

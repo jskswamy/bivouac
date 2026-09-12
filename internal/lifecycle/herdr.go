@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // herdrArgs builds the argv Herdr passes to the herdr binary: a thin
@@ -40,8 +42,8 @@ func Herdr(ctx context.Context, ip, user, session string) error {
 	if InsideHerdr() {
 		return fmt.Errorf("already inside a herdr session -- attach the instance as a saved machine instead, or run `cloudlab ssh`/`cloudlab tmux`")
 	}
-	if _, err := exec.LookPath("herdr"); err != nil {
-		return fmt.Errorf("herdr not found on PATH (install it: https://herdr.dev/): %w", err)
+	if _, err := tool.Require("herdr"); err != nil {
+		return err
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, never attacker-controlled, and session is a

@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/tool"
 	"github.com/jskswamy/cloudlab/internal/xdg"
 )
 
@@ -33,8 +34,8 @@ func Path() (string, error) {
 // exist yet (checked before ever invoking sops); a missing key
 // surfaces sops's own "component [...] not found" message.
 func Decrypt(ctx context.Context, path, key string) ([]byte, error) {
-	if _, err := exec.LookPath("sops"); err != nil {
-		return nil, fmt.Errorf("sops not found on PATH: %w", err)
+	if _, err := tool.Require("sops"); err != nil {
+		return nil, err
 	}
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -113,8 +114,8 @@ func Init(ctx context.Context, path string, recipients []string) error {
 	if len(recipients) == 0 {
 		return fmt.Errorf("at least one --age recipient is required")
 	}
-	if _, err := exec.LookPath("sops"); err != nil {
-		return fmt.Errorf("sops not found on PATH: %w", err)
+	if _, err := tool.Require("sops"); err != nil {
+		return err
 	}
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("%s already exists (use `cloudlab secrets edit` to change it)", path)
@@ -147,8 +148,8 @@ func Init(ctx context.Context, path string, recipients []string) error {
 // passed straight through -- same thin-client shape as
 // lifecycle.SSH/Herdr/Tmux, just not instance-scoped.
 func Edit(ctx context.Context, path string) error {
-	if _, err := exec.LookPath("sops"); err != nil {
-		return fmt.Errorf("sops not found on PATH: %w", err)
+	if _, err := tool.Require("sops"); err != nil {
+		return err
 	}
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {

@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/apple/pkl-go/pkl"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/apple/pkl-go/pkl"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // Resolve loads the project's cloudlab.pkl at path, merges it with a
@@ -25,8 +26,8 @@ import (
 // hardcoded ~/.pkl/cache default (LoadFromPath exposes no override hook
 // for this).
 func Resolve(ctx context.Context, path string) (Config, error) {
-	if _, err := exec.LookPath("pkl"); err != nil {
-		return Config{}, fmt.Errorf("pkl CLI not found on PATH (run inside `nix develop`, or install it: https://pkl-lang.org/main/current/pkl-cli/index.html#installation): %w", err)
+	if _, err := tool.Require("pkl"); err != nil {
+		return Config{}, err
 	}
 
 	project, err := loadResolved(ctx, path)
