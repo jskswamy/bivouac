@@ -101,7 +101,6 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	// call specifically, not just at the top of the function, so a
 	// caller watching for "→ ..." lines knows to look at their key
 	// right when the wait actually starts.
-	provider.ReportProgress(ctx, "decrypting Tailscale auth key (check for a YubiKey touch prompt)")
 	key, err := secrets.Decrypt(ctx, path, "tailscale_authkey")
 	if err != nil {
 		return fmt.Errorf("decrypting tailscale_authkey: %w", err)

@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 )
 
@@ -41,21 +39,19 @@ func resolveToken(ctx context.Context) (string, error) {
 	// reported here specifically, not at the top of the function, so a
 	// caller watching for "→ ..." lines knows to look at their key right
 	// when the wait actually starts. Same reasoning as JoinTailscale's.
-	provider.ReportProgress(ctx, "decrypting digitalocean_token (check your key if it prompts)")
 	value, err := secrets.Decrypt(ctx, path, "digitalocean_token")
 	if err != nil {
 		return "", fmt.Errorf("no DigitalOcean token: DIGITALOCEAN_TOKEN is unset, and reading digitalocean_token from %s failed: %w", path, err)
 	}
 	defer secrets.Zero(value)
 
-	// sops emits the value with a trailing newline. A token handed to
-	// the API with one appended fails authentication in a way that reads
-	// like a revoked token rather than a formatting mistake.
+	// godo takes a string, so this copy is unavoidable and Zero cannot
+	// reach it. Decrypt has already trimmed the value.
 	//
 	// TrimSpace's copy into a string cannot be scrubbed the way the byte
 	// slice can -- an immutable Go string has no memory Zero can reach.
 	// The same admission internal/reconcile's placeDoltCredential makes
 	// about credsID, and the same one secrets.Zero's own doc comment
 	// makes about cmd.Output()'s internal buffering.
-	return strings.TrimSpace(string(value)), nil
+	return string(value), nil
 }
