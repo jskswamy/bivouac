@@ -306,6 +306,20 @@ repo, and they'd provision with your key rather than theirs.
 The personal questions are asked once. Every run after that shows what
 they're set to and offers to change them.
 
+### Only what you chose
+
+The written file holds the answers that say something. Accepting a
+default — leaving `beads` on `"session"`, saying no to `tailscale`,
+adding no packages — writes no line for it, because the schema supplies
+that value anyway and a file restating it is longer without being more
+precise. Choose `beads = "off"` or turn `tailscale` on and the line
+appears.
+
+A field the file already declares keeps its line whatever you answer,
+default included. Deleting a line because the value in it happens to
+match a default would be the same unasked-for restructuring `init`
+refuses elsewhere.
+
 ### Files that predate the split
 
 A `cloudlab.pkl` written by hand usually holds personal and project

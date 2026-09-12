@@ -360,11 +360,17 @@ func offerPreset(out io.Writer, p prompter, base, project config.Values) error {
 // ask puts questions to the user, each pre-filled from seed, and
 // returns seed updated with the answers.
 //
-// A blank answer to a field the seed says nothing about is left out
-// rather than written as an empty value: the schema's own default is a
-// better statement of "not chosen" than `region = ""`. A blank answer
-// to a field that did have a value is an edit clearing it, and is
-// written.
+// An answer to a field the seed says nothing about is left out when it
+// is blank or is simply the schema's default: `region = ""` and
+// `beads = "session"` both add a line that changes nothing, and the
+// written file should say what its author chose, not restate the
+// schema. Pressing Enter through a question is not the same as asking
+// for it to be recorded.
+//
+// A field the seed did have keeps its line whatever the answer, default
+// included. Deleting a line from a file because the value it holds
+// happens to match a default would be the same unasked-for restructuring
+// the flow refuses elsewhere.
 func ask(p prompter, questions []wizard.Question, seed config.Values) (config.Values, error) {
 	values := merge(config.Values{}, seed)
 	for _, q := range questions {
@@ -376,7 +382,7 @@ func ask(p prompter, questions []wizard.Question, seed config.Values) (config.Va
 		if err != nil {
 			return nil, err
 		}
-		if isBlank(answer) && !had {
+		if !had && (isBlank(answer) || config.IsDefault(q.Field, answer)) {
 			continue
 		}
 		values[q.Field] = answer
