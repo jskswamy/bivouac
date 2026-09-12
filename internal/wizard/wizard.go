@@ -178,7 +178,7 @@ func PersonalQuestions() []Question {
 		{
 			Field:       config.FieldSSHKeys,
 			Title:       "Which SSH keys?",
-			Description: "Fingerprints or IDs of keys already registered with DigitalOcean, one per line.",
+			Description: "Fingerprints or IDs of keys already registered with DigitalOcean, separated by commas.",
 			Kind:        TextList,
 			Placeholder: "aa:bb:cc:...",
 		},
@@ -215,7 +215,7 @@ func ProjectQuestions() []Question {
 		{
 			Field:       config.FieldPackages,
 			Title:       "Any extra packages?",
-			Description: "nixpkgs attribute names, one per line.",
+			Description: "nixpkgs attribute names, separated by commas.",
 			Kind:        TextList,
 			Placeholder: "ripgrep",
 		},

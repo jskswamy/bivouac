@@ -20,6 +20,7 @@ func newRootCmd() *cobra.Command {
 	root.PersistentFlags().String("name", "", "instance name override")
 	root.SilenceUsage = true
 
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newListCmd())
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newProvisionCmd())

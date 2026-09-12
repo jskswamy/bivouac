@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	term "github.com/charmbracelet/x/term"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/spf13/cobra"
@@ -18,9 +19,14 @@ import (
 // Guards every prompt. A picker offered to CI, a script, or an agent driving
 // cloudlab is not a prompt -- it is a hang, and unattended runs are the
 // workflow this tool exists to serve.
+//
+// term.IsTerminal, not a character-device check: /dev/null is a
+// character device, so `cloudlab up < /dev/null` -- CI's usual shape,
+// and `go test`'s -- read as interactive and opened a form that then
+// failed on /dev/tty with an error naming huh rather than the command
+// to run.
 func isInteractive() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+	return term.IsTerminal(os.Stdin.Fd())
 }
 
 // readIndex reads one 1-based choice, validating it against max.

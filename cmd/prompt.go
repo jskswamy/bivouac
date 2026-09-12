@@ -1,0 +1,185 @@
+package cmd
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/huh"
+	"github.com/jskswamy/cloudlab/internal/wizard"
+)
+
+// formPrompter asks the init flow's questions with huh forms.
+//
+// One form per question rather than one form for the whole flow: the
+// flow decides what to ask next from what it has already learned --
+// whether a preset was chosen, whether a file needs moving -- and a
+// single form would have to know all of that itself. Keeping the
+// decisions in the flow is what leaves this file with nothing to test.
+type formPrompter struct{}
+
+func newFormPrompter() prompter { return formPrompter{} }
+
+// otherChoice is the escape hatch on a Select whose options are a
+// convenience rather than the whole set — a template may be any flake
+// ref, and refusing to accept one would make the wizard less capable
+// than the file it writes.
+const otherChoice = "Something else…"
+
+func (formPrompter) Ask(q wizard.Question, current any) (any, error) {
+	switch q.Kind {
+	case wizard.Text:
+		return runInput(q.Title, q.Description, q.Placeholder, asString(current))
+	case wizard.TextList:
+		return runTextList(q, asStrings(current))
+	case wizard.Select:
+		return runSelect(q, asString(current))
+	case wizard.MultiSelect:
+		return runMultiSelect(q, asStrings(current))
+	case wizard.Confirm:
+		value, _ := current.(bool)
+		err := run(huh.NewConfirm().Title(q.Title).Description(q.Description).Value(&value))
+		return value, err
+	}
+	return nil, fmt.Errorf("no form for question kind %v", q.Kind)
+}
+
+func (formPrompter) Choose(m meta, options []string, current string) (string, error) {
+	value := current
+	err := run(huh.NewSelect[string]().
+		Title(m.Title).
+		Description(m.Description).
+		Options(selectOptions(options, current)...).
+		Value(&value))
+	return value, err
+}
+
+func (formPrompter) Confirm(m meta, current bool) (bool, error) {
+	value := current
+	err := run(huh.NewConfirm().Title(m.Title).Description(m.Description).Value(&value))
+	return value, err
+}
+
+func (formPrompter) Input(m meta, current string) (string, error) {
+	return runInput(m.Title, m.Description, "", current)
+}
+
+// runInput collects one line, trimmed: a stray space must not become
+// part of a region slug or a preset name.
+func runInput(title, description, placeholder, current string) (string, error) {
+	value := current
+	field := huh.NewInput().Title(title).Description(description).Value(&value)
+	if placeholder != "" {
+		field = field.Placeholder(placeholder)
+	}
+	if err := run(field); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
+}
+
+// runTextList collects a list on one line, separated by commas.
+//
+// Not huh's multi-line Text: there, Enter submits and a new line is
+// alt+enter or ctrl+j, so the obvious key ends the question after one
+// entry and the way to type a second is not on screen. A comma-separated
+// line has no hidden binding to discover.
+func runTextList(q wizard.Question, current []string) (any, error) {
+	value, err := runInput(q.Title, q.Description, listPlaceholder(q.Placeholder), strings.Join(current, ", "))
+	if err != nil {
+		return nil, err
+	}
+	return splitList(value), nil
+}
+
+// listPlaceholder shows a second entry, so that the separator is
+// visible in the example rather than only in the description.
+func listPlaceholder(one string) string {
+	if one == "" {
+		return ""
+	}
+	return one + ", ..."
+}
+
+// runSelect offers the known options, plus a way to type something else
+// when the question allows it.
+func runSelect(q wizard.Question, current string) (any, error) {
+	options := q.Options
+	if q.Freeform {
+		options = append(append([]string{}, options...), otherChoice)
+	}
+	// A current value the option list does not contain is itself a
+	// "something else" answer, and must stay selectable or editing a
+	// project with a custom template would silently retype it.
+	if q.Freeform && current != "" && !contains(q.Options, current) {
+		options = append(options, current)
+	}
+
+	value := current
+	if err := run(huh.NewSelect[string]().
+		Title(q.Title).
+		Description(q.Description).
+		Options(selectOptions(options, current)...).
+		Value(&value)); err != nil {
+		return nil, err
+	}
+	if value != otherChoice {
+		return value, nil
+	}
+	return runInput(q.Title, q.Placeholder, q.Placeholder, "")
+}
+
+func runMultiSelect(q wizard.Question, current []string) (any, error) {
+	options := make([]huh.Option[string], 0, len(q.Options))
+	for _, name := range q.Options {
+		options = append(options, huh.NewOption(name, name).Selected(contains(current, name)))
+	}
+	value := append([]string{}, current...)
+	if err := run(huh.NewMultiSelect[string]().
+		Title(q.Title).
+		Description(q.Description).
+		Options(options...).
+		Value(&value)); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func selectOptions(names []string, current string) []huh.Option[string] {
+	options := make([]huh.Option[string], 0, len(names))
+	for _, name := range names {
+		options = append(options, huh.NewOption(name, name).Selected(name == current))
+	}
+	return options
+}
+
+// run shows one field. The key help stays on: it is the only place the
+// form says how to move, select and submit.
+func run(field huh.Field) error {
+	return huh.NewForm(huh.NewGroup(field)).Run()
+}
+
+// splitList parses a comma-separated answer. Whitespace also separates,
+// so a line typed with spaces and no commas still gives the list the
+// user plainly meant; no value these fields accept contains either.
+func splitList(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	})
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func asString(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func asStrings(v any) []string {
+	s, _ := v.([]string)
+	return s
+}
