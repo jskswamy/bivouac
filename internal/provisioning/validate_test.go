@@ -42,7 +42,7 @@ func TestValidate_GoodConfig_NoError(t *testing.T) {
 			},
 		},
 	}
-	if err := Validate(context.Background(), cfg); err != nil {
+	if err := Validate(context.Background(), LocalRunner{}, cfg); err != nil {
 		t.Errorf("Validate() error = %v, want nil", err)
 	}
 }
@@ -58,7 +58,7 @@ func TestValidate_MissingFlakePackage_NamesItClearly(t *testing.T) {
 			},
 		},
 	}
-	err := Validate(context.Background(), cfg)
+	err := Validate(context.Background(), LocalRunner{}, cfg)
 	if err == nil {
 		t.Fatal("Validate() error = nil, want error naming the missing package")
 	}
@@ -81,7 +81,7 @@ func TestValidate_FlakeMissingModules_NamesItClearly(t *testing.T) {
 			},
 		},
 	}
-	err := Validate(context.Background(), cfg)
+	err := Validate(context.Background(), LocalRunner{}, cfg)
 	if err == nil {
 		t.Fatal("Validate() error = nil, want error naming the missing module")
 	}
@@ -100,7 +100,7 @@ func TestValidate_RealTemplates_NoError(t *testing.T) {
 
 	tmpl := templatesRef + "#python-x86_64-linux"
 	cfg := config.Resolved{Template: tmpl, Config: config.Config{Arch: "x86_64"}}
-	if err := Validate(context.Background(), cfg); err != nil {
+	if err := Validate(context.Background(), LocalRunner{}, cfg); err != nil {
 		t.Errorf("Validate() error = %v, want nil (real templates/ flake should validate cleanly)", err)
 	}
 }

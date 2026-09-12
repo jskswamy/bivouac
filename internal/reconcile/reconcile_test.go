@@ -208,3 +208,102 @@ func TestReconcile_HomeManagerSwitchFails_ErrorIncludesOutput(t *testing.T) {
 		t.Errorf("error = %q, want it to include the remote command's output", err.Error())
 	}
 }
+
+// The config is checked on the instance before anything is built, so a
+// mistyped package name costs a few seconds rather than most of a
+// home-manager switch.
+func TestReconcile_ValidatesOnTheInstanceBeforeSwitching(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	var commands []string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		return "", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`packages {`,
+		`  "ripgrep"`,
+		`}`,
+	}, "\n")+"\n")
+
+	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	evalAt, switchAt := -1, -1
+	for i, cmd := range commands {
+		if strings.Contains(cmd, "nix") && strings.Contains(cmd, "eval") && strings.Contains(cmd, "legacyPackages") && strings.Contains(cmd, "ripgrep") {
+			evalAt = i
+		}
+		if strings.Contains(cmd, "home-manager") && strings.Contains(cmd, "switch") {
+			switchAt = i
+		}
+	}
+	if evalAt < 0 {
+		t.Fatalf("the package was never checked on the instance; commands were %v", commands)
+	}
+	if switchAt < 0 {
+		t.Fatalf("no switch ran; commands were %v", commands)
+	}
+	if evalAt > switchAt {
+		t.Errorf("the check ran after the switch (%d vs %d), which is no check at all", evalAt, switchAt)
+	}
+	if !strings.Contains(commands[evalAt], "bash -lc") {
+		t.Errorf("check command = %q, want a login shell so nix is on PATH", commands[evalAt])
+	}
+}
+
+// A package that does not resolve stops the run: shipping a flake and
+// starting a build that cannot finish wastes minutes to reach the same
+// conclusion.
+func TestReconcile_BadPackageStopsBeforeAnythingIsShipped(t *testing.T) {
+	startFakeAgent(t)
+	t.Setenv("HOME", t.TempDir())
+
+	switched, fileWritten := false, false
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		switch {
+		case strings.Contains(cmd, "ripgrepp"):
+			return "error: attribute 'ripgrepp' missing\n", 1
+		case strings.Contains(cmd, "cat >"):
+			fileWritten = true
+		case strings.Contains(cmd, "home-manager"):
+			switched = true
+		}
+		return "", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`packages {`,
+		`  "ripgrepp"`,
+		`}`,
+	}, "\n")+"\n")
+
+	err := Reconcile(context.Background(), "myinstance", cloudlabPath)
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want the bad package reported")
+	}
+	if !strings.Contains(err.Error(), "ripgrepp") {
+		t.Errorf("error = %q, want it to name the package the user typed", err)
+	}
+	if fileWritten {
+		t.Error("a flake was shipped for a config that cannot build")
+	}
+	if switched {
+		t.Error("home-manager switch ran despite the config not resolving")
+	}
+}

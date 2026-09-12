@@ -332,3 +332,35 @@ func Validate(ctx context.Context, cfg config.Config) error
   DigitalOcean data) — a different tier of check than `Validate`
   provides here, needing real credentials and network access to a
   specific provider; not "syntax and lint."
+
+## Validation, as implemented (2026-09-12)
+
+This spec left `Validate` as something that "can run at any time (e.g. in
+CI, or a future `cloudlab validate`)". Nothing ever called it, so a
+mistyped `packages` entry reached the instance and surfaced as a Nix
+evaluation error part-way through a switch.
+
+It now runs from `reconcile.Reconcile`, which is the path `up`, `shell`
+and `provision` all share — before the wrapper flake is shipped, so a
+config that cannot build leaves nothing behind.
+
+Two changes came with the wiring.
+
+**It takes a `Runner`.** The original shelled out to a local `nix`, which
+would have made a Nix install a requirement for using cloudlab at all —
+and cloudlab deliberately has none: every build happens on the instance.
+`reconcile` passes a runner that executes over SSH, so the check uses the
+instance's nixpkgs, system and cache: the ones that will actually decide
+the build. `LocalRunner` remains for CI and the tests that want a real
+evaluator.
+
+**It checks `packages` and the agents' packages.** The original checked
+only the template and `flakes[]`, which left the one field most likely to
+hold a typo unchecked — Pkl types `packages` as plain strings, so nothing
+before the switch looked at them. `agents` is a closed set, which stops
+typos but not nixpkgs renaming a package one of them maps to, so those
+are checked too.
+
+The nixpkgs the checks run against is `provisioning.NixpkgsRef`, which is
+also what the rendered flake pins. Two spellings could disagree, and the
+one that would be wrong is the one that only ever says "ok".

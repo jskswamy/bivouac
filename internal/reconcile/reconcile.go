@@ -13,6 +13,22 @@ import (
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
+// remoteNix runs nix on the instance, for provisioning.Validate.
+//
+// The instance is the machine that builds, so it is the machine whose
+// answer counts: its nixpkgs, its system, its cache. It is also the
+// reason cloudlab itself needs no nix installed -- see
+// provisioning.Runner.
+type remoteNix struct{ client *Client }
+
+// RunNix implements provisioning.Runner.
+func (r remoteNix) RunNix(ctx context.Context, args ...string) ([]byte, error) {
+	// A login shell for the same reason the switch below uses one: nix is
+	// on the login shell's PATH, not a bare exec session's.
+	out, err := r.client.RunContext(ctx, shellcmd.Remote([]string{"nix"}, args...))
+	return []byte(out), err
+}
+
 // remoteFlakeDir is the per-instance wrapper flake's directory, under
 // the reconciling user's own home -- not a fixed path, since that user
 // varies per instance (see state.Record.User).
@@ -54,6 +70,20 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		return fmt.Errorf("connecting to %s: %w", record.IP, err)
 	}
 	defer func() { _ = client.Close() }()
+
+	// Pre-flight, before anything is written and before the switch. A
+	// mistyped package name is otherwise a Nix evaluation error part-way
+	// through a build that has already been running for minutes, and the
+	// message names an attribute path rather than the line the user
+	// typed.
+	//
+	// On the instance rather than here: that is where every build
+	// happens, so it is the only nix whose answer is the one that will
+	// matter -- and cloudlab asks for no nix on the user's own machine.
+	provider.ReportProgress(ctx, "checking the config resolves")
+	if err := provisioning.Validate(ctx, remoteNix{client}, cfg); err != nil {
+		return err
+	}
 
 	flakeArg := templateRef
 	if provisioning.NeedsRender(cfg.Config) {
