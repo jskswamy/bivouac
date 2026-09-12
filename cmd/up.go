@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ func newUpCmd() *cobra.Command {
 			}
 
 			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
+			cfg, err := resolveOrInit(cmd, cloudlabPath, root)
 			if err != nil {
 				return err
 			}
@@ -57,6 +58,31 @@ func newUpCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// resolveOrInit loads the project's config, falling back to the
+// interactive flow when the repository has none yet and then loading
+// what that wrote.
+//
+// This does not contradict the earlier decision that cloudlab.pkl must
+// exist with no implicit fallback: the file still exists before
+// Reconcile runs. Creating it by asking is only friendlier than
+// refusing -- and refusing is still what happens with no terminal to
+// ask on, because a form blocked on stdin that never arrives looks
+// exactly like a hang.
+func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Config, error) {
+	cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return cfg, err
+	}
+	if terr := requireTerminal(isInteractive()); terr != nil {
+		return config.Config{}, fmt.Errorf("no cloudlab.pkl in %s: %w", root, terr)
+	}
+	cmd.Printf("No cloudlab.pkl in %s yet — let's create one.\n", root)
+	if err := runInitFlow(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root); err != nil {
+		return config.Config{}, err
+	}
+	return config.Resolve(cmd.Context(), cloudlabPath)
 }
 
 // upSummary describes the instance up is about to create, for
