@@ -17,21 +17,14 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/jskswamy/cloudlab/internal/xdg"
 )
 
-// Path returns the location of cloudlab's personal secrets file:
-// $XDG_CONFIG_HOME/cloudlab/secrets.yaml if set, else
-// ~/.config/cloudlab/secrets.yaml -- same XDG convention as
-// internal/config's resolveBasePath.
+// Path returns the location of cloudlab's personal secrets file. See
+// internal/xdg for the rule.
 func Path() (string, error) {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "cloudlab", "secrets.yaml"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "cloudlab", "secrets.yaml"), nil
+	return xdg.Path(xdg.Config, "secrets.yaml")
 }
 
 // Decrypt returns the decrypted value of key in the sops-encrypted

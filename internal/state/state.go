@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/jskswamy/cloudlab/internal/xdg"
 )
 
 // Record is one instance's state: which provider created it and its VM
@@ -114,19 +116,14 @@ type Store struct {
 	path string
 }
 
-// Open resolves the state file path ($XDG_STATE_HOME/cloudlab/state.json,
-// else ~/.local/state/cloudlab/state.json on every OS) without requiring
-// the file to exist yet.
+// Open resolves the state file path without requiring the file to exist
+// yet. See internal/xdg for the rule.
 func Open() (*Store, error) {
-	dir := os.Getenv("XDG_STATE_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = filepath.Join(home, ".local", "state")
+	path, err := xdg.Path(xdg.State, "state.json")
+	if err != nil {
+		return nil, err
 	}
-	return &Store{path: filepath.Join(dir, "cloudlab", "state.json")}, nil
+	return &Store{path: path}, nil
 }
 
 // List returns every stored Record, sorted by name. An empty slice (not
