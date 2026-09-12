@@ -9,6 +9,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // machineProfile is one entry from `herdr machine list --json`: a saved SSH
@@ -165,12 +166,12 @@ func findWorkspace(workspaces []herdrWorkspace, label string) (herdrWorkspace, b
 func remoteHerdrCmd(session string, args ...string) string {
 	inner := "herdr"
 	if session != "" {
-		inner += " --session " + reconcile.ShellQuote(session)
+		inner += " --session " + shellcmd.Quote(session)
 	}
 	for _, a := range args {
-		inner += " " + reconcile.ShellQuote(a)
+		inner += " " + shellcmd.Quote(a)
 	}
-	return "bash -lc " + reconcile.ShellQuote(inner)
+	return shellcmd.LoginShell(inner)
 }
 
 func workspaceListCmd(session string) string {
@@ -500,11 +501,11 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 // cloudlab owns that namespace, since it is the same name it created
 // ~/sessions/<name> under.
 func herdrSessionStopCmd(session string) string {
-	return "bash -lc " + reconcile.ShellQuote("herdr session stop "+reconcile.ShellQuote(session))
+	return shellcmd.LoginShell("herdr session stop " + shellcmd.Quote(session))
 }
 
 func herdrSessionDeleteCmd(session string) string {
-	return "bash -lc " + reconcile.ShellQuote("herdr session delete "+reconcile.ShellQuote(session))
+	return shellcmd.LoginShell("herdr session delete " + shellcmd.Quote(session))
 }
 
 // CleanupHerdr removes what `cloudlab herdr` left behind for a session: the

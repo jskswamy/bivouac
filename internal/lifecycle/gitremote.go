@@ -3,23 +3,16 @@ package lifecycle
 import (
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
-// remoteGitCmd builds a git invocation to run on the instance.
+// remoteGitCmd builds a git invocation to run on the instance. See
+// shellcmd.LoginShell for why the login shell is mandatory and
+// shellcmd.Remote for why every argument is quoted.
 //
-// bash -lc is mandatory, not stylistic: git comes from the instance user's
-// home-manager profile (~/.nix-profile/bin/git), and a non-interactive SSH
-// command runs a non-login shell that never sources the profile scripts
-// putting that on PATH. Every argument is shell-quoted because the login
-// shell re-parses the whole string.
+// beads.instanceCmd is the same builder with a different prefix.
 func remoteGitCmd(dir string, args ...string) string {
-	quoted := make([]string, 0, len(args)+3)
-	quoted = append(quoted, "git", "-C", reconcile.ShellQuote(dir))
-	for _, a := range args {
-		quoted = append(quoted, reconcile.ShellQuote(a))
-	}
-	return "bash -lc " + reconcile.ShellQuote(strings.Join(quoted, " "))
+	return shellcmd.Remote([]string{"git", "-C", shellcmd.Quote(dir)}, args...)
 }
 
 // ensureRepoCmd creates a session's repository if absent. `git init` is a
@@ -32,9 +25,9 @@ func remoteGitCmd(dir string, args ...string) string {
 // require setting denyCurrentBranch=updateInstead to make the push legal.
 // See checkoutSessionCmd, which runs after the push for this reason.
 func ensureRepoCmd(repo string) string {
-	inner := "mkdir -p " + reconcile.ShellQuote(repo) +
-		" && git init --quiet " + reconcile.ShellQuote(repo)
-	return "bash -lc " + reconcile.ShellQuote(inner)
+	inner := "mkdir -p " + shellcmd.Quote(repo) +
+		" && git init --quiet " + shellcmd.Quote(repo)
+	return shellcmd.LoginShell(inner)
 }
 
 // checkoutSessionCmd puts the session's repository on the session branch,
@@ -64,10 +57,10 @@ func checkoutSessionCmd(repo, branch string) string {
 // teardown into a refusal, or into discarding work with --force that was
 // never rescuable. Quality gates belong on the commits a human authors.
 func checkpointCmd(repo, message string) string {
-	inner := "cd " + reconcile.ShellQuote(repo) +
+	inner := "cd " + shellcmd.Quote(repo) +
 		" && git add -A" +
-		" && { git diff --cached --quiet || git commit --quiet --no-verify -m " + reconcile.ShellQuote(message) + "; }"
-	return "bash -lc " + reconcile.ShellQuote(inner)
+		" && { git diff --cached --quiet || git commit --quiet --no-verify -m " + shellcmd.Quote(message) + "; }"
+	return shellcmd.LoginShell(inner)
 }
 
 // removeRepoCmd tears a session down on the instance. The repository is the
@@ -81,7 +74,7 @@ func checkpointCmd(repo, message string) string {
 // when the caller has deliberately chosen to discard unverified work
 // instead.
 func removeRepoCmd(repo string) string {
-	q := reconcile.ShellQuote
+	q := shellcmd.Quote
 	// rmdir, not rm -rf, on the parent: a session can hold more than one
 	// repository once multi-repo lands, and rmdir refuses a directory that
 	// still has something in it. So the empty case is cleaned up and the
@@ -89,7 +82,7 @@ func removeRepoCmd(repo string) string {
 	// The `|| true` keeps a non-empty parent from failing the whole teardown.
 	inner := "rm -rf " + q(repo) +
 		" && rmdir " + q(remoteSessionDir(repo)) + " 2>/dev/null || true"
-	return "bash -lc " + reconcile.ShellQuote(inner)
+	return shellcmd.LoginShell(inner)
 }
 
 // remoteSessionDir is the directory holding a session's repositories --
@@ -113,10 +106,10 @@ func remoteSessionDir(repo string) string {
 // behalf, and merge re-signs each commit with their key anyway. Provenance is
 // not lost -- the checkpoint subject names the session.
 func setIdentityCmd(repo, name, email string) string {
-	q := reconcile.ShellQuote
+	q := shellcmd.Quote
 	inner := "git -C " + q(repo) + " config user.name " + q(name) +
 		" && git -C " + q(repo) + " config user.email " + q(email)
-	return "bash -lc " + reconcile.ShellQuote(inner)
+	return shellcmd.LoginShell(inner)
 }
 
 // beadsDirPattern is the ignore entry that keeps a session's issue database
@@ -144,7 +137,7 @@ const beadsDirPattern = "/.beads/"
 // commits and reviews. grep -qxF makes it idempotent, which session start's
 // retry-safety requires.
 func excludeBeadsCmd(repo string) string {
-	q := reconcile.ShellQuote
+	q := shellcmd.Quote
 	// --absolute-git-dir, not --git-dir: the latter answers ".git", relative
 	// to the -C directory, and this command never cd's -- so the exclusion
 	// would land under the login shell's own home directory instead of the
@@ -156,5 +149,5 @@ func excludeBeadsCmd(repo string) string {
 		"; touch \"$e\"" +
 		"; grep -qxF " + q(beadsDirPattern) + " \"$e\"" +
 		" || printf '\\n# cloudlab session issue database\\n%s\\n' " + q(beadsDirPattern) + " >> \"$e\""
-	return "bash -lc " + reconcile.ShellQuote(inner)
+	return shellcmd.LoginShell(inner)
 }

@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // pairArgs builds the argv Pair passes to the ssh binary: a PTY
@@ -24,8 +24,8 @@ import (
 // this machine is not currently on the tailnet, while still handing the
 // phone a private address to use.
 func pairArgs(sshHost, advertiseHost, user string) []string {
-	inner := "moshi-hook host setup --host " + reconcile.ShellQuote(advertiseHost)
-	return []string{"-t", user + "@" + sshHost, "bash -lc " + reconcile.ShellQuote(inner)}
+	inner := "moshi-hook host setup --host " + shellcmd.Quote(advertiseHost)
+	return []string{"-t", user + "@" + sshHost, shellcmd.LoginShell(inner)}
 }
 
 // Pair runs moshi-hook's Easy Pair QR flow on the instance, connecting
@@ -39,7 +39,7 @@ func Pair(ctx context.Context, sshHost, advertiseHost, user string) error {
 	}
 	// #nosec G204 -- argv-array exec.Command locally, no local shell;
 	// the remote command IS shell-interpreted by sshd's login shell,
-	// but advertiseHost is shell-quoted via reconcile.ShellQuote before
+	// but advertiseHost is shell-quoted via shellcmd.Quote before
 	// being embedded, and the hosts/user are never attacker-controlled.
 	cmd := exec.CommandContext(ctx, "ssh", pairArgs(sshHost, advertiseHost, user)...)
 	cmd.Stdin = os.Stdin

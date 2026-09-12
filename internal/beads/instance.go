@@ -1,29 +1,16 @@
 package beads
 
 import (
-	"strings"
-
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
-// instanceCmd wraps a bd invocation for the instance.
+// instanceCmd wraps a bd invocation for the instance: cd to the repository,
+// then run bd there. See shellcmd.LoginShell for why the login shell is
+// mandatory and shellcmd.Remote for why every argument is quoted.
 //
-// bash -lc is mandatory, not stylistic: bd comes from the instance user's
-// home-manager profile (~/.nix-profile/bin/bd), and a non-interactive SSH
-// command runs a non-login shell that never sources the profile scripts
-// putting that on PATH. Every argument is shell-quoted because the login
-// shell re-parses the whole string -- including repo, and including a
-// fixed literal like "init" or "push", so there is exactly one escaping
-// path to trust rather than a second hand-audited allow-list standing next
-// to reconcile.ShellQuote, which this codebase already proves and uses
-// everywhere else. Same shape as lifecycle.remoteGitCmd.
+// lifecycle.remoteGitCmd is the same builder with a different prefix.
 func instanceCmd(repo string, args ...string) string {
-	quoted := make([]string, 0, len(args)+3)
-	quoted = append(quoted, "cd", reconcile.ShellQuote(repo), "&&", "bd")
-	for _, a := range args {
-		quoted = append(quoted, reconcile.ShellQuote(a))
-	}
-	return "bash -lc " + reconcile.ShellQuote(strings.Join(quoted, " "))
+	return shellcmd.Remote([]string{"cd", shellcmd.Quote(repo), "&&", "bd"}, args...)
 }
 
 // initCmd clones the session's issue database out of the git ref the Mac

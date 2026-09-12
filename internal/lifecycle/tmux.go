@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // tmuxArgs builds the argv Tmux passes to the ssh binary: a PTY
@@ -22,8 +22,8 @@ import (
 // shell-quoted since ssh concatenates the trailing argv into one
 // string that sshd hands to the remote shell to parse.
 func tmuxArgs(ip, user, session string) []string {
-	inner := "tmux new-session -A -s " + reconcile.ShellQuote(session)
-	return []string{"-t", user + "@" + ip, "bash -lc " + reconcile.ShellQuote(inner)}
+	inner := "tmux new-session -A -s " + shellcmd.Quote(session)
+	return []string{"-t", user + "@" + ip, shellcmd.LoginShell(inner)}
 }
 
 // Tmux opens an interactive tmux session named session on the
@@ -37,7 +37,7 @@ func Tmux(ctx context.Context, ip, user, session string) error {
 	}
 	// #nosec G204 -- argv-array exec.Command locally, no local shell;
 	// the remote command IS shell-interpreted by sshd's login shell,
-	// but session is shell-quoted via reconcile.ShellQuote before
+	// but session is shell-quoted via shellcmd.Quote before
 	// being embedded, and ip/user are never attacker-controlled.
 	cmd := exec.CommandContext(ctx, "ssh", tmuxArgs(ip, user, session)...)
 	cmd.Stdin = os.Stdin

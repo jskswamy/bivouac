@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 func TestPairArgs_BuildsExpectedCommand(t *testing.T) {
 	got := pairArgs("203.0.113.5", "203.0.113.5", "devuser")
-	inner := "moshi-hook host setup --host " + reconcile.ShellQuote("203.0.113.5")
-	want := []string{"-t", "devuser@203.0.113.5", "bash -lc " + reconcile.ShellQuote(inner)}
+	inner := "moshi-hook host setup --host " + shellcmd.Quote("203.0.113.5")
+	want := []string{"-t", "devuser@203.0.113.5", shellcmd.LoginShell(inner)}
 	if len(got) != len(want) {
 		t.Fatalf("pairArgs() = %v, want %v", got, want)
 	}

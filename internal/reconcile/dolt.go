@@ -11,6 +11,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // hasBeadsDatabase reports whether repo has a beads database at all.
@@ -72,14 +73,14 @@ func sanitizeDoltCredsID(id string) error {
 // dangling, is foreign and reported via NOTASYMLINK exactly like a real
 // directory or a regular file -- none of those are cloudlab's to touch.
 func doltPrepareScript(doltDir string) string {
-	target := ShellQuote(doltDir)
+	target := shellcmd.Quote(doltDir)
 	guard := "if [ -L \"$HOME/.dolt\" ]; then" +
 		" [ \"$(readlink \"$HOME/.dolt\")\" = " + target + " ] || { echo NOTASYMLINK; exit 0; }" +
 		"; elif [ -e \"$HOME/.dolt\" ]; then echo NOTASYMLINK; exit 0" +
 		"; fi"
 	return "set -e" +
-		"; mkdir -p " + ShellQuote(doltDir+"/creds") +
-		"; chmod 700 " + ShellQuote(doltDir) +
+		"; mkdir -p " + shellcmd.Quote(doltDir+"/creds") +
+		"; chmod 700 " + shellcmd.Quote(doltDir) +
 		"; " + guard +
 		"; ln -sfn " + target + " \"$HOME/.dolt\""
 }
@@ -160,7 +161,7 @@ func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoo
 	// Resolved by a real remote round-trip rather than assumed, for the same
 	// reason JoinTailscale resolves it that way: the result is a concrete
 	// literal that can be shell-quoted like any other argument.
-	runtimeDir, err := client.Run("bash -lc " + ShellQuote(`printf '%s' "$XDG_RUNTIME_DIR"`))
+	runtimeDir, err := client.Run(shellcmd.LoginShell(`printf '%s' "$XDG_RUNTIME_DIR"`))
 	if err != nil {
 		provider.ReportWarning(ctx, "beads: could not resolve the instance's runtime directory: "+err.Error()+"; issues will sync over the session remote only")
 		return
@@ -178,7 +179,7 @@ func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoo
 	// neither clobbers something the user set up themselves nor writes an
 	// account-wide credential to VM disk. See doltPrepareScript's own
 	// comment for how each of those states is told apart.
-	out, err := client.Run("bash -lc " + ShellQuote(doltPrepareScript(doltDir)))
+	out, err := client.Run(shellcmd.LoginShell(doltPrepareScript(doltDir)))
 	if err != nil {
 		provider.ReportWarning(ctx, "beads: could not prepare ~/.dolt on the instance: "+err.Error()+"\n"+out)
 		return
