@@ -8,6 +8,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/secrets"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // JoinTailscale joins the instance at ip (connecting as user) to the
@@ -46,7 +47,7 @@ import (
 // not found" however the surrounding shell is invoked. Wrapping in
 // `bash -lc` fixes PATH for the shell, not for what sudo then execs.
 func RemoteTailscaleBin(ctx context.Context, client *reconcile.Client) (string, error) {
-	out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote("command -v tailscale"))
+	out, err := client.RunContext(ctx, shellcmd.LoginShell("command -v tailscale"))
 	if err != nil {
 		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first:\n%s", out)
 	}
@@ -77,8 +78,8 @@ func TailscaleIP(ctx context.Context, ip, user string) (string, error) {
 	}
 	// `tailscale ip -4` prints nothing but an error when the daemon is
 	// down or logged out, which is exactly the empty-string case.
-	inner := "sudo " + reconcile.ShellQuote(bin) + " ip -4"
-	out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(inner))
+	inner := "sudo " + shellcmd.Quote(bin) + " ip -4"
+	out, err := client.RunContext(ctx, shellcmd.LoginShell(inner))
 	if err != nil {
 		return "", nil
 	}
@@ -118,7 +119,7 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	probeCmd := "bash -lc " + reconcile.ShellQuote(`printf '%s' "$XDG_RUNTIME_DIR"`)
+	probeCmd := shellcmd.LoginShell(`printf '%s' "$XDG_RUNTIME_DIR"`)
 	runtimeDir, err := client.Run(probeCmd)
 	if err != nil {
 		return fmt.Errorf("resolving instance's runtime directory: %w", err)
@@ -150,8 +151,8 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	// root-or-operator. cloud-init grants the instance user passwordless
 	// sudo for exactly this kind of case.
 	innerCmd := fmt.Sprintf(`trap 'rm -f %s' EXIT; sudo %s up --auth-key=file:%s`,
-		reconcile.ShellQuote(authKeyPath), reconcile.ShellQuote(tailscaleBin), reconcile.ShellQuote(authKeyPath))
-	script := "bash -lc " + reconcile.ShellQuote(innerCmd)
+		shellcmd.Quote(authKeyPath), shellcmd.Quote(tailscaleBin), shellcmd.Quote(authKeyPath))
+	script := shellcmd.LoginShell(innerCmd)
 	out, err := client.Run(script)
 	if err != nil {
 		// tailscaled is a systemd --user unit that common.nix only

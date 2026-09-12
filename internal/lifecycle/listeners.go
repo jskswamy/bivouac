@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // Listener is one listening socket reported by `ss -tlnp`.
@@ -120,7 +121,7 @@ func Listeners(ctx context.Context, ip, user string) ([]Listener, error) {
 	}
 	defer func() { _ = client.Close() }()
 
-	out, err := client.Run("bash -lc " + reconcile.ShellQuote("ss -tlnp"))
+	out, err := client.Run(shellcmd.LoginShell("ss -tlnp"))
 	if err != nil {
 		return nil, fmt.Errorf("listing listening sockets: %w\n%s", err, out)
 	}

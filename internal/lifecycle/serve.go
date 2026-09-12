@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // ServeEntry is one port published on the tailnet by `tailscale serve`.
@@ -66,7 +67,7 @@ func parseServeStatus(jsonOut string) ([]ServeEntry, error) {
 // holds the terminal, which is what the ssh forward already does and
 // what this exists to avoid.
 func serveArgs(bin string, port int) string {
-	return fmt.Sprintf("sudo %s serve --bg --tcp %d tcp://localhost:%d", reconcile.ShellQuote(bin), port, port)
+	return fmt.Sprintf("sudo %s serve --bg --tcp %d tcp://localhost:%d", shellcmd.Quote(bin), port, port)
 }
 
 // unserveArgs removes exactly one entry.
@@ -75,7 +76,7 @@ func serveArgs(bin string, port int) string {
 // instance, including any the user set up by hand, and `serve status`
 // does not record which ones cloudlab added.
 func unserveArgs(bin string, port int) string {
-	return fmt.Sprintf("sudo %s serve --tcp %d off", reconcile.ShellQuote(bin), port)
+	return fmt.Sprintf("sudo %s serve --tcp %d off", shellcmd.Quote(bin), port)
 }
 
 // serveSession connects, resolves the tailscale binary, and hands both
@@ -102,7 +103,7 @@ func serveSession(ctx context.Context, ip, user string, fn func(ctx context.Cont
 // cloud-init grants this user passwordless sudo (see cloud-init.sh).
 func Serve(ctx context.Context, ip, user string, port int) error {
 	return serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
-		if out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(serveArgs(bin, port))); err != nil {
+		if out, err := client.RunContext(ctx, shellcmd.LoginShell(serveArgs(bin, port))); err != nil {
 			return fmt.Errorf("serving port %d on the tailnet: %w\n%s", port, err, out)
 		}
 		return nil
@@ -112,7 +113,7 @@ func Serve(ctx context.Context, ip, user string, port int) error {
 // Unserve stops publishing one port, leaving every other entry alone.
 func Unserve(ctx context.Context, ip, user string, port int) error {
 	return serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
-		if out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote(unserveArgs(bin, port))); err != nil {
+		if out, err := client.RunContext(ctx, shellcmd.LoginShell(unserveArgs(bin, port))); err != nil {
 			return fmt.Errorf("stopping serve on port %d: %w\n%s", port, err, out)
 		}
 		return nil
@@ -125,7 +126,7 @@ func Unserve(ctx context.Context, ip, user string, port int) error {
 func ServeStatus(ctx context.Context, ip, user string) ([]ServeEntry, error) {
 	var entries []ServeEntry
 	err := serveSession(ctx, ip, user, func(ctx context.Context, client *reconcile.Client, bin string) error {
-		out, err := client.RunContext(ctx, "bash -lc "+reconcile.ShellQuote("sudo "+reconcile.ShellQuote(bin)+" serve status --json"))
+		out, err := client.RunContext(ctx, shellcmd.LoginShell("sudo "+shellcmd.Quote(bin)+" serve status --json"))
 		if err != nil {
 			return fmt.Errorf("reading serve status: %w\n%s", err, out)
 		}

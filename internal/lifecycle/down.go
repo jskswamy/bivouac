@@ -7,6 +7,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -39,7 +40,7 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 	if err != nil {
 		return
 	}
-	cmd := "bash -lc " + reconcile.ShellQuote("sudo "+reconcile.ShellQuote(tailscaleBin)+" logout")
+	cmd := shellcmd.LoginShell("sudo " + shellcmd.Quote(tailscaleBin) + " logout")
 	_, _ = client.Run(cmd)
 }
 

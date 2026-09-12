@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // sshArgs builds the argv SSH passes to the ssh binary: an
@@ -15,7 +15,7 @@ import (
 // that cds into dir before handing off to an interactive login shell
 // -- the same outer "bash -lc <quoted-inner>" shape tmux.go already
 // established, so profile scripts (and PATH) are set up the same way.
-// dir is shell-quoted via reconcile.ShellQuote since ssh concatenates
+// dir is shell-quoted via shellcmd.Quote since ssh concatenates
 // the trailing argv into one string the remote shell parses. An empty
 // dir returns today's plain form: no remote command, ssh's own
 // default session handling.
@@ -23,8 +23,8 @@ func sshArgs(ip, user, dir string) []string {
 	if dir == "" {
 		return []string{user + "@" + ip}
 	}
-	inner := "[[ -d " + reconcile.ShellQuote(dir) + " ]] && cd " + reconcile.ShellQuote(dir) + "; exec \"$SHELL\" -l"
-	return []string{"-t", user + "@" + ip, "bash -lc " + reconcile.ShellQuote(inner)}
+	inner := "[[ -d " + shellcmd.Quote(dir) + " ]] && cd " + shellcmd.Quote(dir) + "; exec \"$SHELL\" -l"
+	return []string{"-t", user + "@" + ip, shellcmd.LoginShell(inner)}
 }
 
 // SSH opens an interactive session on the instance at ip as user,
@@ -40,7 +40,7 @@ func SSH(ctx context.Context, ip, user, dir string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, never attacker-controlled. When dir is set,
 	// the remote command IS shell-interpreted by sshd's login shell,
-	// but dir is shell-quoted via reconcile.ShellQuote before being
+	// but dir is shell-quoted via shellcmd.Quote before being
 	// embedded.
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(ip, user, dir)...)
 	cmd.Stdin = os.Stdin
