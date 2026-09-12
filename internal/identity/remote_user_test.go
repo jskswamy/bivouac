@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"os/user"
+	"strings"
 	"testing"
 )
 
@@ -92,5 +93,35 @@ func TestRemoteUser_PropagatesUnderlyingError(t *testing.T) {
 	_, err := RemoteUser()
 	if !errors.Is(err, boom) {
 		t.Errorf("RemoteUser() error = %v, want %v", err, boom)
+	}
+}
+
+// The property that keeps identity and provisioning in agreement: whatever
+// sanitizeUsername is willing to produce, ValidRemoteUser accepts -- and so
+// therefore does the cloud-init guard, which calls it.
+//
+// Asserted rather than assumed because the two rules used to be written out
+// separately, 32 here and {0,31} over there, agreeing only by arithmetic
+// coincidence. A producer change that outran the validator would otherwise
+// surface as a render failure at provision time, which is neither package's
+// own tests.
+func TestSanitizeUsername_AlwaysProducesAValidRemoteUser(t *testing.T) {
+	for _, raw := range []string{
+		"alice", "Alice", "ALICE", `DOMAIN\alice`,
+		"9lives", "_leading", "-leading", "trailing-",
+		"has space", "has.dots", "user@example.com", "ünïcödé",
+		"!!!", "", "-", "--", "_",
+		strings.Repeat("a", 64),
+		strings.Repeat("a", 31) + "-tail",
+		strings.Repeat("-", 40),
+		"9" + strings.Repeat("b", 40),
+		strings.Repeat("ü", 40),
+	} {
+		t.Run(raw, func(t *testing.T) {
+			got := sanitizeUsername(raw)
+			if !ValidRemoteUser(got) {
+				t.Errorf("sanitizeUsername(%q) = %q, which ValidRemoteUser rejects", raw, got)
+			}
+		})
 	}
 }

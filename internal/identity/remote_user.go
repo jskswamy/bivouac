@@ -3,6 +3,7 @@ package identity
 import (
 	"os/user"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +17,25 @@ var invalidUsernameChar = regexp.MustCompile(`[^a-z0-9_-]`)
 
 // maxUsernameLen is useradd's own default limit.
 const maxUsernameLen = 32
+
+// validRemoteUser matches a name the instance will accept as a login: a
+// letter, then up to maxUsernameLen-1 more username characters.
+//
+// Built from maxUsernameLen rather than written out, because the two used to
+// be stated separately -- 32 here, {0,31} in internal/provisioning -- and
+// agreed only because 32 == 1+31. Deriving one from the other is what makes
+// them keep agreeing.
+var validRemoteUser = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,` + strconv.Itoa(maxUsernameLen-1) + `}$`)
+
+// ValidRemoteUser reports whether name is a username the instance can be
+// provisioned with.
+//
+// Exported because internal/provisioning re-checks it before interpolating
+// the name into a root-run boot script. That guard is deliberate defence in
+// depth and stays; what it stops owning is a second copy of the rule.
+func ValidRemoteUser(name string) bool {
+	return validRemoteUser.MatchString(name)
+}
 
 // RemoteUser derives the instance's non-root login name from the local
 // OS user (via os/user, not by shelling out to whoami), sanitized to a
@@ -54,7 +74,11 @@ func sanitizeUsername(raw string) string {
 		name = name[:maxUsernameLen]
 	}
 	name = strings.Trim(name, "-")
-	if name == "" {
+	// Checked against the same predicate provisioning's guard uses, rather
+	// than trusted because the steps above ought to imply it. If some input
+	// ever slips through them, the fallback is a working instance with a
+	// dull username instead of a render error at provision time.
+	if !ValidRemoteUser(name) {
 		return "cloudlab"
 	}
 	return name
