@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -348,9 +349,9 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// ShellQuote wraps s in single quotes for safe inclusion in a remote
-// shell command, escaping any embedded single quotes. Used for every
-// value that isn't a fixed constant string written in this package.
+// ShellQuote forwards to shellcmd.Quote, which is where the quoting now
+// lives. A temporary alias so this move lands without touching the ~50
+// call sites in the same commit; it goes away once they have migrated.
 func ShellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return shellcmd.Quote(s)
 }
