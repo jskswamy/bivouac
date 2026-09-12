@@ -38,60 +38,55 @@ func readIndex(cmd *cobra.Command, max int) (int, error) {
 	return n, nil
 }
 
-// pickSession prints a numbered list and reads one choice.
+// pick prints a numbered list and reads one choice.
 //
-// A numbered prompt rather than a full TUI: it is a handful of lines, needs no
-// dependency, and is testable by writing to a buffer. bubbletea is already
+// A numbered prompt rather than a full TUI: it is a handful of lines, needs
+// no dependency, and is testable by writing to a buffer. bubbletea is already
 // available if this ever deserves to be prettier.
-func pickSession(cmd *cobra.Command, candidates []string) (string, error) {
-	cmd.Println("Several sessions are live:")
-	for i, name := range candidates {
-		cmd.Printf("  %d) %s\n", i+1, name)
+//
+// Generic over the item because the three pickers differed in exactly two
+// things -- the heading and how one row renders -- and in nothing else. The
+// numbering, the "Which one? " prompt and the range check are the convention,
+// and a fourth picker should not get to invent its own.
+func pick[T any](cmd *cobra.Command, heading string, items []T, render func(T) string) (T, error) {
+	cmd.Println(heading)
+	for i, item := range items {
+		cmd.Printf("  %d) %s\n", i+1, render(item))
 	}
 	cmd.Print("Which one? ")
 
-	n, err := readIndex(cmd, len(candidates))
+	n, err := readIndex(cmd, len(items))
 	if err != nil {
-		return "", err
+		var zero T
+		return zero, err
 	}
-	return candidates[n-1], nil
+	return items[n-1], nil
 }
 
-// pickListener prints a numbered list of listening ports and reads one
-// choice. Same shape as pickSession -- a numbered prompt rather than a
-// TUI, testable by writing to a buffer.
+// pickSession asks which of several live sessions was meant.
+func pickSession(cmd *cobra.Command, candidates []string) (string, error) {
+	return pick(cmd, "Several sessions are live:", candidates,
+		func(name string) string { return name })
+}
+
+// pickListener asks which listening port was meant.
 func pickListener(cmd *cobra.Command, listeners []lifecycle.Listener) (lifecycle.Listener, error) {
-	cmd.Println("Listening on the instance:")
-	for i, l := range listeners {
+	return pick(cmd, "Listening on the instance:", listeners, func(l lifecycle.Listener) string {
 		proc := l.Process
 		if proc == "" {
+			// A dash rather than an empty column, which would shift the
+			// address left and break the alignment for that row alone.
 			proc = "-"
 		}
-		cmd.Printf("  %d) %-6d %-12s %s\n", i+1, l.Port, proc, l.Addr)
-	}
-	cmd.Print("Which one? ")
-
-	n, err := readIndex(cmd, len(listeners))
-	if err != nil {
-		return lifecycle.Listener{}, err
-	}
-	return listeners[n-1], nil
+		return fmt.Sprintf("%-6d %-12s %s", l.Port, proc, l.Addr)
+	})
 }
 
-// pickServeEntry prints the served ports and reads one choice. Shares
-// readIndex with the other pickers; only the rendering differs.
+// pickServeEntry asks which served port was meant.
 func pickServeEntry(cmd *cobra.Command, entries []lifecycle.ServeEntry) (lifecycle.ServeEntry, error) {
-	cmd.Println("Serving on the instance:")
-	for i, e := range entries {
-		cmd.Printf("  %d) %-6d %s\n", i+1, e.Port, e.Forward)
-	}
-	cmd.Print("Which one? ")
-
-	n, err := readIndex(cmd, len(entries))
-	if err != nil {
-		return lifecycle.ServeEntry{}, err
-	}
-	return entries[n-1], nil
+	return pick(cmd, "Serving on the instance:", entries, func(e lifecycle.ServeEntry) string {
+		return fmt.Sprintf("%-6d %s", e.Port, e.Forward)
+	})
 }
 
 // resolveSessionInteractive is resolveSessionArg for commands that are about
