@@ -2,8 +2,6 @@ package lifecycle
 
 import (
 	"context"
-	"os"
-	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
 	"github.com/jskswamy/cloudlab/internal/tool"
@@ -32,13 +30,9 @@ func Tmux(ctx context.Context, ip, user, session string) error {
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
-	// #nosec G204 -- argv-array exec.Command locally, no local shell;
+	// Argv-array exec locally, no local shell;
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but session is shell-quoted via shellcmd.Quote before
 	// being embedded, and ip/user are never attacker-controlled.
-	cmd := exec.CommandContext(ctx, "ssh", tmuxArgs(ip, user, session)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return tool.Passthrough(ctx, "ssh", tmuxArgs(ip, user, session)...)
 }

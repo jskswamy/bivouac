@@ -3,8 +3,6 @@ package lifecycle
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 
 	"github.com/jskswamy/cloudlab/internal/tool"
 )
@@ -45,12 +43,8 @@ func Herdr(ctx context.Context, ip, user, session string) error {
 	if _, err := tool.Require("herdr"); err != nil {
 		return err
 	}
-	// #nosec G204 -- argv-array exec.Command, no shell; ip is
+	// Argv-array exec, no local shell; ip is
 	// provider-assigned, never attacker-controlled, and session is a
 	// cloudlab session name already checked by lifecycle.CheckSessionName.
-	cmd := exec.CommandContext(ctx, "herdr", herdrArgs(ip, user, session)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return tool.Passthrough(ctx, "herdr", herdrArgs(ip, user, session)...)
 }
