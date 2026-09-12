@@ -9,21 +9,16 @@ package provisioning
 import (
 	_ "embed"
 	"fmt"
-	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/jskswamy/cloudlab/internal/identity"
 )
 
 //go:embed cloud-init.sh
 var cloudInitTemplateSrc string
 
 var cloudInitTemplate = template.Must(template.New("cloud-init.sh").Parse(cloudInitTemplateSrc))
-
-// validRemoteUser matches a valid Linux username: identity.RemoteUser
-// already sanitizes to this shape, but RenderCloudInit checks it again
-// rather than trusting the caller, since this value is interpolated
-// directly into a root-run boot script.
-var validRemoteUser = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 // RenderCloudInit renders the instance's cloud-init boot script for
 // username: installs Nix, creates username as a passwordless-sudo
@@ -32,7 +27,12 @@ var validRemoteUser = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 // SSH login as the last step -- only once username's key-based login
 // is confirmed in place.
 func RenderCloudInit(username string) (string, error) {
-	if !validRemoteUser.MatchString(username) {
+	// Re-checked rather than trusted, because username is interpolated
+	// directly into a root-run boot script -- identity.RemoteUser already
+	// sanitizes to this shape, and this is the trust boundary saying so
+	// again. It asks identity rather than restating the rule: a second copy
+	// is what let 32 and {0,31} drift apart in the first place.
+	if !identity.ValidRemoteUser(username) {
 		return "", fmt.Errorf("invalid remote username %q", username)
 	}
 	var b strings.Builder
