@@ -13,14 +13,11 @@ import (
 // session as user on ip's default port, running tmux's own
 // create-or-attach primitive for session ("new-session -A": if the
 // named session already exists, attach; otherwise create it) inside a
-// login shell (bash -lc) so tmux -- installed into the instance
-// user's home-manager profile, not a system path -- is actually on
-// PATH. A non-interactive ssh command otherwise runs a non-login
-// shell, which never sources the profile scripts that put
-// ~/.nix-profile/bin on PATH (see reconcile.go's own "nix run
-// home-manager" invocation for the same requirement). session is
-// shell-quoted since ssh concatenates the trailing argv into one
-// string that sshd hands to the remote shell to parse.
+// login shell, so tmux -- installed into the instance user's
+// home-manager profile, not a system path -- is actually on PATH; see
+// shellcmd.LoginShell. session is shell-quoted since ssh concatenates
+// the trailing argv into one string that sshd hands to the remote
+// shell to parse.
 func tmuxArgs(ip, user, session string) []string {
 	inner := "tmux new-session -A -s " + shellcmd.Quote(session)
 	return []string{"-t", user + "@" + ip, shellcmd.LoginShell(inner)}

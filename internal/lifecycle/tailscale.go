@@ -28,13 +28,9 @@ import (
 // shell-quoted like any other WriteSecretFile/Run argument instead of
 // needing an unquoted special case for shell-expansion syntax.
 //
-// Every remote command in this function runs inside a login shell
-// (bash -lc) for the same PATH reason tmuxArgs/reconcile.go's
-// innerCmd/cmd construction does: tailscale lives in the instance
-// user's home-manager profile, not a system path, and a
-// non-interactive SSH command otherwise runs a non-login shell that
-// never sources the profile scripts putting ~/.nix-profile/bin on
-// PATH.
+// Every remote command here goes through shellcmd.LoginShell, whose doc
+// comment carries the PATH rule: tailscale lives in the instance user's
+// home-manager profile, not a system path.
 // RemoteTailscaleBin returns the absolute path to tailscale on the
 // instance, resolved by a real remote round-trip for the same reason
 // JoinTailscale resolves $XDG_RUNTIME_DIR that way.
