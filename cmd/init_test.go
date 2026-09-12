@@ -165,7 +165,10 @@ func TestInitFlow_FirstRunEver(t *testing.T) {
 	if got := f.values(t, f.basePath); !reflect.DeepEqual(got, wantBase) {
 		t.Errorf("base.pkl = %#v, want %#v", got, wantBase)
 	}
-	wantProject := config.Values{"template": "python", "agents": []string{"claude"}, "packages": []string{"jq"}, "beads": "session", "tailscale": false}
+	// beads and tailscale were answered at their defaults, so they are
+	// not written: the file says what was chosen, not what the schema
+	// would have given anyway.
+	wantProject := config.Values{"template": "python", "agents": []string{"claude"}, "packages": []string{"jq"}}
 	if got := f.values(t, f.project); !reflect.DeepEqual(got, wantProject) {
 		t.Errorf("cloudlab.pkl = %#v, want %#v", got, wantProject)
 	}
@@ -615,5 +618,75 @@ func TestErrNoConfig_IsRecognisedByUp(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("Resolve() of a missing file = %v, want it to wrap os.ErrNotExist so up can tell it apart", err)
+	}
+}
+
+// A config carries what its author chose. Answers that match the
+// schema's own defaults add a line that changes nothing, so they are
+// left out.
+func TestInitFlow_AcceptedDefaultsAreNotWritten(t *testing.T) {
+	f := newInitFixture(t)
+	s := newScript()
+	s.answers = map[string]any{
+		"region": "nyc3", "size": "s-1vcpu-1gb",
+		"template":  "python",
+		"beads":     "session", // the schema default
+		"tailscale": false,     // the schema default
+		"agents":    []string{},
+		"packages":  []string{},
+	}
+	s.decisions = map[string]any{promptSavePreset: false}
+
+	if err := f.run(t, s); err != nil {
+		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
+	}
+	if got := f.values(t, f.project); !reflect.DeepEqual(got, config.Values{"template": "python"}) {
+		t.Errorf("cloudlab.pkl = %#v, want only the template that was chosen", got)
+	}
+	if text := f.text(t, f.project); strings.Contains(text, "beads") || strings.Contains(text, "tailscale") {
+		t.Errorf("cloudlab.pkl restates the schema's defaults:\n%s", text)
+	}
+}
+
+func TestInitFlow_NonDefaultAnswersAreWritten(t *testing.T) {
+	f := newInitFixture(t)
+	s := newScript()
+	s.answers = map[string]any{
+		"region": "nyc3", "size": "s-1vcpu-1gb",
+		"template":  "python",
+		"beads":     "off",
+		"tailscale": true,
+	}
+	s.decisions = map[string]any{promptSavePreset: false}
+
+	if err := f.run(t, s); err != nil {
+		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
+	}
+	got := f.values(t, f.project)
+	if got["beads"] != "off" || got["tailscale"] != true {
+		t.Errorf("cloudlab.pkl = %#v, want the chosen beads and tailscale", got)
+	}
+}
+
+// Deleting a line because its value happens to match a default would be
+// the same unasked-for restructuring the flow refuses elsewhere.
+func TestInitFlow_ADeclaredFieldKeepsItsLineAtTheDefault(t *testing.T) {
+	f := newInitFixture(t)
+	f.write(t, f.basePath, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\n")
+	f.write(t, f.project, "template = \"python\"\nbeads = \"off\"\n")
+
+	s := newScript()
+	s.answers = map[string]any{"beads": "session"}
+	s.decisions = map[string]any{
+		promptPersonalAction: personalUse,
+		promptSavePreset:     false,
+	}
+
+	if err := f.run(t, s); err != nil {
+		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
+	}
+	got := f.values(t, f.project)
+	if got["beads"] != "session" {
+		t.Errorf("beads = %v, want the edit written to the line the file already had", got["beads"])
 	}
 }

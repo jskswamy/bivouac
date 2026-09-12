@@ -84,6 +84,51 @@ func derefString(p *string) (any, bool) {
 	return *p, true
 }
 
+// fieldDefaults is the value each field takes when no file declares it,
+// mirroring the defaults in Config.pkl.
+//
+// A copy rather than a lookup, because reading it out of the schema
+// means evaluating pkl, and the callers that need it are deciding
+// whether to write a line. A test loads an empty config through pkl and
+// fails if this table and the schema have drifted apart.
+//
+// The fields absent here -- basePath, region, size, template, sshKeys --
+// are the ones the schema leaves null, so any value for them says
+// something the schema would not.
+var fieldDefaults = map[string]any{
+	FieldArch:      "x86_64",
+	FieldImage:     "ubuntu-24-04-x64",
+	FieldTailscale: false,
+	FieldBeads:     "session",
+	FieldPackages:  []string{},
+	FieldAgents:    []string{},
+	FieldFlakes:    []Flake{},
+}
+
+// IsDefault reports whether value is what field would resolve to anyway,
+// so that writing it would add a line saying nothing.
+//
+// Used to keep a written config to what its author actually chose. An
+// unset listing and an empty one are the same thing here: the schema's
+// default for each is empty, and a caller that collected no entries has
+// nothing to record either way.
+func IsDefault(field string, value any) bool {
+	def, ok := fieldDefaults[field]
+	if !ok {
+		return false
+	}
+	switch d := def.(type) {
+	case []string:
+		v, isList := value.([]string)
+		return isList && len(v) == len(d)
+	case []Flake:
+		v, isList := value.([]Flake)
+		return isList && len(v) == len(d)
+	default:
+		return def == value
+	}
+}
+
 // declarationPattern matches a top-level property declaration: a name
 // followed by `=` for a scalar or `{` for a listing being amended.
 var declarationPattern = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*[={]`)

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -209,4 +210,64 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 	return raw
+}
+
+// The defaults table mirrors Config.pkl. This is the guard that it still
+// does: every field the schema defaults must be in the table with the
+// same value, and no field without one may appear there.
+func TestFieldDefaults_MatchTheSchema(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.pkl")
+	writeFixture(t, path, "")
+
+	cfg, err := loadResolved(context.Background(), path)
+	if err != nil {
+		t.Fatalf("loading an empty config: %v", err)
+	}
+
+	for _, field := range Fields() {
+		value, defaulted := fieldValue(cfg, field)
+		_, inTable := fieldDefaults[field]
+		if defaulted != inTable {
+			t.Errorf("%s: schema defaults it = %v, but the table has it = %v", field, defaulted, inTable)
+			continue
+		}
+		if defaulted && !IsDefault(field, value) {
+			t.Errorf("%s: schema default is %#v, table says otherwise", field, value)
+		}
+	}
+}
+
+func TestIsDefault(t *testing.T) {
+	tests := []struct {
+		field string
+		value any
+		want  bool
+	}{
+		{FieldTailscale, false, true},
+		{FieldTailscale, true, false},
+		{FieldBeads, "session", true},
+		{FieldBeads, "off", false},
+		{FieldArch, "x86_64", true},
+		{FieldArch, "arm64", false},
+		{FieldPackages, []string{}, true},
+		{FieldPackages, []string(nil), true},
+		{FieldPackages, []string{"jq"}, false},
+		{FieldAgents, []string{}, true},
+		{FieldFlakes, []Flake{}, true},
+		{FieldFlakes, []Flake{{Url: "github:foo/bar"}}, false},
+		// No default means nothing to compare against: a value for one
+		// of these always says something the schema would not.
+		{FieldRegion, "", false},
+		{FieldTemplate, "python", false},
+		{FieldSSHKeys, []string{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.field+"/"+fmt.Sprint(tt.value), func(t *testing.T) {
+			if got := IsDefault(tt.field, tt.value); got != tt.want {
+				t.Errorf("IsDefault(%q, %#v) = %v, want %v", tt.field, tt.value, got, tt.want)
+			}
+		})
+	}
 }

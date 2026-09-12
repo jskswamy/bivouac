@@ -222,6 +222,26 @@ means deleting the preset and saving a new one from a run that overrides
 the base. A dedicated question here would be exactly the second question
 set the shared flow exists to prevent.
 
+## Only what was chosen is written
+
+The spec does not say what to do with an answer that matches the
+schema's own default, and the first implementation wrote every answered
+field. That put `tailscale = false` and `beads = "session"` into each new
+file — the two questions whose answer is never blank — and into each new
+preset.
+
+They are now left out. A file restating a default is longer without being
+more precise, and the same reasoning already rejects normalising layout
+on edit: `cloudlab.pkl` should record its author's decisions, not the
+schema's. A field the file already declares keeps its line whatever the
+answer, default included, since removing one would be the restructuring
+that section refuses.
+
+`config.IsDefault` holds the defaults table. It is a copy of Config.pkl's
+defaults rather than a lookup, because reading them out of the schema
+means evaluating pkl on a path that is deciding whether to write a line;
+a test loads an empty config through pkl and fails if the two drift.
+
 ## What the forms taught
 
 Both found by driving the real forms over a pty, neither visible to the
