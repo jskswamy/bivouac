@@ -1,6 +1,9 @@
 package provisioning
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // defaultTemplatesRef is this repo's own templates/ flake, floated on
 // the default branch (not a version tag) — see the Provisioning
@@ -57,4 +60,17 @@ func splitFlakeRef(ref string) (url, name string) {
 		return ref, ""
 	}
 	return ref[:i], ref[i+1:]
+}
+
+// BuiltinTemplates returns the template names ResolveTemplateRef knows
+// how to expand, in a stable order. Exported for the wizard, which has
+// to offer them as choices; anything not in this list is a bring-your-
+// own flake ref the user types in full.
+func BuiltinTemplates() []string {
+	names := make([]string, 0, len(builtinTemplates))
+	for name := range builtinTemplates {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

@@ -39,7 +39,7 @@ func injectSchema(path string, raw []byte) (tmpPath string, cleanup func(), err 
 	// path, so no traversal outside dir is possible regardless of what
 	// path contains.
 	tmpPath = filepath.Join(dir, filepath.Base(path))
-	content := "amends " + quotePklString(schemaPath) + "\n\n" + string(raw)
+	content := "amends " + quote(schemaPath) + "\n\n" + string(raw)
 	// #nosec G703 -- see tmpPath's construction above.
 	if err := os.WriteFile(tmpPath, []byte(content), 0o600); err != nil {
 		cleanup()
@@ -52,11 +52,4 @@ func injectSchema(path string, raw []byte) (tmpPath string, cleanup func(), err 
 // amends declaration.
 func hasAmends(raw []byte) bool {
 	return bytes.HasPrefix(bytes.TrimSpace(raw), []byte("amends"))
-}
-
-// quotePklString renders s as a Pkl double-quoted string literal.
-// Schema and fixture paths are plain filesystem paths with no
-// quotes/backslashes to escape, so a bare wrap is sufficient here.
-func quotePklString(s string) string {
-	return `"` + s + `"`
 }
