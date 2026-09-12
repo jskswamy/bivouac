@@ -28,10 +28,10 @@ func TestExamples_Minimal_LoadsCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(%s) error = %v", path, err)
 	}
-	if cfg.Region == nil || *cfg.Region != "nyc3" {
+	if cfg.Region != "nyc3" {
 		t.Errorf("Region = %v, want nyc3", cfg.Region)
 	}
-	if cfg.Template == nil || *cfg.Template != "python" {
+	if cfg.Template != "python" {
 		t.Errorf("Template = %v, want python", cfg.Template)
 	}
 }
@@ -43,10 +43,10 @@ func TestExamples_WithBase_MergesCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(%s) error = %v", path, err)
 	}
-	if cfg.Region == nil || *cfg.Region != "nyc3" {
+	if cfg.Region != "nyc3" {
 		t.Errorf("Region = %v, want nyc3 (from project)", cfg.Region)
 	}
-	if cfg.Size == nil || *cfg.Size != "s-1vcpu-1gb" {
+	if cfg.Size != "s-1vcpu-1gb" {
 		t.Errorf("Size = %v, want s-1vcpu-1gb (from base)", cfg.Size)
 	}
 	wantPackages := []string{"git", "ripgrep", "jq"}

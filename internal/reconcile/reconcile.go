@@ -47,7 +47,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		return err
 	}
 
-	templateRef := provisioning.ResolveTemplateRef(*cfg.Template, cfg.Arch)
+	templateRef := provisioning.ResolveTemplateRef(cfg.Template, cfg.Arch)
 
 	client, err := Connect(ctx, record.IP, record.User)
 	if err != nil {
@@ -56,9 +56,9 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	defer func() { _ = client.Close() }()
 
 	flakeArg := templateRef
-	if provisioning.NeedsRender(cfg) {
+	if provisioning.NeedsRender(cfg.Config) {
 		provider.ReportProgress(ctx, "shipping per-instance flake")
-		content, err := provisioning.Render(cfg, templateRef)
+		content, err := provisioning.Render(cfg.Config, templateRef)
 		if err != nil {
 			return fmt.Errorf("rendering per-instance flake: %w", err)
 		}

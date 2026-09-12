@@ -13,25 +13,24 @@ import (
 // Validate checks that cfg's template and flakes[] resolve to real,
 // evaluable flake outputs, without building or switching anything.
 // Returns an error naming every problem found, not just the first.
-func Validate(ctx context.Context, cfg config.Config) error {
+func Validate(ctx context.Context, cfg config.Resolved) error {
 	if _, err := tool.Require("nix"); err != nil {
 		return err
 	}
 
 	var problems []string
 
-	if cfg.Template == nil {
-		problems = append(problems, "template: not set")
-	} else {
-		templateRef := ResolveTemplateRef(*cfg.Template, cfg.Arch)
-		url, name := splitFlakeRef(templateRef)
-		attr := "homeConfigurations." + name
-		if NeedsRender(cfg) {
-			attr = "homeManagerModules." + templateModuleName(name, cfg.Arch)
-		}
-		if err := evalExists(ctx, url, attr); err != nil {
-			problems = append(problems, fmt.Sprintf("template %q: %v", *cfg.Template, err))
-		}
+	// No "is the template set" branch: config.Resolved is what Resolve
+	// returns once it has proved that, so the rule is stated once, in
+	// config.validate, rather than restated here in different words.
+	templateRef := ResolveTemplateRef(cfg.Template, cfg.Arch)
+	url, name := splitFlakeRef(templateRef)
+	attr := "homeConfigurations." + name
+	if NeedsRender(cfg.Config) {
+		attr = "homeManagerModules." + templateModuleName(name, cfg.Arch)
+	}
+	if err := evalExists(ctx, url, attr); err != nil {
+		problems = append(problems, fmt.Sprintf("template %q: %v", cfg.Template, err))
 	}
 
 	system := NixSystem(cfg.Arch)

@@ -27,13 +27,13 @@ func TestLoad_SelfContainedProjectFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.Region == nil || *cfg.Region != "nyc3" {
+	if cfg.Region != "nyc3" {
 		t.Errorf("Region = %v, want nyc3", cfg.Region)
 	}
-	if cfg.Size == nil || *cfg.Size != "s-1vcpu-1gb" {
+	if cfg.Size != "s-1vcpu-1gb" {
 		t.Errorf("Size = %v, want s-1vcpu-1gb", cfg.Size)
 	}
-	if cfg.Template == nil || *cfg.Template != "python" {
+	if cfg.Template != "python" {
 		t.Errorf("Template = %v, want python", cfg.Template)
 	}
 }
@@ -65,13 +65,13 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		t.Fatalf("Resolve() error = %v", err)
 	}
 
-	if cfg.Region == nil || *cfg.Region != "nyc3" {
+	if cfg.Region != "nyc3" {
 		t.Errorf("Region = %v, want nyc3 (from base)", cfg.Region)
 	}
-	if cfg.Size == nil || *cfg.Size != "s-2vcpu-4gb" {
+	if cfg.Size != "s-2vcpu-4gb" {
 		t.Errorf("Size = %v, want s-2vcpu-4gb (project overrides base)", cfg.Size)
 	}
-	if cfg.Template == nil || *cfg.Template != "python" {
+	if cfg.Template != "python" {
 		t.Errorf("Template = %v, want python", cfg.Template)
 	}
 
@@ -110,7 +110,7 @@ func TestLoad_MissingBaseFile_ProjectStandalone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.Region == nil || *cfg.Region != "nyc3" {
+	if cfg.Region != "nyc3" {
 		t.Errorf("Region = %v, want nyc3", cfg.Region)
 	}
 }
@@ -189,7 +189,7 @@ func TestLoad_BasePathOverride_PointsAtNonDefaultLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if cfg.Region == nil || *cfg.Region != "sfo3" {
+	if cfg.Region != "sfo3" {
 		t.Errorf("Region = %v, want sfo3 (from custom base)", cfg.Region)
 	}
 }

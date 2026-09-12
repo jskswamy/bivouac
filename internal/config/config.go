@@ -25,36 +25,36 @@ import (
 // the evaluator's package cache at pklCacheDir() rather than pkl-go's
 // hardcoded ~/.pkl/cache default (LoadFromPath exposes no override hook
 // for this).
-func Resolve(ctx context.Context, path string) (Config, error) {
+func Resolve(ctx context.Context, path string) (Resolved, error) {
 	if _, err := tool.Require("pkl"); err != nil {
-		return Config{}, err
+		return Resolved{}, err
 	}
 
 	project, err := loadResolved(ctx, path)
 	if err != nil {
-		return Config{}, err
+		return Resolved{}, err
 	}
 
 	basePath, err := resolveBasePath(path, project.BasePath)
 	if err != nil {
-		return Config{}, fmt.Errorf("resolving base config path: %w", err)
+		return Resolved{}, fmt.Errorf("resolving base config path: %w", err)
 	}
 
 	merged := project
 	if _, statErr := os.Stat(basePath); statErr == nil {
 		base, err := loadResolved(ctx, basePath)
 		if err != nil {
-			return Config{}, err
+			return Resolved{}, err
 		}
 		merged = mergeConfig(base, project)
 	} else if !os.IsNotExist(statErr) {
-		return Config{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
+		return Resolved{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
 	}
 
 	if err := validate(merged); err != nil {
-		return Config{}, err
+		return Resolved{}, err
 	}
-	return merged, nil
+	return resolved(merged), nil
 }
 
 // loadResolved reads path's raw content, injects cloudlab's own
