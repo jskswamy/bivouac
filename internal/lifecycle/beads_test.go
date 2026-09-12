@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
@@ -56,7 +57,7 @@ func TestSeedBeads_IsSilentWhenTheModeIsOff(t *testing.T) {
 
 	// A nil client would panic if anything downstream ran; "off" must return
 	// before touching it.
-	seedBeads(ctx, nil, localRepo, "/home/u/sessions/s/repo", "u", "h", "s", "off")
+	seedBeads(ctx, nil, localRepo, "/home/u/sessions/s/repo", "u", "h", "s", config.BeadsOff)
 
 	if errOut.Len() != 0 {
 		t.Errorf("errOut = %q, want silence — \"off\" is a choice, not a problem", errOut.String())
@@ -69,7 +70,7 @@ func TestSeedBeads_IsSilentWhenTheRepoHasNoBeads(t *testing.T) {
 
 	// t.TempDir() has no .beads/, which is the overwhelmingly common case:
 	// the default mode must be completely inert there, not merely harmless.
-	seedBeads(ctx, nil, t.TempDir(), "/home/u/sessions/s/repo", "u", "h", "s", "session")
+	seedBeads(ctx, nil, t.TempDir(), "/home/u/sessions/s/repo", "u", "h", "s", config.BeadsSession)
 
 	if errOut.Len() != 0 {
 		t.Errorf("errOut = %q, want silence for a repository with no beads", errOut.String())
@@ -372,7 +373,7 @@ func TestWarnDolthubWithoutExternalRemote_WarnsWhenTheRepositoryIsNotExternal(t 
 			var out, errOut bytes.Buffer
 			ctx := provider.WithOutput(context.Background(), &out, &errOut)
 
-			warnDolthubWithoutExternalRemote(ctx, "dolthub", beads.Detection{Mode: mode})
+			warnDolthubWithoutExternalRemote(ctx, config.BeadsDolthub, beads.Detection{Mode: mode})
 
 			if !strings.Contains(errOut.String(), "dolthub") {
 				t.Errorf("errOut = %q, want it to name dolthub mode", errOut.String())
@@ -388,11 +389,11 @@ func TestWarnDolthubWithoutExternalRemote_WarnsWhenTheRepositoryIsNotExternal(t 
 func TestWarnDolthubWithoutExternalRemote_SilentWhenModeMatchesTheRequest(t *testing.T) {
 	tests := []struct {
 		name      string
-		beadsMode string
+		beadsMode config.BeadsMode
 		detected  beads.Detection
 	}{
-		{"session mode never checks the repository's sync target", "session", beads.Detection{Mode: beads.ModeGit}},
-		{"dolthub mode with an external remote to reuse", "dolthub", beads.Detection{Mode: beads.ModeExternal, ExternalURL: "https://doltremoteapi.dolthub.com/x/y"}},
+		{"session mode never checks the repository's sync target", config.BeadsSession, beads.Detection{Mode: beads.ModeGit}},
+		{"dolthub mode with an external remote to reuse", config.BeadsDolthub, beads.Detection{Mode: beads.ModeExternal, ExternalURL: "https://doltremoteapi.dolthub.com/x/y"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

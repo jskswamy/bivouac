@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/spf13/cobra"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/spf13/cobra"
 )
 
 // sessionTestStore isolates state and returns a store holding record.
@@ -844,7 +845,7 @@ func TestBeadsModeFor_WarnsAndFallsBackWhenTheConfigWillNotResolve(t *testing.T)
 	// unreadable config produces.
 	root := t.TempDir()
 
-	if got := beadsModeFor(ctx, root); got != "session" {
+	if got := beadsModeFor(ctx, root); got != config.BeadsSession {
 		t.Errorf("beadsModeFor() = %q, want the documented fallback %q", got, "session")
 	}
 	if errOut.Len() == 0 {
@@ -870,7 +871,7 @@ func TestBeadsModeFor_SilentWhenTheConfigResolves(t *testing.T) {
 	// No base file at the XDG default location for this test's HOME.
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "no-such-config"))
 
-	if got := beadsModeFor(ctx, root); got != "off" {
+	if got := beadsModeFor(ctx, root); got != config.BeadsOff {
 		t.Errorf("beadsModeFor() = %q, want %q from the resolved config", got, "off")
 	}
 	if errOut.Len() != 0 {

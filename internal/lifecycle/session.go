@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
@@ -33,7 +34,7 @@ func runLocalGit(ctx context.Context, localRepo string, args ...string) (string,
 // Every step is retry-safe, because a start that fails partway through --
 // most easily at the push or fetch, the first real network operations -- must
 // be fixable by running the same command again.
-func StartSession(ctx context.Context, ip, user, localRepo, repoName, session, beadsMode string) error {
+func StartSession(ctx context.Context, ip, user, localRepo, repoName, session string, beadsMode config.BeadsMode) error {
 	if err := CheckSessionName(session); err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func StartSession(ctx context.Context, ip, user, localRepo, repoName, session, b
 // HEAD on an unborn branch, so the pushed branch is not the checked-out one
 // and the push is legal; the checkout afterwards gives the agent its files.
 // Reversing those two steps makes every seed fail.
-func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, host, session, beadsMode string) error {
+func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, host, session string, beadsMode config.BeadsMode) error {
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
 		return err

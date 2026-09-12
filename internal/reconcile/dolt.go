@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
@@ -101,8 +102,8 @@ func doltPrepareScript(doltDir string) string {
 // one with no beads database at all -- or a git-mode one -- gets nothing that
 // could ever use the credential. Placing it anyway would pay the account-wide
 // cost the spec's Costs section describes for zero benefit, silently.
-func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoot string) {
-	if beadsMode != "dolthub" {
+func placeDoltCredential(ctx context.Context, client *Client, beadsMode config.BeadsMode, repoRoot string) {
+	if beadsMode != config.BeadsDolthub {
 		return
 	}
 	detected, err := beads.Detect(ctx, repoRoot)
