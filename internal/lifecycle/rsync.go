@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // minRsyncVersion is the floor the flags below require: --mkpath landed
@@ -93,10 +94,11 @@ func atoiOr(s string, fallback int) int {
 // ".gocache/"), not descended into. Returns nil if local isn't a git
 // repository or git itself is unavailable: callers then sync
 // everything, same as if this didn't exist.
-func gitIgnoredExcludes(local string) []string {
-	// #nosec G204 -- argv-array exec.Command, no shell; local is the
-	// user's own path arg, never attacker-controlled.
-	out, err := exec.Command("git", "-C", local, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory").Output()
+func gitIgnoredExcludes(ctx context.Context, local string) []string {
+	// Stdout only: these become rsync --exclude patterns, so a git warning
+	// on stderr must not end up among them. local is the user's own path
+	// arg, never attacker-controlled.
+	out, err := tool.Run(ctx, local, "git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
 	if err != nil {
 		return nil
 	}
@@ -143,7 +145,7 @@ func Push(ctx context.Context, ip, user, local, remote string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, user/local/remote are local identifiers/path
 	// args, none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, user, local, remote, gitIgnoredExcludes(local))...)
+	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, user, local, remote, gitIgnoredExcludes(ctx, local))...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)

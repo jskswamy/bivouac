@@ -17,16 +17,17 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // Available reports whether bd is on this machine's PATH. Callers use it to
 // skip rather than to fail: a Mac without beads installed is a supported
 // configuration, it just gets a session with no issue tracker.
 func Available() bool {
-	_, err := exec.LookPath("bd")
+	_, err := tool.Require("bd")
 	return err == nil
 }
 
@@ -76,10 +77,8 @@ func Present(repo string) bool {
 // stderr, and every caller here puts that text into the warning or error it
 // surfaces.
 func run(ctx context.Context, repo string, args ...string) (string, error) {
-	// #nosec G204 -- argv-array exec.Command, no shell; repo is the user's
-	// own repository path and args are built by this package.
-	cmd := exec.CommandContext(ctx, "bd", args...)
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	// repo is the user's own repository path and args are built by this
+	// package. An empty repo means "wherever we are", which is what Version
+	// wants -- `bd version` answers regardless of directory.
+	return tool.RunCombined(ctx, repo, "bd", args...)
 }

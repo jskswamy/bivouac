@@ -106,7 +106,7 @@ func TestGitIgnoredExcludes_ListsIgnoredPathsAsDirectories(t *testing.T) {
 	write("ignored.txt", "drop me")
 	write(".gocache/nested/deep.bin", "drop me too")
 
-	got := gitIgnoredExcludes(dir)
+	got := gitIgnoredExcludes(context.Background(), dir)
 
 	want := map[string]bool{"ignored.txt": true, ".gocache/": true}
 	if len(got) != len(want) {
@@ -120,7 +120,7 @@ func TestGitIgnoredExcludes_ListsIgnoredPathsAsDirectories(t *testing.T) {
 }
 
 func TestGitIgnoredExcludes_NonGitDir_ReturnsNil(t *testing.T) {
-	if got := gitIgnoredExcludes(t.TempDir()); got != nil {
+	if got := gitIgnoredExcludes(context.Background(), t.TempDir()); got != nil {
 		t.Errorf("gitIgnoredExcludes() on a non-git dir = %v, want nil", got)
 	}
 }
@@ -156,7 +156,7 @@ func TestPush_RespectsGitignoreAndExcludesGitDir(t *testing.T) {
 	// -e ssh/the remote target, same pattern as
 	// TestRsync_CopiesFilesBetweenLocalDirs -- to prove the exclusion
 	// actually works end to end, not just that the argv contains flags.
-	full := rsyncPushArgs("unused", "unused", src, "unused", gitIgnoredExcludes(src))
+	full := rsyncPushArgs("unused", "unused", src, "unused", gitIgnoredExcludes(context.Background(), src))
 	flags := full[:len(full)-4] // drop the trailing "-e", "ssh", <src>, <remote dst>
 	args := append(append([]string{}, flags...), src+"/", dst+"/")
 	cmd := exec.CommandContext(context.Background(), "rsync", args...)
