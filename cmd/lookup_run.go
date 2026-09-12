@@ -218,7 +218,7 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 	repoFlag, _ := cmd.Flags().GetString("repo")
-	root, err := identity.RepoRoot(cwd, repoFlag)
+	root, err := identity.RepoRoot(ctx, cwd, repoFlag)
 	if err != nil {
 		return err
 	}
