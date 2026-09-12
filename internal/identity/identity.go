@@ -104,3 +104,29 @@ func InstanceName(ctx context.Context, cwd, repoFlag, positional, nameFlag strin
 	}
 	return DeriveName(ctx, root)
 }
+
+// InstanceIdentity resolves both the repository root and the instance name,
+// for the commands that need the repository itself -- up and provision read
+// cloudlab.pkl out of it.
+//
+// Not a widening of InstanceName, and the difference is the point: this
+// resolves the root FIRST and returns that error even when a positional name
+// or --name was given, because a named instance still has no cloudlab.pkl
+// outside a repository. InstanceName is for the lookup commands, which only
+// need a key into state and succeed with no repository at all.
+func InstanceIdentity(ctx context.Context, cwd, repoFlag, positional, nameFlag string) (root, name string, err error) {
+	root, err = RepoRoot(ctx, cwd, repoFlag)
+	if err != nil {
+		return "", "", err
+	}
+	name = nameFlag
+	if positional != "" {
+		name = positional
+	}
+	if name == "" {
+		if name, err = DeriveName(ctx, root); err != nil {
+			return "", "", err
+		}
+	}
+	return root, name, nil
+}

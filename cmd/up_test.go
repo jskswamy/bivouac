@@ -156,3 +156,37 @@ func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 		t.Errorf("error = %q, want it to name instance %q, not the derived repo name", err.Error(), "somename")
 	}
 }
+
+// up and provision need the repository root regardless of how the instance
+// name was resolved -- cloudlab.pkl lives in it, and lifecycle.Up takes it.
+// So unlike identity.InstanceName, which returns a positional name without
+// ever looking for a repository, these two must still fail outside one even
+// when the name was given explicitly.
+//
+// Nothing pinned this: the existing not-in-repo tests pass no positional
+// argument, so they would keep passing against a version that short-circuits
+// on the name and then dereferences a root it never resolved.
+func TestUpCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
+	for _, args := range [][]string{
+		{"up", "somename"},
+		{"up", "--name", "somename"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			chdir(t, t.TempDir())
+
+			root := newRootCmd()
+			root.SetArgs(args)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("expected an error: cloudlab.pkl cannot be found without a repository root")
+			}
+			if !strings.Contains(err.Error(), "use --repo") {
+				t.Errorf("error = %q, want mention of --repo", err.Error())
+			}
+		})
+	}
+}

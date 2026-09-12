@@ -14,6 +14,13 @@ import (
 // needing a real TTY.
 var isTerminal = func() bool { return term.IsTerminal(os.Stdout.Fd()) }
 
+// ProgressPrefix marks a line as a progress update rather than a tool's own
+// output. One definition because there is one convention: the cobra commands
+// print it ahead of provider.ReportProgress text, and Run below emits it
+// through the model instead, but a reader watching the terminal should not
+// be able to tell which of the two produced a given line.
+const ProgressPrefix = "\u2192 "
+
 // Run calls fn, rendering whatever it writes to provider.Output's
 // writers (see provider.WithOutput) inside a collapsible viewport
 // under label: expanded while fn runs, collapsed to a single
@@ -39,7 +46,7 @@ func Run(ctx context.Context, label string, fn func(context.Context) error) erro
 	// through the same outputMsg channel as Output reuses the model's
 	// existing line-accumulation/CR-handling instead of a second path.
 	ctx = provider.WithProgress(ctx, func(status string) {
-		p.Send(outputMsg("→ " + status + "\n"))
+		p.Send(outputMsg(ProgressPrefix + status + "\n"))
 	})
 
 	progDone := make(chan error, 1)
