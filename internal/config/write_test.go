@@ -1,0 +1,168 @@
+package config
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestRender_FieldsFollowSchemaOrder(t *testing.T) {
+	// Deliberately built in an order unrelated to the schema's: the
+	// renderer's job is to impose Config.pkl's order, not the caller's.
+	got, err := Render(Values{
+		"packages":  []string{"ripgrep", "jq"},
+		"template":  "python",
+		"region":    "nyc3",
+		"tailscale": true,
+		"size":      "s-1vcpu-1gb",
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	want := strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`tailscale = true`,
+		`packages {`,
+		`  "ripgrep"`,
+		`  "jq"`,
+		`}`,
+		``,
+	}, "\n")
+	if got != want {
+		t.Errorf("Render() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRender_EmptyListingStaysOnOneLine(t *testing.T) {
+	got, err := Render(Values{"agents": []string{}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if got != "agents {}\n" {
+		t.Errorf("Render() = %q, want %q", got, "agents {}\n")
+	}
+}
+
+func TestRender_NoFieldsIsEmpty(t *testing.T) {
+	got, err := Render(Values{})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if got != "" {
+		t.Errorf("Render() = %q, want empty", got)
+	}
+}
+
+func TestRender_Flakes(t *testing.T) {
+	got, err := Render(Values{"flakes": []Flake{
+		{Url: "github:nix-community/fenix", Packages: []string{"default"}, Modules: true},
+		{Url: "github:foo/bar", Packages: []string{}},
+	}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	want := strings.Join([]string{
+		`flakes {`,
+		`  new Flake {`,
+		`    url = "github:nix-community/fenix"`,
+		`    packages {`,
+		`      "default"`,
+		`    }`,
+		`    modules = true`,
+		`  }`,
+		`  new Flake {`,
+		`    url = "github:foo/bar"`,
+		`    packages {}`,
+		`    modules = false`,
+		`  }`,
+		`}`,
+		``,
+	}, "\n")
+	if got != want {
+		t.Errorf("Render() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRender_EscapesStrings(t *testing.T) {
+	// `\(` opens interpolation in pkl, so a lone backslash in a value
+	// would otherwise turn the rest of the string into an expression.
+	got, err := Render(Values{"region": `a"b\c`})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if got != `region = "a\"b\\c"`+"\n" {
+		t.Errorf("Render() = %q", got)
+	}
+}
+
+func TestRender_RejectsUnknownField(t *testing.T) {
+	if _, err := Render(Values{"nope": "x"}); err == nil {
+		t.Fatal("Render() error = nil, want an error naming the unknown field")
+	}
+}
+
+func TestRender_RejectsWrongType(t *testing.T) {
+	if _, err := Render(Values{"region": 42}); err == nil {
+		t.Fatal("Render() error = nil, want an error for a non-string region")
+	}
+	if _, err := Render(Values{"tailscale": "yes"}); err == nil {
+		t.Fatal("Render() error = nil, want an error for a non-bool tailscale")
+	}
+}
+
+// The round trip the spec requires: anything Render emits must come back
+// through Resolve. A wizard that writes pkl which will not parse is worse
+// than no wizard, and this is the only check that proves it did not.
+func TestRender_RoundTripsThroughResolve(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	values := Values{
+		"region":    "nyc3",
+		"size":      "s-2vcpu-4gb",
+		"template":  "python",
+		"arch":      "arm64",
+		"image":     "ubuntu-24-04-x64",
+		"tailscale": true,
+		"beads":     "dolthub",
+		"sshKeys":   []string{"AAAA...fingerprint"},
+		"packages":  []string{"ripgrep", "jq"},
+		"agents":    []string{"claude", "codex"},
+		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: true}},
+	}
+
+	rendered, err := Render(values)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	path := filepath.Join(dir, "cloudlab.pkl")
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		t.Fatalf("writing rendered config: %v", err)
+	}
+
+	cfg, err := Resolve(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v\nrendered:\n%s", err, rendered)
+	}
+	if cfg.Region != "nyc3" {
+		t.Errorf("Region = %v, want nyc3", cfg.Region)
+	}
+	if cfg.Arch != "arm64" {
+		t.Errorf("Arch = %q, want arm64", cfg.Arch)
+	}
+	if cfg.Beads != "dolthub" {
+		t.Errorf("Beads = %q, want dolthub", cfg.Beads)
+	}
+	if !equalStrings(cfg.Agents, []string{"claude", "codex"}) {
+		t.Errorf("Agents = %v, want [claude codex]", cfg.Agents)
+	}
+	if len(cfg.Flakes) != 1 || cfg.Flakes[0].Url != "github:foo/bar" || !cfg.Flakes[0].Modules {
+		t.Errorf("Flakes = %+v", cfg.Flakes)
+	}
+}

@@ -22,7 +22,7 @@ func schemaPath(t *testing.T) string {
 func TestLoadFromPath_MinimalFixture(t *testing.T) {
 	dir := t.TempDir()
 	fixture := filepath.Join(dir, "cloudlab.pkl")
-	content := "amends " + quotePklString(schemaPath(t)) + "\n\n" +
+	content := "amends " + quote(schemaPath(t)) + "\n\n" +
 		"region = \"nyc3\"\n" +
 		"packages {\n  \"ripgrep\"\n}\n"
 	if err := os.WriteFile(fixture, []byte(content), 0o644); err != nil {

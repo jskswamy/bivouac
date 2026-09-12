@@ -180,7 +180,7 @@ func TestLoad_BasePathOverride_PointsAtNonDefaultLocation(t *testing.T) {
 
 	project := filepath.Join(dir, "cloudlab.pkl")
 	writeFixture(t, project, strings.Join([]string{
-		`basePath = ` + quotePklString(custom),
+		`basePath = ` + quote(custom),
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
 	}, "\n")+"\n")
