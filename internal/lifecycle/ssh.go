@@ -13,8 +13,8 @@ import (
 // interactive session as user on ip's default port. When dir is
 // non-empty, forces PTY allocation (-t) and runs a remote command
 // that cds into dir before handing off to an interactive login shell
-// -- the same outer "bash -lc <quoted-inner>" shape tmux.go already
-// established, so profile scripts (and PATH) are set up the same way.
+// -- the same shellcmd.LoginShell wrapper tmuxArgs uses, so profile
+// scripts (and PATH) are set up the same way.
 // dir is shell-quoted via shellcmd.Quote since ssh concatenates
 // the trailing argv into one string the remote shell parses. An empty
 // dir returns today's plain form: no remote command, ssh's own
