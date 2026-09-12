@@ -95,19 +95,40 @@ func doltPrepareScript(doltDir string) string {
 // get is a broken instance; beads sharing has a working fallback that needs
 // no credential at all.
 //
-// repoRoot is the local repository cloudlab.pkl lives beside. Skipped
-// entirely when it has no beads database: seedBeads only ever wires the
-// instance-side "dolthub" remote when the repository is already in
-// ModeExternal, so a repository with beads = "dolthub" but no .beads/ at all
-// -- or a git-mode one -- gets nothing that could ever use the credential.
-// Placing it anyway would pay the account-wide cost the spec's Costs section
-// describes for zero benefit, silently.
+// repoRoot is the local repository cloudlab.pkl lives beside. Skipped unless
+// that repository is itself in ModeExternal: seedBeads only ever wires the
+// instance-side "dolthub" remote from a repository already in that mode, so
+// one with no beads database at all -- or a git-mode one -- gets nothing that
+// could ever use the credential. Placing it anyway would pay the account-wide
+// cost the spec's Costs section describes for zero benefit, silently.
 func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoot string) {
 	if beadsMode != "dolthub" {
 		return
 	}
-	if !beads.Present(repoRoot) {
-		provider.ReportWarning(ctx, "beads: "+repoRoot+" has no beads database; skipping the DoltHub credential since nothing on the instance can use it")
+	detected, err := beads.Detect(ctx, repoRoot)
+	if err != nil {
+		provider.ReportWarning(ctx, "beads: could not read "+repoRoot+"'s dolt remotes ("+err.Error()+"); issues will sync over the session remote only")
+		return
+	}
+	placeDoltCredentialFor(ctx, client, detected, repoRoot)
+}
+
+// placeDoltCredentialFor is placeDoltCredential once the repository's sync
+// mode is known.
+//
+// Split out for the same reason bootstrapBeads is split out of seedBeads: the
+// decision is then a pure function of a Detection, so every mode can be
+// exercised without bd installed and without a real dolt repository to point
+// it at. Detect's own result is what varies in production; what to do with it
+// is what this codebase needs pinned.
+func placeDoltCredentialFor(ctx context.Context, client *Client, detected beads.Detection, repoRoot string) {
+	// ModeExternal specifically, not "has a .beads/ directory". A git-mode
+	// repository has one too, and seedBeads wires the instance-side "dolthub"
+	// remote only from a repository already in ModeExternal -- so for any
+	// other mode the instance gets a credential nothing there can use.
+	if detected.Mode != beads.ModeExternal {
+		provider.ReportWarning(ctx, "beads: "+repoRoot+" has no external dolt remote (mode: "+detected.Mode.String()+
+			"); skipping the DoltHub credential since nothing on the instance can use it")
 		return
 	}
 
