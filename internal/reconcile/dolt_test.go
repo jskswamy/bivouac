@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
@@ -50,7 +51,10 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 	// secrets init" case.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	placeDoltCredential(ctx, nil, "dolthub", beadsRepoRoot(t))
+	// Entered past the mode gate, since this is about what happens after it.
+	// Going through placeDoltCredential instead would make the test depend on
+	// bd being installed and on a real dolt remote list.
+	placeDoltCredentialFor(ctx, nil, beads.Detection{Mode: beads.ModeExternal}, beadsRepoRoot(t))
 
 	got := errOut.String()
 	if !strings.Contains(got, "dolthub_creds") {
@@ -61,25 +65,64 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 	}
 }
 
-// The headline regression this fix closes: "dolthub" mode shipped the
-// account-wide credential even to a repository with no beads database at
-// all -- nothing there could ever use it, so the only effect was paying the
-// cost the spec's Costs section describes for zero benefit.
-func TestPlaceDoltCredential_SkipsWhenTheRepositoryHasNoBeadsDatabase(t *testing.T) {
+// The headline regression this fix closes. The gate used to be "does
+// .beads/ exist", which a git-mode repository passes -- so `up` shipped the
+// account-wide DoltHub keypair to an instance where seedBeads had wired only
+// a session git remote, and nothing could ever use it. That is precisely the
+// silent, zero-benefit cost placeDoltCredentialFor's comment says is being
+// avoided.
+//
+// The modes are exhaustive on purpose: only ModeExternal gets a credential,
+// so every other mode present and future has to be added here deliberately.
+func TestPlaceDoltCredentialFor_SkipsEveryModeThatCannotUseTheCredential(t *testing.T) {
+	for _, mode := range []beads.Mode{beads.ModeAbsent, beads.ModeUnsynced, beads.ModeGit} {
+		t.Run(mode.String(), func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			ctx := provider.WithOutput(context.Background(), &out, &errOut)
+			// Not because this test needs a secrets file, but so that a
+			// regression here fails on a missing one instead of reaching the
+			// developer's real credential and prompting for a YubiKey touch.
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+			// A nil client would panic if this got as far as touching it --
+			// the mode check must come before any secret is even looked up,
+			// let alone any instance command run.
+			placeDoltCredentialFor(ctx, nil, beads.Detection{Mode: mode}, beadsRepoRoot(t))
+
+			got := errOut.String()
+			if !strings.Contains(got, "no external dolt remote") {
+				t.Errorf("errOut = %q, want it to explain there is no external remote to use the credential", got)
+			}
+			if !strings.Contains(got, mode.String()) {
+				t.Errorf("errOut = %q, want it to name the mode it found (%s)", got, mode)
+			}
+			if strings.Contains(got, "dolthub_creds") {
+				t.Errorf("errOut = %q, want it to skip before ever looking at the secret", got)
+			}
+		})
+	}
+}
+
+// The other half of the contract: a repository that really is synced against
+// DoltHub still gets its credential. Proven by how far it gets -- reaching
+// the secrets lookup means the gate let it through, and with an empty
+// XDG_CONFIG_HOME that lookup is where it stops without needing an instance.
+func TestPlaceDoltCredentialFor_ProceedsForAnExternalRepository(t *testing.T) {
 	var out, errOut bytes.Buffer
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	// A nil client would panic if placeDoltCredential got as far as touching
-	// it -- the repository check must come before any secret is even looked
-	// up, let alone any instance command run.
-	placeDoltCredential(ctx, nil, "dolthub", t.TempDir())
+	placeDoltCredentialFor(ctx, nil, beads.Detection{
+		Mode:        beads.ModeExternal,
+		ExternalURL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab",
+	}, beadsRepoRoot(t))
 
 	got := errOut.String()
-	if !strings.Contains(got, "has no beads database") {
-		t.Errorf("errOut = %q, want it to explain the repository has no beads database", got)
+	if strings.Contains(got, "no external dolt remote") {
+		t.Fatalf("errOut = %q, want an external repository to get past the mode check", got)
 	}
-	if strings.Contains(got, "dolthub_creds") {
-		t.Errorf("errOut = %q, want it to skip before ever looking at the secret", got)
+	if !strings.Contains(got, "dolthub_creds") {
+		t.Errorf("errOut = %q, want it to have reached the secrets lookup", got)
 	}
 }
 
