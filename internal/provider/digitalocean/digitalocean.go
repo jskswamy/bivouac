@@ -102,8 +102,7 @@ func (p *Provider) List(ctx context.Context) ([]provider.VM, error) {
 }
 
 // paginate loops through every page of a godo list call, appending each
-// page's results to acc. Shared by List and, later, the discovery
-// methods (ListRegions/ListSizes/ListImages).
+// page's results to acc.
 func paginate[T any](acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Response, error)) error {
 	opt := &godo.ListOptions{}
 	for {
