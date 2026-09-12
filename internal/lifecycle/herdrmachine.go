@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 )
 
@@ -57,16 +58,27 @@ func findMachine(profiles []machineProfile, target, session string) (machineProf
 	return machineProfile{}, false
 }
 
-// MachineLabel is what the machine is called in herdr's sidebar.
+// MachineLabel is what the machine is called in herdr's sidebar: the bare
+// session name.
 //
-// Qualified by instance because session names are only unique within one:
-// two instances can each hold a session called "auth", and the label is the
-// only thing distinguishing them to someone scanning the sidebar.
-func MachineLabel(instance, session string) string {
-	if session == "" {
-		return instance
-	}
-	return instance + "/" + session
+// The session is what the user thinks in, and the sidebar is narrow. An
+// earlier scheme qualified every label with the instance and truncated to
+// "jskswamy-cloudlab/su...", cutting the only part that says which session
+// it is -- the disambiguator survived and the name did not.
+//
+// Cosmetic only. Identity is the recorded machine id, and matching is on
+// target and session, so this can change again without touching cleanup.
+func MachineLabel(session string) string {
+	return session
+}
+
+// qualifiedMachineLabel disambiguates two instances that both hold a session
+// of this name.
+//
+// A suffix, not a prefix, for the reason above: when it truncates, the
+// instance is what gets cut and the session name survives.
+func qualifiedMachineLabel(instance, session string) string {
+	return session + " (" + instance + ")"
 }
 
 // machineListArgs reads the saved machines. --json because the human format
@@ -99,6 +111,10 @@ func machineEnableArgs(id string) []string {
 
 func machineRemoveArgs(id string) []string {
 	return []string{"machine", "remove", id}
+}
+
+func machineRenameArgs(id, label string) []string {
+	return []string{"machine", "rename", id, "--label", label}
 }
 
 // herdrWorkspace is one entry from `herdr workspace list` on an instance.
@@ -191,68 +207,125 @@ type herdrRunner interface {
 	Run(args ...string) (output string, err error)
 }
 
+// ownedMachines maps a herdr profile id to the cloudlab instance that
+// registered it, built from what cloudlab recorded in its own state.
+//
+// It exists so cloudlab can tell its own profiles from ones added by hand.
+// herdr stores no owner field, so this is the only honest answer to "did we
+// make this?" -- and it decides both what may be renamed and what may be
+// removed.
+type OwnedMachines map[string]string
+
 // EnsureMachine makes the instance's session present and enabled in the
-// user's herdr sidebar, and returns the label it goes by there.
+// user's herdr sidebar, returning the profile id and the label it goes by.
+//
+// The id is what matters. Teardown removes exactly it, so it is returned on
+// every path -- including the two where nothing was created. A session
+// attached before cloudlab recorded ids would otherwise never get one and
+// would leak when it was retired.
 //
 // Lists first, always. `herdr machine add` does not deduplicate, so running
-// this twice would otherwise leave two profiles addressing one session, and
-// nothing downstream could tell which to remove later.
+// this twice would otherwise leave two profiles addressing one session.
 //
 // A disabled profile is enabled rather than re-added: adding would create a
 // second profile and strand the first, still disabled, under the same label.
-func EnsureMachine(h herdrRunner, instance, target, session string) (string, error) {
-	label := MachineLabel(instance, session)
-
-	out, err := h.Run(machineListArgs()...)
+func EnsureMachine(h herdrRunner, instance, target, session string, owned OwnedMachines) (string, string, error) {
+	profiles, err := listMachines(h)
 	if err != nil {
-		return "", fmt.Errorf("listing herdr machines: %w\n%s", err, out)
-	}
-	profiles, err := parseMachineList(out)
-	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	existing, found := findMachine(profiles, target, session)
-	switch {
-	case !found:
-		if out, err := h.Run(machineAddArgs(target, label, session)...); err != nil {
-			return "", fmt.Errorf("saving herdr machine %s: %w\n%s", label, err, out)
+	if existing, found := findMachine(profiles, target, session); found {
+		if !existing.Enabled {
+			if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
+				return "", "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
+			}
 		}
-	case !existing.Enabled:
-		if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
-			return "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
-		}
-		label = existing.Label
-	default:
-		// Present and enabled. Its label is whatever the user last called
-		// it, which is what they will be looking for in the sidebar.
-		label = existing.Label
+		// Keep whatever the user last called it: that is what they will be
+		// looking for in the sidebar.
+		return existing.ID, existing.Label, nil
 	}
-	return label, nil
+
+	label := resolveLabel(h, profiles, owned, instance, session)
+	if out, err := h.Run(machineAddArgs(target, label, session)...); err != nil {
+		return "", "", fmt.Errorf("saving herdr machine %s: %w\n%s", label, err, out)
+	}
+
+	// Read the id back from the listing rather than scraping it out of the
+	// add output: one shape to know instead of two, and the listing is
+	// authoritative either way.
+	profiles, err = listMachines(h)
+	if err != nil {
+		return "", label, err
+	}
+	created, found := findMachine(profiles, target, session)
+	if !found {
+		return "", label, fmt.Errorf("saved herdr machine %s but it is not in the listing", label)
+	}
+	return created.ID, created.Label, nil
 }
 
-// RemoveMachine forgets the profile addressing this session, so profiles do
-// not outlive the sessions they point at.
+// resolveLabel picks the sidebar name, qualifying both sides when another
+// session already holds the bare one.
 //
-// Silent when there is nothing to remove. Teardown runs this on paths that
-// may never have registered anything, and the user can delete a profile from
-// the sidebar themselves -- neither is a reason to fail a merge or a delete
-// that has already done its real work.
-func RemoveMachine(h herdrRunner, target, session string) error {
+// Symmetric on purpose: if only the newcomer were qualified, a bare name
+// would silently mean whichever session was registered first. Renaming is
+// limited to profiles cloudlab recorded -- one the user added by hand keeps
+// its name even when it is the thing in the way, because it is not
+// cloudlab's to rename.
+//
+// Best-effort on the rename: a label that will not change is cosmetic, and
+// no reason to refuse the attach the user asked for.
+func resolveLabel(h herdrRunner, profiles []machineProfile, owned OwnedMachines, instance, session string) string {
+	bare := MachineLabel(session)
+	clash, found := findMachineByLabel(profiles, bare)
+	if !found {
+		return bare
+	}
+	if ownerInstance, ours := owned[clash.ID]; ours {
+		_, _ = h.Run(machineRenameArgs(clash.ID, qualifiedMachineLabel(ownerInstance, clash.Session))...)
+	}
+	return qualifiedMachineLabel(instance, session)
+}
+
+func listMachines(h herdrRunner) ([]machineProfile, error) {
 	out, err := h.Run(machineListArgs()...)
 	if err != nil {
-		return fmt.Errorf("listing herdr machines: %w\n%s", err, out)
+		return nil, fmt.Errorf("listing herdr machines: %w\n%s", err, out)
 	}
-	profiles, err := parseMachineList(out)
-	if err != nil {
-		return err
+	return parseMachineList(out)
+}
+
+func findMachineByLabel(profiles []machineProfile, label string) (machineProfile, bool) {
+	for _, p := range profiles {
+		if p.Label == label {
+			return p, true
+		}
 	}
-	existing, found := findMachine(profiles, target, session)
-	if !found {
+	return machineProfile{}, false
+}
+
+// RemoveMachine forgets the profile cloudlab registered for a session.
+//
+// By recorded id, never by matching. herdr profiles carry no owner field, so
+// a label or target match would let teardown delete a profile the user added
+// themselves -- and a rename in the sidebar would hide cloudlab's own. The
+// id cloudlab wrote down at attach time is the only thing that says "this
+// one is mine".
+//
+// An empty id means cloudlab never attached this session, and then teardown
+// does nothing at all: it does not even list, because there is nothing it
+// would be entitled to act on.
+//
+// Silent when the profile is already gone -- the user can remove one from
+// the sidebar, and that is not a reason to fail a merge that has already
+// landed their work.
+func RemoveMachine(h herdrRunner, id string) error {
+	if id == "" {
 		return nil
 	}
-	if out, err := h.Run(machineRemoveArgs(existing.ID)...); err != nil {
-		return fmt.Errorf("removing herdr machine %s: %w\n%s", existing.Label, err, out)
+	if out, err := h.Run(machineRemoveArgs(id)...); err != nil {
+		return fmt.Errorf("removing herdr machine %s: %w\n%s", id, err, out)
 	}
 	return nil
 }
@@ -373,45 +446,108 @@ func (l localHerdr) Run(args ...string) (string, error) {
 }
 
 // AttachMachine puts a session in the herdr window the user is already
-// looking at, and returns the sidebar entry to pick.
+// looking at, and returns the profile id and the sidebar entry to pick.
 //
 // Three steps, in this order. The machine has to exist and be enabled before
 // its server can be addressed; the workspace has to exist before it can be
 // focused; and focusing is last because it is the only step that moves
 // anyone.
 //
+// The id comes back so the caller can record it. Teardown removes exactly
+// that profile and nothing else, which is the only way to tell cloudlab's
+// own entries from ones the user added by hand -- herdr profiles carry no
+// owner field.
+//
 // It stops short of selecting the machine. That is client state with no CLI,
 // no API operation and no keybinding -- verified against herdr 0.9.0 -- so
 // the label comes back for the caller to name, and the user picks it.
-func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string) (string, error) {
+func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string, owned OwnedMachines) (string, string, error) {
+	// No cloudlab session means there is nowhere to record the id, and a
+	// machine standing for "the instance in general" is not what this is
+	// for: it could never be cleaned up, because nothing would remember it.
+	if session == "" {
+		return "", "", fmt.Errorf("no session resolved -- `cloudlab herdr` attaches a session, so " +
+			"start one with `cloudlab session start <name>`, or run it from outside herdr for a plain remote client")
+	}
 	if _, err := exec.LookPath("herdr"); err != nil {
-		return "", fmt.Errorf("herdr not found on PATH (install it: https://herdr.dev/): %w", err)
+		return "", "", fmt.Errorf("herdr not found on PATH (install it: https://herdr.dev/): %w", err)
 	}
 	target := MachineTarget(user, ip)
 
-	label, err := EnsureMachine(localHerdr{ctx: ctx}, instance, target, session)
+	id, label, err := EnsureMachine(localHerdr{ctx: ctx}, instance, target, session, owned)
 	if err != nil {
-		return "", err
-	}
-	// No cloudlab session means herdr's own default server, which has no
-	// session checkout to root a workspace in. The machine alone is the
-	// whole job there.
-	if session == "" {
-		return label, nil
+		return "", "", err
 	}
 
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
-		return label, fmt.Errorf("machine %s is saved, but the instance could not be reached to prepare its workspace: %w", label, err)
+		return id, label, fmt.Errorf("machine %s is saved, but the instance could not be reached to prepare its workspace: %w", label, err)
 	}
 	defer func() { _ = client.Close() }()
 
-	id, err := EnsureWorkspace(client, session, RemoteRepoPath(user, session, repoName), session)
+	wsID, err := EnsureWorkspace(client, session, RemoteRepoPath(user, session, repoName), session)
 	if err != nil {
-		return label, err
+		return id, label, err
 	}
-	if err := FocusWorkspace(client, session, id); err != nil {
-		return label, err
+	if err := FocusWorkspace(client, session, wsID); err != nil {
+		return id, label, err
 	}
-	return label, nil
+	return id, label, nil
+}
+
+// herdrSessionStopCmd and herdrSessionDeleteCmd retire the session server on
+// the instance. Addressed by name, because a name is all herdr gives us --
+// cloudlab owns that namespace, since it is the same name it created
+// ~/sessions/<name> under.
+func herdrSessionStopCmd(session string) string {
+	return "bash -lc " + reconcile.ShellQuote("herdr session stop "+reconcile.ShellQuote(session))
+}
+
+func herdrSessionDeleteCmd(session string) string {
+	return "bash -lc " + reconcile.ShellQuote("herdr session delete "+reconcile.ShellQuote(session))
+}
+
+// CleanupHerdr removes what `cloudlab herdr` left behind for a session: the
+// saved machine on this side, and the session server on the instance.
+//
+// The two halves are independent on purpose. Forgetting the profile is a
+// local operation and must still happen when the instance is unreachable --
+// otherwise a box that has gone away leaves an entry in the sidebar forever,
+// which is the failure this whole change exists to stop.
+//
+// Best-effort, and never fatal. Teardown runs after a merge has landed and
+// verified the user's commits, or after a delete has torn the session down;
+// a leftover sidebar entry is untidy, and failing at that point would be
+// worse than untidy.
+//
+// client may be nil when the instance could not be reached, and then only
+// the local half runs.
+func CleanupHerdr(ctx context.Context, machineID, session string, client remoteRunner) {
+	// No recorded id means cloudlab never attached this session -- and then
+	// there is nothing of its making on either side. Starting a cloudlab
+	// session does not create a herdr session; only attaching does. Trying
+	// anyway stopped a server that never existed and told the user to go
+	// and remove it by hand.
+	if machineID == "" {
+		return
+	}
+	if err := RemoveMachine(localHerdr{ctx: ctx}, machineID); err != nil {
+		provider.ReportWarning(ctx, "herdr: "+err.Error()+
+			"\nremove it by hand: herdr machine remove "+machineID)
+	}
+	if client == nil || session == "" {
+		return
+	}
+	// Stop before delete: herdr refuses to delete a running session.
+	if out, err := client.Run(herdrSessionStopCmd(session)); err != nil {
+		provider.ReportWarning(ctx, "herdr: could not stop the "+session+
+			" session on the instance: "+err.Error()+"\n"+out+
+			"\nremove it by hand: herdr session stop "+session+" && herdr session delete "+session)
+		return
+	}
+	if out, err := client.Run(herdrSessionDeleteCmd(session)); err != nil {
+		provider.ReportWarning(ctx, "herdr: could not delete the "+session+
+			" session on the instance: "+err.Error()+"\n"+out+
+			"\nremove it by hand: herdr session delete "+session)
+	}
 }

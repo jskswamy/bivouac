@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"github.com/jskswamy/cloudlab/internal/state"
 	"os"
 	"path/filepath"
 	"strings"
@@ -286,7 +287,8 @@ func TestMergeSession_RefusesOnADirtyTree(t *testing.T) {
 	// Empty base: a session recorded before session_base existed. The
 	// rewritten-base check must not fire, so the dirty-tree refusal is what
 	// this test still observes.
-	_, err := MergeSession(ctx, addr, "devuser", repo, "cloudlab", "auth", "")
+	_, err := MergeSession(ctx, addr, "devuser", "cloudlab",
+		state.Session{Name: "auth", LocalRepo: repo})
 	if err == nil {
 		t.Fatal("MergeSession() = nil, want a refusal on a dirty worktree")
 	}

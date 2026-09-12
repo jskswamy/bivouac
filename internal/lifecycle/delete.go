@@ -56,9 +56,14 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 	}
 
 	var instanceErr error
+	// Held rather than scoped to the branch: the herdr cleanup below needs
+	// the same connection, and a nil one there means "could not reach the
+	// instance", which it handles by doing only the local half.
+	var onInstance remoteRunner
 	if client, err := reconcile.Connect(ctx, ip, user); err != nil {
 		instanceErr = err
 	} else {
+		onInstance = client
 		defer func() { _ = client.Close() }()
 		if out, err := client.Run(removeRepoCmd(RemoteRepoPath(user, s.Name, repoName))); err != nil {
 			instanceErr = fmt.Errorf("%w\n%s", err, out)
@@ -82,6 +87,10 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 		provider.ReportWarning(ctx, "beads: "+err.Error()+
 			"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(s.Name))
 	}
+	// Same best-effort shape, for the same reason: a saved machine left
+	// pointing at a session that no longer exists is an entry in the
+	// sidebar nothing will ever clean up.
+	CleanupHerdr(ctx, s.HerdrMachineID, s.Name, onInstance)
 
 	if instanceErr != nil {
 		return fmt.Sprintf("session %s was removed locally, but the instance could not be reached: %v\nthe directory %s is still there; nothing references it now, and `cloudlab down` will take it with the instance", s.Name, instanceErr, RemoteRepoPath(user, s.Name, repoName)), nil

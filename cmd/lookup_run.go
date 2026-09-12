@@ -427,7 +427,7 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, sess.LocalRepo, name, sess.Name, sess.Base)
+	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, name, sess)
 	if err != nil {
 		return err
 	}
@@ -903,7 +903,7 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 }
 
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(name)
 	if err != nil {
 		return err
 	}
@@ -925,9 +925,15 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// every instance, which is what 0.9.0 added machines for. Outside it
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
-		label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
-			record.User, session, record.Name)
+		id, label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
+			record.User, session, record.Name, ownedMachines(store))
 		if err != nil {
+			return err
+		}
+		// Recorded before anything else can go wrong: teardown removes this
+		// exact profile, and a profile cloudlab created but did not record
+		// is one nothing will ever clean up.
+		if err := recordHerdrMachine(store, record.Name, session, id); err != nil {
 			return err
 		}
 		// Named, not selected. Which machine is current is client state
@@ -936,6 +942,52 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 		return nil
 	}
 	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
+}
+
+// ownedMachines gathers the herdr profiles cloudlab registered, across every
+// instance, mapped to the instance that registered each.
+//
+// This is the only honest answer to "is this profile ours?". herdr stores no
+// owner field, so without it cloudlab would have to match on label or target
+// -- and would then rename or delete profiles the user added by hand.
+func ownedMachines(store *state.Store) lifecycle.OwnedMachines {
+	owned := lifecycle.OwnedMachines{}
+	records, err := store.List()
+	if err != nil {
+		// Best-effort: without this map cloudlab qualifies its own label and
+		// renames nothing, which is the conservative half of the behaviour.
+		return owned
+	}
+	for _, r := range records {
+		for _, s := range r.Sessions {
+			if s.HerdrMachineID != "" {
+				owned[s.HerdrMachineID] = r.Name
+			}
+		}
+	}
+	return owned
+}
+
+// recordHerdrMachine remembers which profile belongs to a session, so
+// teardown can remove exactly that one.
+func recordHerdrMachine(store *state.Store, instance, session, id string) error {
+	if id == "" {
+		return nil
+	}
+	record, ok, err := store.Get(instance)
+	if err != nil || !ok {
+		return err
+	}
+	for i := range record.Sessions {
+		if record.Sessions[i].Name == session {
+			if record.Sessions[i].HerdrMachineID == id {
+				return nil
+			}
+			record.Sessions[i].HerdrMachineID = id
+			return store.Put(record)
+		}
+	}
+	return nil
 }
 
 func runTailscale(cmd *cobra.Command, name string, args []string) error {

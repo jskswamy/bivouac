@@ -32,6 +32,18 @@ type Session struct {
 	Name      string `json:"name"`
 	LocalRepo string `json:"local_repo"`
 	Base      string `json:"base"`
+	// HerdrMachineID is the saved-machine profile `cloudlab herdr`
+	// registered for this session, if any.
+	//
+	// Recorded rather than inferred. A herdr profile carries no owner
+	// field, so matching on label or target could be defeated by a rename
+	// or by a profile the user added themselves -- and teardown would then
+	// delete something that was never cloudlab's. Holding the id makes
+	// cleanup exact: it removes this profile and can see no other.
+	//
+	// Empty means cloudlab never registered one, which is also every
+	// session that predates this field.
+	HerdrMachineID string `json:"herdr_machine_id,omitempty"`
 }
 
 // FindSession returns the session called name, if the instance has one.

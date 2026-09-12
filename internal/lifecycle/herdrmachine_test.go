@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -91,16 +92,29 @@ func TestFindMachine_MatchesOnTargetAndSessionNotLabel(t *testing.T) {
 	}
 }
 
-// Two instances can each hold a session called "auth", and the label is the
-// only thing telling them apart in the sidebar.
-func TestMachineLabel_IsQualifiedByInstance(t *testing.T) {
-	a := MachineLabel("jskswamy-cloudlab", "auth")
-	b := MachineLabel("ulai-ai-ulai", "auth")
-	if a == b {
-		t.Fatalf("both instances produced %q -- the sidebar could not tell them apart", a)
+// The session name is what the user thinks in, and the sidebar is narrow.
+// Qualifying every label put the instance first and truncated to
+// "jskswamy-cloudlab/su...", cutting the only part that identifies which
+// session it is.
+func TestMachineLabel_IsJustTheSessionName(t *testing.T) {
+	if got := MachineLabel("auth"); got != "auth" {
+		t.Errorf("MachineLabel() = %q, want the bare session name", got)
 	}
-	if !strings.Contains(a, "auth") || !strings.Contains(a, "jskswamy-cloudlab") {
-		t.Errorf("MachineLabel() = %q, want it to name both the instance and the session", a)
+}
+
+// Two instances can each hold a session called "auth". The disambiguator is
+// a suffix so that truncation eats the instance rather than the name.
+func TestQualifiedMachineLabel_SuffixesTheInstance(t *testing.T) {
+	got := qualifiedMachineLabel("jskswamy-cloudlab", "auth")
+	if !strings.HasPrefix(got, "auth") {
+		t.Errorf("qualifiedMachineLabel() = %q, want the session name first so a "+
+			"truncated label still identifies the session", got)
+	}
+	if !strings.Contains(got, "jskswamy-cloudlab") {
+		t.Errorf("qualifiedMachineLabel() = %q, want it to name the instance", got)
+	}
+	if got == qualifiedMachineLabel("ulai-ai-ulai", "auth") {
+		t.Error("both instances produced the same qualified label")
 	}
 }
 
@@ -219,9 +233,11 @@ func TestWorkspaceCreateCmd_RootsTheWorkspaceInTheCheckout(t *testing.T) {
 // fakeHerdr records every local herdr invocation and answers the listing
 // from a script, so the whole ensure flow can be driven without herdr.
 type fakeHerdr struct {
-	listJSON string
-	calls    [][]string
-	failOn   string // first arg to fail on; empty means never
+	listJSON     string
+	afterAddJSON string
+	added        bool
+	calls        [][]string
+	failOn       string // first arg to fail on; empty means never
 }
 
 func (f *fakeHerdr) Run(args ...string) (string, error) {
@@ -229,7 +245,16 @@ func (f *fakeHerdr) Run(args ...string) (string, error) {
 	if len(args) > 1 && args[1] == f.failOn {
 		return "boom", fmt.Errorf("herdr %s failed", args[1])
 	}
+	if len(args) > 1 && args[1] == "add" {
+		// A real add shows up in the next listing, and EnsureMachine reads
+		// the id back from there rather than scraping the add output.
+		f.added = true
+		return "Saved SSH machine newid00. Remote server is ready.", nil
+	}
 	if len(args) > 1 && args[1] == "list" {
+		if f.added && f.afterAddJSON != "" {
+			return f.afterAddJSON, nil
+		}
 		return f.listJSON, nil
 	}
 	return "", nil
@@ -244,48 +269,52 @@ func (f *fakeHerdr) ran(verb string) bool {
 	return false
 }
 
-func TestEnsureMachine_AddsWhenThereIsNoProfile(t *testing.T) {
-	h := &fakeHerdr{listJSON: "[]"}
+func TestEnsureMachine_AddsWithTheBareSessionNameAndReturnsItsID(t *testing.T) {
+	h := &fakeHerdr{
+		listJSON: "[]",
+		afterAddJSON: `[{"id":"newid00","label":"auth","target":"ssh://u@1.2.3.4",` +
+			`"session":"auth","enabled":true}]`,
+	}
 
-	label, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth")
+	id, label, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
 	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
-	if label != "inst/auth" {
-		t.Errorf("label = %q, want inst/auth", label)
+	if label != "auth" {
+		t.Errorf("label = %q, want the bare session name", label)
 	}
-	if !h.ran("add") {
-		t.Error("want machine add for a session with no profile")
-	}
-	if h.ran("enable") {
-		t.Error("enable must not run when the profile was just added")
+	if id != "newid00" {
+		t.Errorf("id = %q, want the id read back from the listing -- teardown removes by "+
+			"exactly this and nothing else", id)
 	}
 }
 
 // Running cloudlab herdr twice must not leave two profiles for one session:
 // machine add does not deduplicate, and nothing else would.
-func TestEnsureMachine_IsIdempotent(t *testing.T) {
-	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"inst/auth",` +
+func TestEnsureMachine_IsIdempotentAndStillReportsTheID(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"auth",` +
 		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":true}]`}
 
-	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err != nil {
+	id, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
+	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
 	if h.ran("add") {
 		t.Error("machine add ran for a profile that already exists -- that is a duplicate")
 	}
-	if h.ran("enable") {
-		t.Error("machine enable ran for a profile that was already enabled")
+	// Recording on the reuse path is what stops a session attached before this
+	// existed from leaking at teardown.
+	if id != "abc" {
+		t.Errorf("id = %q, want abc even though nothing was added", id)
 	}
 }
 
-// A disabled profile is re-enabled rather than re-added: adding would make a
-// second profile for the same session and leave the disabled one behind.
-func TestEnsureMachine_EnablesADisabledProfile(t *testing.T) {
-	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"inst/auth",` +
+func TestEnsureMachine_EnablesADisabledProfileAndReportsTheID(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"auth",` +
 		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":false}]`}
 
-	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err != nil {
+	id, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
+	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
 	if !h.ran("enable") {
@@ -294,24 +323,83 @@ func TestEnsureMachine_EnablesADisabledProfile(t *testing.T) {
 	if h.ran("add") {
 		t.Error("machine add ran for a profile that exists but is disabled")
 	}
+	if id != "abc" {
+		t.Errorf("id = %q, want abc", id)
+	}
+}
+
+// Two instances holding a session of the same name: both labels gain the
+// instance, so a bare name always means there is only one.
+func TestEnsureMachine_QualifiesBothSidesOfANameClash(t *testing.T) {
+	h := &fakeHerdr{
+		listJSON: `[{"id":"other","label":"auth","target":"ssh://u@9.9.9.9",` +
+			`"session":"auth","enabled":true}]`,
+		afterAddJSON: `[{"id":"other","label":"auth","target":"ssh://u@9.9.9.9",` +
+			`"session":"auth","enabled":true},` +
+			`{"id":"newid00","label":"auth (inst-b)","target":"ssh://u@1.2.3.4",` +
+			`"session":"auth","enabled":true}]`,
+	}
+	owned := OwnedMachines{"other": "inst-a"}
+
+	_, label, err := EnsureMachine(h, "inst-b", "ssh://u@1.2.3.4", "auth", owned)
+	if err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if !strings.Contains(label, "inst-b") {
+		t.Errorf("our label = %q, want it qualified by the instance", label)
+	}
+	renamed := false
+	for _, c := range h.calls {
+		if len(c) > 2 && c[1] == "rename" && c[2] == "other" {
+			renamed = true
+		}
+	}
+	if !renamed {
+		t.Error("want the existing cloudlab profile renamed too -- otherwise a bare " +
+			"\"auth\" silently means whichever was registered first")
+	}
+}
+
+// A profile the user added by hand is not cloudlab's to rename, even when it
+// takes the name cloudlab wanted. Ours is qualified; theirs is left alone.
+func TestEnsureMachine_NeverRenamesAProfileItDidNotRegister(t *testing.T) {
+	h := &fakeHerdr{
+		listJSON: `[{"id":"theirs","label":"auth","target":"ssh://u@9.9.9.9",` +
+			`"session":"auth","enabled":true}]`,
+		afterAddJSON: `[{"id":"theirs","label":"auth","target":"ssh://u@9.9.9.9",` +
+			`"session":"auth","enabled":true},` +
+			`{"id":"newid00","label":"auth (inst-b)","target":"ssh://u@1.2.3.4",` +
+			`"session":"auth","enabled":true}]`,
+	}
+
+	_, label, err := EnsureMachine(h, "inst-b", "ssh://u@1.2.3.4", "auth", OwnedMachines{})
+	if err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if !strings.Contains(label, "inst-b") {
+		t.Errorf("our label = %q, want it qualified", label)
+	}
+	if h.ran("rename") {
+		t.Error("renamed a profile cloudlab never registered")
+	}
 }
 
 // A failure to add must surface. Reporting success would leave the user
 // looking for a sidebar entry that was never created.
 func TestEnsureMachine_ReportsAFailedAdd(t *testing.T) {
 	h := &fakeHerdr{listJSON: "[]", failOn: "add"}
-	if _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth"); err == nil {
+	if _, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil); err == nil {
 		t.Error("EnsureMachine() error = nil after machine add failed")
 	}
 }
 
-// RemoveMachine is what stops profiles outliving the sessions they point at.
-func TestRemoveMachine_RemovesOnlyTheMatchingProfile(t *testing.T) {
-	h := &fakeHerdr{listJSON: `[
-	  {"id":"keep","label":"inst/other","target":"ssh://u@1.2.3.4","session":"other","enabled":true},
-	  {"id":"drop","label":"inst/auth","target":"ssh://u@1.2.3.4","session":"auth","enabled":true}]`}
+// RemoveMachine is what stops profiles outliving the sessions they point
+// at. It removes by recorded id, so it can only ever touch what cloudlab
+// registered.
+func TestRemoveMachine_RemovesTheRecordedProfileOnly(t *testing.T) {
+	h := &fakeHerdr{}
 
-	if err := RemoveMachine(h, "ssh://u@1.2.3.4", "auth"); err != nil {
+	if err := RemoveMachine(h, "drop"); err != nil {
 		t.Fatalf("RemoveMachine() error = %v", err)
 	}
 	var removed []string
@@ -325,19 +413,21 @@ func TestRemoveMachine_RemovesOnlyTheMatchingProfile(t *testing.T) {
 	}
 }
 
-// Teardown must not fail because a profile was already gone -- the user may
-// have removed it from the sidebar.
-func TestRemoveMachine_IsSilentWhenThereIsNoProfile(t *testing.T) {
-	h := &fakeHerdr{listJSON: "[]"}
-	if err := RemoveMachine(h, "ssh://u@1.2.3.4", "auth"); err != nil {
-		t.Errorf("RemoveMachine() error = %v for a profile that does not exist", err)
+// A session cloudlab never attached has no recorded id, and teardown must
+// then do nothing at all -- not list, not guess, not match. That is what
+// keeps a profile the user added by hand safe from a cloudlab delete.
+func TestRemoveMachine_DoesNothingWithoutARecordedID(t *testing.T) {
+	h := &fakeHerdr{}
+
+	if err := RemoveMachine(h, ""); err != nil {
+		t.Errorf("RemoveMachine(\"\") error = %v, want nil", err)
 	}
-	if h.ran("remove") {
-		t.Error("machine remove ran with nothing to remove")
+	if len(h.calls) != 0 {
+		t.Errorf("ran %v with no recorded id -- teardown must not go looking", h.calls)
 	}
 }
 
-// fakeRemote stands in for the instance's herdr over SSH.
+// The shape `herdr workspace list` returns, captured from a live instance.
 type fakeRemote struct {
 	listJSON        string
 	afterCreateJSON string
@@ -492,5 +582,27 @@ func TestEnsureWorkspace_ReconnectDoesNotTidy(t *testing.T) {
 	}
 	if r.ran("close") {
 		t.Error("closed a workspace on a plain reconnect")
+	}
+}
+
+// A session cloudlab never attached has no herdr session either: starting a
+// cloudlab session does not create one, only attaching does. Without this,
+// teardown tried to stop a server that never existed and told the user to
+// go and remove it by hand.
+func TestCleanupHerdr_TouchesNothingWhenCloudlabNeverAttached(t *testing.T) {
+	r := &fakeRemote{}
+	CleanupHerdr(context.Background(), "", "unattached", r)
+	if len(r.cmds) != 0 {
+		t.Errorf("ran %v against the instance for a session cloudlab never attached", r.cmds)
+	}
+}
+
+// With a recorded id, both halves run: the profile is forgotten here and the
+// session server is stopped and deleted there.
+func TestCleanupHerdr_StopsAndDeletesTheRemoteSession(t *testing.T) {
+	r := &fakeRemote{}
+	CleanupHerdr(context.Background(), "someid", "auth", r)
+	if !r.ran("session stop") || !r.ran("session delete") {
+		t.Errorf("want the remote session stopped and deleted, got %v", r.cmds)
 	}
 }

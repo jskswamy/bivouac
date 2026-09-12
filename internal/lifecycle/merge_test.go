@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"github.com/jskswamy/cloudlab/internal/state"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,7 +143,8 @@ func (f *sessionFixture) pull(t *testing.T) ([]string, error) {
 
 func (f *sessionFixture) merge(t *testing.T) ([]string, error) {
 	t.Helper()
-	return MergeSession(context.Background(), f.addr, "devuser", f.repo, f.repoName, f.session, f.base)
+	return MergeSession(context.Background(), f.addr, "devuser", f.repoName,
+		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
 }
 
 // The branch's headline safety property, end to end: every commit is

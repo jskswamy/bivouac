@@ -58,6 +58,12 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 		}
 	}
 
+	// Before Destroy, and before either store.Delete below: the machine ids
+	// live in the record being deleted, so after this point nothing knows
+	// which sidebar entries belonged to this instance. Runs on the --force
+	// path too -- force discards work, not tidying.
+	forgetHerdrMachines(ctx, record)
+
 	deregisterTailscale(ctx, record)
 
 	if err := p.Destroy(ctx, record.VMID); err != nil && !errors.Is(err, provider.ErrNotFound) {
@@ -109,4 +115,17 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 		}
 	}
 	return firstErr
+}
+
+// forgetHerdrMachines removes every saved machine this instance's sessions
+// registered.
+//
+// Only the local half. The droplet is about to be destroyed, so its herdr
+// sessions go with it and there is nothing on the far side worth stopping
+// first -- but the entries in the user's sidebar would otherwise point at a
+// host that no longer exists.
+func forgetHerdrMachines(ctx context.Context, record state.Record) {
+	for _, s := range record.Sessions {
+		CleanupHerdr(ctx, s.HerdrMachineID, "", nil)
+	}
 }

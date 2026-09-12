@@ -12,6 +12,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/state"
 )
 
 // runLocalGit runs a git command on this machine inside localRepo.
@@ -337,7 +338,11 @@ func verifyFetched(ctx context.Context, localRepo, sha string) error {
 // The ordering is the safety property. Deletion is strictly downstream of
 // verification, so nothing is ever removed from the instance before its
 // commits are provably in this machine's object store.
-func MergeSession(ctx context.Context, ip, user, localRepo, repoName, session, sessionBase string) ([]string, error) {
+func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Session) ([]string, error) {
+	// Unpacked once rather than threaded as four more parameters: merge
+	// needs the recorded herdr machine id for its cleanup, and passing the
+	// record is smaller than passing everything in it.
+	localRepo, session, sessionBase := sess.LocalRepo, sess.Name, sess.Base
 	if err := CheckSessionName(session); err != nil {
 		return nil, err
 	}
@@ -500,6 +505,17 @@ func MergeSession(ctx context.Context, ip, user, localRepo, repoName, session, s
 		provider.ReportWarning(ctx, "beads: "+err.Error()+
 			"\nyou may need to remove it by hand: bd dolt remote remove "+beads.RemoteName(session))
 	}
+
+	// Same shape again. A fresh connection because the one above was closed
+	// before the replay -- stopping the session server had to wait until the
+	// commits had actually landed, since a rolled-back replay leaves the
+	// session very much alive.
+	var onInstance remoteRunner
+	if client, err := reconcile.Connect(ctx, ip, user); err == nil {
+		onInstance = client
+		defer func() { _ = client.Close() }()
+	}
+	CleanupHerdr(ctx, sess.HerdrMachineID, session, onInstance)
 
 	// Once the cherry-pick has landed, a cleanup failure below must say the
 	// merge succeeded -- retrying `cloudlab merge` against an already-deleted
