@@ -348,10 +348,3 @@ func (c *Client) RunStreaming(cmd string, out, errOut io.Writer) (output string,
 func (c *Client) Close() error {
 	return c.conn.Close()
 }
-
-// ShellQuote forwards to shellcmd.Quote, which is where the quoting now
-// lives. A temporary alias so this move lands without touching the ~50
-// call sites in the same commit; it goes away once they have migrated.
-func ShellQuote(s string) string {
-	return shellcmd.Quote(s)
-}
