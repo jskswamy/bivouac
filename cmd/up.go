@@ -61,12 +61,12 @@ func newUpCmd() *cobra.Command {
 
 // upSummary describes the instance up is about to create, for
 // confirmation before anything billable happens.
-func upSummary(name string, cfg config.Config) string {
+func upSummary(name string, cfg config.Resolved) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "This will create instance %q:\n", name)
-	fmt.Fprintf(&b, "  Region:   %s\n", *cfg.Region)
-	fmt.Fprintf(&b, "  Size:     %s\n", *cfg.Size)
-	fmt.Fprintf(&b, "  Template: %s\n", *cfg.Template)
+	fmt.Fprintf(&b, "  Region:   %s\n", cfg.Region)
+	fmt.Fprintf(&b, "  Size:     %s\n", cfg.Size)
+	fmt.Fprintf(&b, "  Template: %s\n", cfg.Template)
 	if cfg.Image != "" {
 		fmt.Fprintf(&b, "  Image:    %s\n", cfg.Image)
 	}

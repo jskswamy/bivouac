@@ -8,8 +8,7 @@ import (
 )
 
 func TestUpSummary_ShowsInstanceNameAndConfig(t *testing.T) {
-	region, size, template := "nyc3", "s-2vcpu-4gb", "python"
-	cfg := config.Config{Region: &region, Size: &size, Template: &template}
+	cfg := config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}
 
 	got := upSummary("myrepo", cfg)
 
@@ -21,8 +20,7 @@ func TestUpSummary_ShowsInstanceNameAndConfig(t *testing.T) {
 }
 
 func TestUpSummary_OmitsImageLineWhenUnset(t *testing.T) {
-	region, size, template := "nyc3", "s-2vcpu-4gb", "python"
-	cfg := config.Config{Region: &region, Size: &size, Template: &template}
+	cfg := config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}
 
 	got := upSummary("myrepo", cfg)
 
@@ -32,8 +30,10 @@ func TestUpSummary_OmitsImageLineWhenUnset(t *testing.T) {
 }
 
 func TestUpSummary_IncludesImageWhenSet(t *testing.T) {
-	region, size, template := "nyc3", "s-2vcpu-4gb", "python"
-	cfg := config.Config{Region: &region, Size: &size, Template: &template, Image: "custom-image-123"}
+	cfg := config.Resolved{
+		Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python",
+		Config: config.Config{Image: "custom-image-123"},
+	}
 
 	got := upSummary("myrepo", cfg)
 

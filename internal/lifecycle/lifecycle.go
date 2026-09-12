@@ -112,8 +112,8 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 
 	spec := provider.InstanceSpec{
 		Name:     name,
-		Region:   *cfg.Region,
-		Size:     *cfg.Size,
+		Region:   cfg.Region,
+		Size:     cfg.Size,
 		Image:    cfg.Image,
 		SSHKeys:  sshKeys,
 		UserData: cloudInit,
@@ -152,7 +152,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		IP:       vm.IP,
 		Region:   vm.Region,
 		Size:     vm.Size,
-		Template: *cfg.Template,
+		Template: cfg.Template,
 		User:     remoteUser,
 		RepoPath: remotePath,
 	}

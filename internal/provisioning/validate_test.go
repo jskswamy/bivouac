@@ -33,11 +33,13 @@ func validTemplateFor(t *testing.T) string {
 
 func TestValidate_GoodConfig_NoError(t *testing.T) {
 	tmpl := validTemplateFor(t)
-	cfg := config.Config{
-		Arch:     "x86_64",
-		Template: &tmpl,
-		Flakes: []config.Flake{
-			{Url: testdataFlake(t, "good-flake"), Packages: []string{"cli"}, Modules: true},
+	cfg := config.Resolved{
+		Template: tmpl,
+		Config: config.Config{
+			Arch: "x86_64",
+			Flakes: []config.Flake{
+				{Url: testdataFlake(t, "good-flake"), Packages: []string{"cli"}, Modules: true},
+			},
 		},
 	}
 	if err := Validate(context.Background(), cfg); err != nil {
@@ -47,11 +49,13 @@ func TestValidate_GoodConfig_NoError(t *testing.T) {
 
 func TestValidate_MissingFlakePackage_NamesItClearly(t *testing.T) {
 	tmpl := validTemplateFor(t)
-	cfg := config.Config{
-		Arch:     "x86_64",
-		Template: &tmpl,
-		Flakes: []config.Flake{
-			{Url: testdataFlake(t, "missing-package-flake"), Packages: []string{"cli"}},
+	cfg := config.Resolved{
+		Template: tmpl,
+		Config: config.Config{
+			Arch: "x86_64",
+			Flakes: []config.Flake{
+				{Url: testdataFlake(t, "missing-package-flake"), Packages: []string{"cli"}},
+			},
 		},
 	}
 	err := Validate(context.Background(), cfg)
@@ -68,11 +72,13 @@ func TestValidate_MissingFlakePackage_NamesItClearly(t *testing.T) {
 
 func TestValidate_FlakeMissingModules_NamesItClearly(t *testing.T) {
 	tmpl := validTemplateFor(t)
-	cfg := config.Config{
-		Arch:     "x86_64",
-		Template: &tmpl,
-		Flakes: []config.Flake{
-			{Url: testdataFlake(t, "no-modules-flake"), Packages: []string{"cli"}, Modules: true},
+	cfg := config.Resolved{
+		Template: tmpl,
+		Config: config.Config{
+			Arch: "x86_64",
+			Flakes: []config.Flake{
+				{Url: testdataFlake(t, "no-modules-flake"), Packages: []string{"cli"}, Modules: true},
+			},
 		},
 	}
 	err := Validate(context.Background(), cfg)
@@ -93,7 +99,7 @@ func TestValidate_RealTemplates_NoError(t *testing.T) {
 	templatesRef := "path:" + filepath.Join(repoRoot, "templates")
 
 	tmpl := templatesRef + "#python-x86_64-linux"
-	cfg := config.Config{Arch: "x86_64", Template: &tmpl}
+	cfg := config.Resolved{Template: tmpl, Config: config.Config{Arch: "x86_64"}}
 	if err := Validate(context.Background(), cfg); err != nil {
 		t.Errorf("Validate() error = %v, want nil (real templates/ flake should validate cleanly)", err)
 	}
