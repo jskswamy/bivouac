@@ -26,7 +26,7 @@ func newUpCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			root, err := identity.RepoRoot(cwd, repoFlag)
+			root, err := identity.RepoRoot(cmd.Context(), cwd, repoFlag)
 			if err != nil {
 				return err
 			}
@@ -36,7 +36,7 @@ func newUpCmd() *cobra.Command {
 				name = args[0]
 			}
 			if name == "" {
-				name, err = identity.DeriveName(root)
+				name, err = identity.DeriveName(cmd.Context(), root)
 				if err != nil {
 					return err
 				}

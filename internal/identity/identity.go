@@ -1,17 +1,19 @@
 package identity
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/jskswamy/cloudlab/internal/tool"
 )
 
 // RepoRoot walks up from repoFlag (if set) or cwd to find the MAIN git
 // repository root -- not a linked worktree. Used by every command that needs
 // actual repo content: up, provision, session start, and resolveSessionArg,
 // which fronts pull, merge, delete, ssh, tmux and herdr.
-func RepoRoot(cwd, repoFlag string) (string, error) {
+func RepoRoot(ctx context.Context, cwd, repoFlag string) (string, error) {
 	start := cwd
 	if repoFlag != "" {
 		start = repoFlag
@@ -21,9 +23,10 @@ func RepoRoot(cwd, repoFlag string) (string, error) {
 	// latter returns the worktree, and every session command needs the main
 	// repository -- merge replays onto the user's branch, which lives there.
 	// The common dir is the main repo's .git, so its parent is the main tree.
-	// #nosec G204 -- argv-array exec.Command, no shell; start is a local
+	// Stdout only: the result is used as a filesystem path, so a git
+	// warning on stderr must not be able to corrupt it. start is a local
 	// filesystem path (cwd or --repo), never attacker-controlled.
-	out, err := exec.Command("git", "-C", start, "rev-parse", "--git-common-dir").Output()
+	out, err := tool.Run(ctx, start, "git", "rev-parse", "--git-common-dir")
 	if err != nil {
 		if repoFlag != "" {
 			return "", fmt.Errorf("not a git repository: %s", repoFlag)
@@ -53,10 +56,10 @@ func RepoRoot(cwd, repoFlag string) (string, error) {
 // DeriveName derives an instance name from a resolved repo root: the
 // slugified owner/repo from its origin remote, or the root folder's name
 // if there's no origin remote configured.
-func DeriveName(root string) (string, error) {
-	// #nosec G204 -- argv-array exec.Command, no shell; root is a
+func DeriveName(ctx context.Context, root string) (string, error) {
+	// Stdout only: the result is slugified into an instance name. root is a
 	// resolved local repo path, never attacker-controlled.
-	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	out, err := tool.Run(ctx, root, "git", "remote", "get-url", "origin")
 	if err != nil {
 		return filepath.Base(root), nil
 	}
@@ -84,7 +87,7 @@ func slugify(remoteURL string) string {
 // succeeds without any git repo present as long as positional or
 // nameFlag is given — lookup commands only need a name to find an
 // already-existing instance in state, they never touch repo content.
-func InstanceName(cwd, repoFlag, positional, nameFlag string) (string, error) {
+func InstanceName(ctx context.Context, cwd, repoFlag, positional, nameFlag string) (string, error) {
 	if positional != "" {
 		return positional, nil
 	}
@@ -92,12 +95,12 @@ func InstanceName(cwd, repoFlag, positional, nameFlag string) (string, error) {
 		return nameFlag, nil
 	}
 
-	root, err := RepoRoot(cwd, repoFlag)
+	root, err := RepoRoot(ctx, cwd, repoFlag)
 	if err != nil {
 		if repoFlag != "" {
 			return "", err
 		}
 		return "", fmt.Errorf("no instance name given; use --name or run from inside a repo")
 	}
-	return DeriveName(root)
+	return DeriveName(ctx, root)
 }

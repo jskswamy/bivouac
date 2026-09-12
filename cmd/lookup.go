@@ -283,7 +283,7 @@ func resolveLookupIdentity(cmd *cobra.Command, positional string) (string, error
 	if err != nil {
 		return "", err
 	}
-	return identity.InstanceName(cwd, repoFlag, positional, nameFlag)
+	return identity.InstanceName(cmd.Context(), cwd, repoFlag, positional, nameFlag)
 }
 
 func stubErr(verb, name string) error {

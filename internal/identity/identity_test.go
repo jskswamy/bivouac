@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,7 +35,7 @@ func resolved(t *testing.T, dir string) string {
 
 func TestRepoRoot_FromRootDir(t *testing.T) {
 	root := initRepo(t)
-	got, err := RepoRoot(root, "")
+	got, err := RepoRoot(context.Background(), root, "")
 	if err != nil {
 		t.Fatalf("RepoRoot() error = %v", err)
 	}
@@ -49,7 +50,7 @@ func TestRepoRoot_FromSubdir(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := RepoRoot(sub, "")
+	got, err := RepoRoot(context.Background(), sub, "")
 	if err != nil {
 		t.Fatalf("RepoRoot() error = %v", err)
 	}
@@ -61,7 +62,7 @@ func TestRepoRoot_FromSubdir(t *testing.T) {
 func TestRepoRoot_RepoFlagOverridesCwd(t *testing.T) {
 	other := initRepo(t)
 	notARepo := t.TempDir()
-	got, err := RepoRoot(notARepo, other)
+	got, err := RepoRoot(context.Background(), notARepo, other)
 	if err != nil {
 		t.Fatalf("RepoRoot() error = %v", err)
 	}
@@ -76,7 +77,7 @@ func TestRepoRoot_RepoFlagWalksUpFromSubdir(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := RepoRoot(t.TempDir(), sub)
+	got, err := RepoRoot(context.Background(), t.TempDir(), sub)
 	if err != nil {
 		t.Fatalf("RepoRoot() error = %v", err)
 	}
@@ -86,7 +87,7 @@ func TestRepoRoot_RepoFlagWalksUpFromSubdir(t *testing.T) {
 }
 
 func TestRepoRoot_NotAGitRepoNoFlag(t *testing.T) {
-	_, err := RepoRoot(t.TempDir(), "")
+	_, err := RepoRoot(context.Background(), t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -97,7 +98,7 @@ func TestRepoRoot_NotAGitRepoNoFlag(t *testing.T) {
 
 func TestRepoRoot_NotAGitRepoWithFlag(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "nope")
-	_, err := RepoRoot(t.TempDir(), bad)
+	_, err := RepoRoot(context.Background(), t.TempDir(), bad)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -124,7 +125,7 @@ func TestRepoRoot_FromInsideALinkedWorktreeReturnsTheMainRepo(t *testing.T) {
 	wt := filepath.Join(main, ".worktrees", "auth")
 	runGit(t, main, "worktree", "add", "-q", wt, "-b", "cloudlab/auth")
 
-	got, err := RepoRoot(wt, "")
+	got, err := RepoRoot(context.Background(), wt, "")
 	if err != nil {
 		t.Fatalf("RepoRoot() error = %v", err)
 	}
@@ -140,7 +141,7 @@ func TestDeriveName_FromHTTPSOrigin(t *testing.T) {
 	root := initRepo(t)
 	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
 
-	got, err := DeriveName(root)
+	got, err := DeriveName(context.Background(), root)
 	if err != nil {
 		t.Fatalf("DeriveName() error = %v", err)
 	}
@@ -153,7 +154,7 @@ func TestDeriveName_FromSSHOrigin(t *testing.T) {
 	root := initRepo(t)
 	runGit(t, root, "remote", "add", "origin", "git@github.com:jskswamy/cloudlab.git")
 
-	got, err := DeriveName(root)
+	got, err := DeriveName(context.Background(), root)
 	if err != nil {
 		t.Fatalf("DeriveName() error = %v", err)
 	}
@@ -165,7 +166,7 @@ func TestDeriveName_FromSSHOrigin(t *testing.T) {
 func TestDeriveName_NoOriginFallsBackToFolderName(t *testing.T) {
 	root := initRepo(t)
 
-	got, err := DeriveName(root)
+	got, err := DeriveName(context.Background(), root)
 	if err != nil {
 		t.Fatalf("DeriveName() error = %v", err)
 	}
@@ -175,7 +176,7 @@ func TestDeriveName_NoOriginFallsBackToFolderName(t *testing.T) {
 }
 
 func TestInstanceName_PositionalWins(t *testing.T) {
-	got, err := InstanceName(t.TempDir(), "", "explicit-name", "flag-name")
+	got, err := InstanceName(context.Background(), t.TempDir(), "", "explicit-name", "flag-name")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
@@ -186,7 +187,7 @@ func TestInstanceName_PositionalWins(t *testing.T) {
 
 func TestInstanceName_NameFlagWinsOverCwd(t *testing.T) {
 	root := initRepo(t)
-	got, err := InstanceName(root, "", "", "flag-name")
+	got, err := InstanceName(context.Background(), root, "", "", "flag-name")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
@@ -199,7 +200,7 @@ func TestInstanceName_DerivedFromCwdRepo(t *testing.T) {
 	root := initRepo(t)
 	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
 
-	got, err := InstanceName(root, "", "", "")
+	got, err := InstanceName(context.Background(), root, "", "", "")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
@@ -212,7 +213,7 @@ func TestInstanceName_DerivedFromRepoFlagOutsideAnyRepo(t *testing.T) {
 	other := initRepo(t)
 	runGit(t, other, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
 
-	got, err := InstanceName(t.TempDir(), other, "", "")
+	got, err := InstanceName(context.Background(), t.TempDir(), other, "", "")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
@@ -223,7 +224,7 @@ func TestInstanceName_DerivedFromRepoFlagOutsideAnyRepo(t *testing.T) {
 
 func TestInstanceName_BadRepoFlagPropagatesRealError(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "nope")
-	_, err := InstanceName(t.TempDir(), bad, "", "")
+	_, err := InstanceName(context.Background(), t.TempDir(), bad, "", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -236,7 +237,7 @@ func TestInstanceName_BadRepoFlagPropagatesRealError(t *testing.T) {
 }
 
 func TestInstanceName_ErrorsWithNothingAvailable(t *testing.T) {
-	_, err := InstanceName(t.TempDir(), "", "", "")
+	_, err := InstanceName(context.Background(), t.TempDir(), "", "", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
