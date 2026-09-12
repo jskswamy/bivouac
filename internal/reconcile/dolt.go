@@ -3,28 +3,15 @@ package reconcile
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
 	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
-
-// hasBeadsDatabase reports whether repo has a beads database at all.
-//
-// A three-line stat rather than a call to internal/beads's own Present:
-// beads/instance.go already imports this package for ShellQuote, so
-// reconcile importing beads back would be a cycle. This is cheap enough, and
-// narrow enough, that duplicating it here beats restructuring either package
-// to break the cycle.
-func hasBeadsDatabase(repo string) bool {
-	info, err := os.Stat(filepath.Join(repo, ".beads"))
-	return err == nil && info.IsDir()
-}
 
 // validDoltCredsID matches a DoltHub creds id -- the JWK's filename stem --
 // which becomes part of a remote path built by plain string concatenation
@@ -119,7 +106,7 @@ func placeDoltCredential(ctx context.Context, client *Client, beadsMode, repoRoo
 	if beadsMode != "dolthub" {
 		return
 	}
-	if !hasBeadsDatabase(repoRoot) {
+	if !beads.Present(repoRoot) {
 		provider.ReportWarning(ctx, "beads: "+repoRoot+" has no beads database; skipping the DoltHub credential since nothing on the instance can use it")
 		return
 	}
