@@ -78,13 +78,13 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 // so every other mode present and future has to be added here deliberately.
 func TestPlaceDoltCredentialFor_SkipsEveryModeThatCannotUseTheCredential(t *testing.T) {
 	for _, mode := range []beads.Mode{beads.ModeAbsent, beads.ModeUnsynced, beads.ModeGit} {
-		t.Run(mode.String(), func(t *testing.T) {
+		// Group rather than t.Run: each mode gets its own isolated home, so
+		// a regression here fails on a missing secrets file instead of
+		// reaching the developer's real credential and prompting for a
+		// YubiKey touch.
+		testenv.Group(t, mode.String(), func(t *testing.T, _ testenv.Env) {
 			var out, errOut bytes.Buffer
 			ctx := provider.WithOutput(context.Background(), &out, &errOut)
-			// Not because this test needs a secrets file, but so that a
-			// regression here fails on a missing one instead of reaching the
-			// developer's real credential and prompting for a YubiKey touch.
-			testenv.Isolate(t)
 
 			// A nil client would panic if this got as far as touching it --
 			// the mode check must come before any secret is even looked up,

@@ -17,10 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
+
+	"github.com/jskswamy/cloudlab/internal/shellcmd"
 )
 
 // Client wraps an established SSH connection to an instance.
