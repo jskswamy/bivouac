@@ -32,6 +32,18 @@ type Session struct {
 	Name      string `json:"name"`
 	LocalRepo string `json:"local_repo"`
 	Base      string `json:"base"`
+	// RepoName is the identity the session's remote directory was seeded
+	// under (sessions/<name>/<RepoName> on the instance) -- the session's
+	// own repo, not necessarily the instance's. One instance can host
+	// sessions started from different repos via --name, and each keeps the
+	// remote directory name its own repo derived at creation, so this must
+	// travel with the session rather than be assumed equal to the record's
+	// name at every later lookup.
+	//
+	// Empty means cloudlab never recorded one, which is every session that
+	// predates this field; callers fall back to the record's name, which
+	// is correct for exactly the case that fallback was the only behavior.
+	RepoName string `json:"repo_name,omitempty"`
 	// HerdrMachineID is the saved-machine profile `cloudlab herdr`
 	// registered for this session, if any.
 	//
@@ -44,6 +56,17 @@ type Session struct {
 	// Empty means cloudlab never registered one, which is also every
 	// session that predates this field.
 	HerdrMachineID string `json:"herdr_machine_id,omitempty"`
+}
+
+// RepoNameOr returns the identity the session's remote directory was
+// seeded under, falling back to instanceName for a session that predates
+// RepoName -- back then repoName was always the instance's own name, so
+// that fallback is exact rather than a guess.
+func (s Session) RepoNameOr(instanceName string) string {
+	if s.RepoName != "" {
+		return s.RepoName
+	}
+	return instanceName
 }
 
 // FindSession returns the session called name, if the instance has one.

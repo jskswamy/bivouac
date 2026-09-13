@@ -95,7 +95,7 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 	var firstErr error
 	for _, s := range record.Sessions {
 		provider.ReportProgress(ctx, "rescuing "+s.Name+" before destroy")
-		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, record.Name, s.Name); err != nil {
+		if _, _, err := RescueSession(ctx, record.IP, record.User, s.LocalRepo, s.RepoNameOr(record.Name), s.Name); err != nil {
 			// Skip unconditionally, whether or not this is the first failure:
 			// a session whose own rescue just failed is a box already known
 			// to be a problem, and checking its issues too would only spend
@@ -110,7 +110,7 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 		// the verb that makes their loss permanent. RescueSession's own
 		// beads step warns rather than failing, because a broken issue sync
 		// must not stop a pull -- but it must stop a destroy.
-		if err := checkBeadsLanded(ctx, record.IP, record.User, s.LocalRepo, RemoteRepoPath(record.User, s.Name, record.Name), s.Name); err != nil && firstErr == nil {
+		if err := checkBeadsLanded(ctx, record.IP, record.User, s.LocalRepo, RemoteRepoPath(record.User, s.Name, s.RepoNameOr(record.Name)), s.Name); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
