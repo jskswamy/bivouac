@@ -13,6 +13,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // requireBd skips when bd is not installed. It is in the Linux dev shell (see
@@ -133,7 +134,7 @@ func wireBeadsForRequireLanded(t *testing.T, localRepo, session string) {
 func TestRequireBeadsLanded_RefusesWhenTheSyncCannotConfirmIssuesLanded(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()
@@ -167,7 +168,7 @@ func TestRequireBeadsLanded_RefusesWhenTheSyncCannotConfirmIssuesLanded(t *testi
 func TestRequireBeadsLanded_PassesOnceIssuesHaveLanded(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()
@@ -210,7 +211,7 @@ func TestRequireBeadsLanded_PassesOnceIssuesHaveLanded(t *testing.T) {
 func TestBootstrapBeads_RemovesTheRemoteWhenBootstrapFails(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()
@@ -250,7 +251,7 @@ func TestBootstrapBeads_RemovesTheRemoteWhenBootstrapFails(t *testing.T) {
 func TestBootstrapBeads_KeepsTheRemoteWhenOnlyTheExternalRemoteAddFails(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()
@@ -290,7 +291,7 @@ func TestBootstrapBeads_KeepsTheRemoteWhenOnlyTheExternalRemoteAddFails(t *testi
 func TestBootstrapBeads_WarnsWhenBootstrapFails(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()
@@ -460,7 +461,7 @@ func TestCheckBeadsLanded_RunsTheGuardWhenConnectSucceeds(t *testing.T) {
 func TestWarnOnBeadsVersionMismatch_WarnsWhenTheVersionsDiffer(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
 		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "version") {
@@ -492,7 +493,7 @@ func TestWarnOnBeadsVersionMismatch_WarnsWhenTheVersionsDiffer(t *testing.T) {
 func TestWarnOnBeadsVersionMismatch_SilentWhenTheVersionsMatch(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	macVersion, err := beads.Version(context.Background())
 	if err != nil {
@@ -530,7 +531,7 @@ func TestWarnOnBeadsVersionMismatch_SilentWhenTheVersionsMatch(t *testing.T) {
 func TestBootstrapBeads_WarnsOnVersionMismatchAfterASuccessfulBootstrap(t *testing.T) {
 	requireBd(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	session := "s"
 	localRepo := t.TempDir()

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // generateTestAgeRecipient creates a fresh age identity, points
@@ -61,7 +63,7 @@ func TestSecretsInit_CreatesEncryptedFile(t *testing.T) {
 }
 
 func TestSecretsInit_FailsWithoutAgeFlag(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	root := newRootCmd()
 	root.SetArgs([]string{"secrets", "init"})

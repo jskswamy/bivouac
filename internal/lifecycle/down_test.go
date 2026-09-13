@@ -13,6 +13,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // setupDownTest isolates state so each Down test gets its own store
@@ -83,7 +84,7 @@ func TestDown_RealDestroyErrorStillClearsStateButIsReturned(t *testing.T) {
 func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
 	store := setupDownTest(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var gotCmd string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -125,7 +126,7 @@ func TestDown_DeregistersTailscaleWhenJoined(t *testing.T) {
 func TestDown_LogsOutBeforeDestroying(t *testing.T) {
 	store := setupDownTest(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var order []string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -166,7 +167,7 @@ func (p *orderedDestroyProvider) Destroy(ctx context.Context, id string) error {
 func TestDown_SkipsTailscaleLogoutWhenNeverJoined(t *testing.T) {
 	store := setupDownTest(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	called := false
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -194,7 +195,7 @@ func TestDown_SkipsTailscaleLogoutWhenNeverJoined(t *testing.T) {
 func TestDown_AbortsWhenRescueFails(t *testing.T) {
 	store := setupDownTest(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "checkpoint exploded", 1
@@ -226,7 +227,7 @@ func TestDown_AbortsWhenRescueFails(t *testing.T) {
 // holding three is the data loss this whole design exists to prevent.
 func TestDown_RescuesEverySessionBeforeDestroying(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var rescued []string
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {

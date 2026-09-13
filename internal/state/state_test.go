@@ -5,11 +5,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	s, err := Open()
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -168,7 +170,7 @@ func TestRecord_RemoveSessionLeavesTheOthers(t *testing.T) {
 
 // The record round-trips through the store, so the new shape must persist.
 func TestStore_RoundTripsSessions(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	s, err := Open()
 	if err != nil {
 		t.Fatal(err)

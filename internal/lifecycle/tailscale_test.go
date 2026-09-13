@@ -10,6 +10,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/secrets"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // writeTailscaleSecretsFixture generates a fresh age identity, points
@@ -42,7 +43,7 @@ func writeTailscaleSecretsFixture(t *testing.T, authkey string) {
 		t.Fatalf("couldn't find public key in age-keygen output:\n%s", keyData)
 	}
 	t.Setenv("SOPS_AGE_KEY_FILE", keyPath)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	plainPath := filepath.Join(t.TempDir(), "plain.yaml")
 	if err := os.WriteFile(plainPath, []byte("tailscale_authkey: "+authkey+"\n"), 0o600); err != nil {
@@ -66,7 +67,7 @@ func writeTailscaleSecretsFixture(t *testing.T, authkey string) {
 
 func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 	writeTailscaleSecretsFixture(t, "tskey-abc123-example")
 
 	var commands []string
@@ -128,7 +129,7 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 
 func TestJoinTailscale_ReportsProgressBeforeDecrypting(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 	writeTailscaleSecretsFixture(t, "tskey-abc123-example")
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {

@@ -100,3 +100,23 @@ func TestEnvPath_JoinsOntoTheSandbox(t *testing.T) {
 		}
 	})
 }
+
+// Groups nest, and each level gets its own sandbox -- the property that
+// makes describe/context-style grouping work without a DSL.
+func TestGroup_NestsWithAFreshSandboxPerLevel(t *testing.T) {
+	var outer, inner string
+
+	Group(t, "outer", func(t *testing.T, env Env) {
+		outer = env.Home
+		Group(t, "inner", func(t *testing.T, env Env) {
+			inner = env.Home
+		})
+	})
+
+	if outer == "" || inner == "" {
+		t.Fatalf("groups did not run: outer=%q inner=%q", outer, inner)
+	}
+	if outer == inner {
+		t.Errorf("both levels shared the sandbox %q, want one each", outer)
+	}
+}

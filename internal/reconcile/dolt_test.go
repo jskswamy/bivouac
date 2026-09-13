@@ -12,6 +12,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func TestPlaceDoltCredential_DoesNothingOutsideDolthubMode(t *testing.T) {
@@ -50,7 +51,7 @@ func TestPlaceDoltCredential_WarnsAndContinuesWhenTheSecretIsMissing(t *testing.
 	// XDG_CONFIG_HOME at an empty temp dir means secrets.Path() names a file
 	// that does not exist, which is exactly the "asked for dolthub, never ran
 	// secrets init" case.
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	// Entered past the mode gate, since this is about what happens after it.
 	// Going through placeDoltCredential instead would make the test depend on
@@ -83,7 +84,7 @@ func TestPlaceDoltCredentialFor_SkipsEveryModeThatCannotUseTheCredential(t *test
 			// Not because this test needs a secrets file, but so that a
 			// regression here fails on a missing one instead of reaching the
 			// developer's real credential and prompting for a YubiKey touch.
-			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			testenv.Isolate(t)
 
 			// A nil client would panic if this got as far as touching it --
 			// the mode check must come before any secret is even looked up,
@@ -111,7 +112,7 @@ func TestPlaceDoltCredentialFor_SkipsEveryModeThatCannotUseTheCredential(t *test
 func TestPlaceDoltCredentialFor_ProceedsForAnExternalRepository(t *testing.T) {
 	var out, errOut bytes.Buffer
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	placeDoltCredentialFor(ctx, nil, beads.Detection{
 		Mode:        beads.ModeExternal,

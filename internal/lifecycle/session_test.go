@@ -2,11 +2,13 @@ package lifecycle
 
 import (
 	"context"
-	"github.com/jskswamy/cloudlab/internal/state"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // noGitSSH makes git's ssh transport fail instantly instead of dialling.
@@ -74,7 +76,7 @@ func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 // invisible to git and lost when the instance goes away.
 func TestRescueSession_CheckpointsBeforeFetching(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var commands []string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -124,7 +126,7 @@ func TestVerifyFetched_FailsWhenObjectIsAbsent(t *testing.T) {
 // commands captured here are only the remote ones.)
 func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var commands []string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -156,7 +158,7 @@ func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T
 func TestStartSession_SeedsRepoBeforeCreatingTheWorktree(t *testing.T) {
 	noGitSSH(t)
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var commands []string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -266,7 +268,7 @@ func TestTrackSession_UsesTheURLItWasGiven(t *testing.T) {
 
 func TestMergeSession_RefusesOnADirtyTree(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
 
 	repo := t.TempDir()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func writeFixture(t *testing.T, path, body string) {
@@ -27,7 +28,7 @@ func writeFixture(t *testing.T, path, body string) {
 // base config interferes.
 func seedInstance(t *testing.T, name, addr string) {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	store, err := state.Open()
@@ -41,7 +42,7 @@ func seedInstance(t *testing.T, name, addr string) {
 
 func TestReconcile_NoPackages_SwitchesBareTemplateRef_NoFileShipped(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var gotCmd string
 	fileWritten := false
@@ -91,7 +92,7 @@ func TestReconcile_NoPackages_SwitchesBareTemplateRef_NoFileShipped(t *testing.T
 
 func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var gotWriteCmd, gotWriteStdin, gotSwitchCmd string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -143,7 +144,7 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 
 func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "building home-manager generation\n", 0
@@ -171,7 +172,7 @@ func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
 }
 
 func TestReconcile_InstanceNotFound_ReturnsClearError(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	err := Reconcile(context.Background(), "nosuchinstance", "/unused/cloudlab.pkl")
 	if err == nil {
@@ -184,7 +185,7 @@ func TestReconcile_InstanceNotFound_ReturnsClearError(t *testing.T) {
 
 func TestReconcile_HomeManagerSwitchFails_ErrorIncludesOutput(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "error: attribute 'cli' missing\n", 1
