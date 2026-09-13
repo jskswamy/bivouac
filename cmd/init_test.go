@@ -555,7 +555,7 @@ func TestInitFlow_ReadsBackWhatItWrote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("written config does not resolve: %v", err)
 	}
-	if cfg.Template == nil || *cfg.Template != `weird"\ref` {
+	if cfg.Template != `weird"\ref` {
 		t.Errorf("Template = %v, want the answer round-tripped", cfg.Template)
 	}
 }

@@ -34,6 +34,7 @@ func noGitSSH(t *testing.T) {
 func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 	noGitSSH(t)
 	startFakeAgent(t)
+	testenv.Isolate(t)
 
 	var commands []string
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {

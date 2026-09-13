@@ -491,6 +491,7 @@ func TestConnect_HostKeyMismatch_ErrorHasRecreateHint(t *testing.T) {
 // the shape all of those failures take once the dial has already succeeded.
 func TestRunContext_ReturnsWhenTheInstanceStopsAnswering(t *testing.T) {
 	startFakeAgent(t)
+	testenv.Isolate(t)
 
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
@@ -530,6 +531,7 @@ func TestRunContext_ReturnsWhenTheInstanceStopsAnswering(t *testing.T) {
 // there is enough context to know what a sensible bound is.
 func TestRun_StillWorksWithoutADeadline(t *testing.T) {
 	startFakeAgent(t)
+	testenv.Isolate(t)
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
 		return "hello from " + cmd, 0
 	})

@@ -441,6 +441,7 @@ func TestCheckBeadsLanded_WarnsRatherThanSkipsSilentlyWhenConnectFails(t *testin
 // could be "explained" by a function that never does anything at all.
 func TestCheckBeadsLanded_RunsTheGuardWhenConnectSucceeds(t *testing.T) {
 	startFakeAgent(t)
+	testenv.Isolate(t)
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
 		return "", 0
 	})
