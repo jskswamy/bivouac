@@ -1,6 +1,6 @@
 # SSH key discovery for the wizard's `sshKeys` question
 
-Status: designed, not implemented
+Status: implemented
 Date: 2026-09-13
 Tracks: `cloudlab-pwg.4` (this design), `cloudlab-gvc` (decision), `cloudlab-d05` (implementation)
 Builds on: `docs/superpowers/specs/2026-09-09-cloudlab-init-and-presets-design.md`
@@ -294,3 +294,38 @@ consequences well outside cloudlab. Say none were found and point at
 from DigitalOcean after the file was written — but puts an API call on
 the hot path of the most-scripted command, for a case that announces
 itself at the next login. Revisit if it proves common.
+
+## As implemented (2026-09-13)
+
+Built as designed. Three notes for anyone reading the code against this
+document.
+
+**The free-text entry is a sentinel option.** huh's multi-select cannot
+mix a text field into its list, so "Type a fingerprint or key ID…" is an
+option whose value is a sentinel; selecting it opens an input afterwards
+and its answer is appended. With nothing discovered at all there is no
+list to show, so the question degrades to that input directly.
+
+**Tier 1's default selection is the agent's keys**, and disk-only keys
+are left unselected. The spec said "keys that are both held locally and
+registered", which tier 1 cannot know. Selecting every local key was the
+obvious alternative and is wrong: DigitalOcean refuses a create naming
+any unregistered key, so one stale `.pub` would fail every later `up`
+until the file was edited again. An agent key is the best available
+evidence of a key in active use.
+
+**An unregistered key that is not uploaded is dropped from the
+selection**, rather than written and left to fail. The reasoning is the
+same: one unregistered entry fails the whole create, so writing it would
+hand the user a config that cannot work. Dropping it can leave nothing
+selected, which is why the empty case warns.
+
+**The answer is checked, not just the choices.** `NeedsUpload` reads the
+offered choices, which is everything the design describes — but the
+free-text entry appends its fingerprint *after* the form closes, so it
+never becomes a choice, and a key carried in from an existing config is
+a choice with no public key behind it. Neither can be uploaded from
+here. Both are now named in a warning when the account is known, because
+the create they will fail reports "invalid key identifiers" and has been
+seen blaming the hostname instead. They are named rather than dropped:
+the user asked for them, and may be about to register them by hand.

@@ -33,6 +33,8 @@ const (
 	promptMovePersonal   = "move-personal"
 	promptSavePreset     = "save-preset"
 	promptPresetName     = "preset-name"
+	promptUploadKey      = "upload-key"
+	promptUploadKeyName  = "upload-key-name"
 )
 
 // Choices whose text the flow has to compare against.
@@ -58,6 +60,13 @@ type prompter interface {
 	Confirm(m meta, current bool) (bool, error)
 	// Input reads a single free-form line.
 	Input(m meta, current string) (string, error)
+	// AskKeys picks SSH keys from an offer, returning fingerprints.
+	//
+	// Its own method rather than a wizard.Question because the choices
+	// are discovered rather than declared -- from the ssh-agent, from
+	// ~/.ssh, and from the provider account -- and because picking one
+	// can lead to registering it.
+	AskKeys(offer wizard.KeyOffer) ([]string, error)
 }
 
 func newInitCmd() *cobra.Command {
@@ -116,6 +125,11 @@ func repoRootFromFlag(ctx context.Context, repoFlag string) (string, error) {
 // settle the personal file; then the project one; then read back what
 // was written.
 func runInitFlow(ctx context.Context, out io.Writer, p prompter, root string) error {
+	return runInitFlowWith(ctx, out, p, root, defaultKeySources())
+}
+
+// runInitFlowWith is runInitFlow with its SSH key inputs injected.
+func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string, keys keySources) error {
 	basePath, err := config.DefaultBasePath()
 	if err != nil {
 		return err
@@ -132,7 +146,7 @@ func runInitFlow(ctx context.Context, out io.Writer, p prompter, root string) er
 		return err
 	}
 
-	base, err := settlePersonal(ctx, out, p, basePath, lifted)
+	base, err := settlePersonal(ctx, out, p, basePath, lifted, keys)
 	if err != nil {
 		return err
 	}
@@ -210,7 +224,7 @@ func offerMove(out io.Writer, p prompter, existing config.Values, exists bool) (
 // to go on. A base that already exists is summarised rather than
 // re-asked, and fields lifted out of a project file answer the same
 // questions without asking them again.
-func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath string, lifted config.Values) (config.Values, error) {
+func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath string, lifted config.Values, keys keySources) (config.Values, error) {
 	existing, exists, err := readIfPresent(ctx, basePath)
 	if err != nil {
 		return nil, err
@@ -232,13 +246,13 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 			return nil, err
 		}
 		if action == personalChange {
-			values, err = ask(p, wizard.PersonalQuestions(), values)
+			values, err = askPersonal(ctx, out, p, values, keys)
 			if err != nil {
 				return nil, err
 			}
 		}
 	default:
-		values, err = ask(p, wizard.PersonalQuestions(), values)
+		values, err = askPersonal(ctx, out, p, values, keys)
 		if err != nil {
 			return nil, err
 		}
@@ -256,6 +270,31 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 			return nil, err
 		}
 		printf(out, "Wrote %s\n", basePath)
+	}
+	return values, nil
+}
+
+// askPersonal asks the personal questions and then the SSH key one.
+//
+// sshKeys is asked apart from the others because it is not a question
+// with a typed answer: its choices are discovered from the ssh-agent,
+// from ~/.ssh and from the provider account, and choosing one can lead
+// to registering it. Keeping it out of the declarative question list is
+// what stops that machinery leaking into every other field.
+func askPersonal(ctx context.Context, out io.Writer, p prompter, values config.Values, keys keySources) (config.Values, error) {
+	values, err := ask(p, wizard.PersonalQuestions(), values)
+	if err != nil {
+		return nil, err
+	}
+
+	chosen, err := askSSHKeys(ctx, out, p, keys, currentKeys(values))
+	if err != nil {
+		return nil, err
+	}
+	if len(chosen) > 0 {
+		values[config.FieldSSHKeys] = chosen
+	} else {
+		delete(values, config.FieldSSHKeys)
 	}
 	return values, nil
 }

@@ -23,6 +23,44 @@ type Provider interface {
 	List(ctx context.Context) ([]VM, error)
 }
 
+// KeyRegistry is implemented by providers that can enumerate and
+// register the account's SSH keys.
+//
+// Deliberately not part of Provider. That interface is the VM lifecycle
+// and its doc comment above says provider-specific concepts stay out of
+// it rather than being forced into a cross-provider abstraction; key
+// management is exactly such a concept, and a provider that
+// authenticates some other way would have to stub it. The interactive
+// config flow is the only caller, so one type assertion at one call
+// site is cheaper than a method every future provider must implement in
+// order to say "unsupported".
+type KeyRegistry interface {
+	ListKeys(ctx context.Context) ([]SSHKey, error)
+	CreateKey(ctx context.Context, name, publicKey string) (SSHKey, error)
+}
+
+// SSHKey is one key registered on the provider account.
+type SSHKey struct {
+	ID          string
+	Name        string
+	Fingerprint string
+	PublicKey   string
+}
+
+// ErrForbidden reports that the credential is valid but not permitted
+// to do this.
+//
+// Worth its own error because a token scoped without the SSH-key
+// permissions is the *recommended* configuration, not a mistake: the
+// caller must be able to drop an optional capability rather than fail
+// the run. See IsForbidden.
+var ErrForbidden = errors.New("not permitted by this token")
+
+// IsForbidden reports whether err is a permission refusal.
+func IsForbidden(err error) bool {
+	return errors.Is(err, ErrForbidden)
+}
+
 // InstanceSpec describes the VM to create.
 type InstanceSpec struct {
 	Name     string

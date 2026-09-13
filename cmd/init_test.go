@@ -29,6 +29,12 @@ type scriptedPrompter struct {
 	asked []string
 	// seen records the value each field was pre-filled with.
 	seen map[string]any
+	// keyChoice is what AskKeys returns, by fingerprint.
+	keyChoice []string
+	// keyOffer records the offer AskKeys was given.
+	keyOffer wizard.KeyOffer
+	// keysAsked records whether the SSH key question was reached.
+	keysAsked bool
 }
 
 func newScript() *scriptedPrompter {
@@ -46,6 +52,23 @@ func (s *scriptedPrompter) Ask(q wizard.Question, current any) (any, error) {
 		return v, nil
 	}
 	return current, nil // unscripted: keep whatever was pre-filled
+}
+
+func (s *scriptedPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
+	s.keysAsked = true
+	s.keyOffer = offer
+	if s.keyChoice != nil {
+		return s.keyChoice, nil
+	}
+	// Unscripted: take the offer's own defaults, as a user pressing
+	// straight through would.
+	var chosen []string
+	for _, c := range offer.Choices {
+		if c.Selected {
+			chosen = append(chosen, c.Fingerprint)
+		}
+	}
+	return chosen, nil
 }
 
 func (s *scriptedPrompter) Choose(m meta, options []string, current string) (string, error) {
@@ -86,6 +109,10 @@ func newInitFixture(t *testing.T) *initFixture {
 	t.Helper()
 	xdg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdg)
+	// The SSH key question reads both of these. A developer's own agent
+	// or token must not change what these tests see.
+	t.Setenv("SSH_AUTH_SOCK", "")
+	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := t.TempDir()
 	if out, err := exec.Command("git", "-C", root, "init").CombinedOutput(); err != nil {
@@ -148,7 +175,6 @@ func TestInitFlow_FirstRunEver(t *testing.T) {
 	s.answers = map[string]any{
 		"region":    "nyc3",
 		"size":      "s-1vcpu-1gb",
-		"sshKeys":   []string{"aa:bb:cc"},
 		"template":  "python",
 		"agents":    []string{"claude"},
 		"packages":  []string{"jq"},
@@ -156,6 +182,9 @@ func TestInitFlow_FirstRunEver(t *testing.T) {
 		"tailscale": false,
 	}
 	s.decisions = map[string]any{promptSavePreset: false}
+	// No agent and no ~/.ssh in the fixture, so the key offer is empty
+	// and this stands for the free-text entry it always carries.
+	s.keyChoice = []string{"aa:bb:cc"}
 
 	if err := f.run(t, s); err != nil {
 		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
@@ -180,10 +209,11 @@ func TestInitFlow_ProjectFileNeverGetsTheSSHKey(t *testing.T) {
 	f := newInitFixture(t)
 	s := newScript()
 	s.answers = map[string]any{
-		"region": "nyc3", "size": "s-1vcpu-1gb", "sshKeys": []string{"aa:bb:cc"},
+		"region": "nyc3", "size": "s-1vcpu-1gb",
 		"template": "python",
 	}
 	s.decisions = map[string]any{promptSavePreset: false}
+	s.keyChoice = []string{"aa:bb:cc"}
 
 	if err := f.run(t, s); err != nil {
 		t.Fatalf("runInitFlow() error = %v", err)
