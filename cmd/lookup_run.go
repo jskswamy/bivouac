@@ -238,7 +238,13 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	// destroys. down knows what to rescue only from here -- it resolves an
 	// instance by name and may run from anywhere, so none of this is derivable
 	// from the caller's working directory.
-	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base})
+	// RepoName travels with the session rather than being re-derived from
+	// record.Name later: seedSession names the remote directory after
+	// whatever instance identity resolved here, and that identity can
+	// later stop matching the record's own name -- an instance renamed or
+	// consolidated after this session was seeded must not silently point
+	// every later pull/merge/delete at a directory that was never seeded.
+	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base, RepoName: name})
 	if err := store.Put(record); err != nil {
 		return err
 	}
@@ -446,7 +452,7 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, record.Name, sess.Name, sess.Base)
+	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, sess.RepoNameOr(record.Name), sess.Name, sess.Base)
 	if err != nil {
 		return err
 	}
@@ -475,7 +481,7 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, record.Name, sess)
+	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, sess.RepoNameOr(record.Name), sess)
 	if err != nil {
 		return err
 	}
@@ -523,7 +529,7 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	// out, so an entry left behind after that is one nothing can ever rescue
 	// again -- and `down` would refuse on it forever, recommending the --force
 	// that skips the rescue for every other session on the instance too.
-	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, record.Name, sess, force)
+	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, sess.RepoNameOr(record.Name), sess, force)
 	if err != nil {
 		return err
 	}
@@ -944,7 +950,7 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 		// Resolution here comes from the cwd, the single session, or the
 		// picker; naming one explicitly is what `cd` into its worktree is for.
 		if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
-			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, name)
+			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name))
 		}
 	}
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir)
@@ -964,8 +970,10 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// With no session resolvable, connect anyway with herdr's own default
 	// session -- connecting is not destructive and must degrade, not refuse.
 	session := ""
+	repoName := record.Name
 	if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 		session = sess.Name
+		repoName = sess.RepoNameOr(record.Name)
 	}
 
 	// Inside herdr, saving the instance as a machine puts it in the sidebar
@@ -974,7 +982,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
 		id, label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
-			record.User, session, record.Name, ownedMachines(store))
+			record.User, session, repoName, ownedMachines(store))
 		if err != nil {
 			return err
 		}

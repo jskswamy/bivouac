@@ -59,6 +59,27 @@ func TestRunSessionStart_AllowsASecondSession(t *testing.T) {
 	}
 }
 
+// The resolved instance identity is recorded on the session itself, not
+// re-derived from the record later: seeding names the remote directory
+// after whatever this call resolved, and only the session's own copy of
+// that stays correct if the record's name ever changes afterward.
+func TestRunSessionStart_RecordsTheResolvedNameAsRepoName(t *testing.T) {
+	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
+	store := sessionTestStore(t, record)
+
+	// Fails at the connection; what matters is what got recorded first.
+	_ = runSessionStart(sessionTestCmd(), "myinstance", []string{"alpha"})
+
+	got, _, _ := store.Get("myinstance")
+	sess, ok := got.FindSession("alpha")
+	if !ok {
+		t.Fatal("alpha was not recorded")
+	}
+	if sess.RepoName != "myinstance" {
+		t.Errorf("RepoName = %q, want %q", sess.RepoName, "myinstance")
+	}
+}
+
 // A start that fails partway has still created the branch and worktree on
 // the instance. If the session name is only recorded on success, `down`
 // sees no session at all and destroys the VM without rescuing anything.

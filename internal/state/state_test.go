@@ -139,6 +139,18 @@ func TestRecord_PutSessionReplacesByNameAndAppendsOtherwise(t *testing.T) {
 	}
 }
 
+func TestSession_RepoNameOrFallsBackForSessionsThatPredateIt(t *testing.T) {
+	withField := Session{Name: "planning", RepoName: "owner-repo-planning"}
+	if got := withField.RepoNameOr("myinstance"); got != "owner-repo-planning" {
+		t.Errorf("RepoNameOr() = %q, want the recorded RepoName", got)
+	}
+
+	withoutField := Session{Name: "auth"}
+	if got := withoutField.RepoNameOr("myinstance"); got != "myinstance" {
+		t.Errorf("RepoNameOr() = %q, want the instance name as fallback", got)
+	}
+}
+
 func TestRecord_RemoveSessionLeavesTheOthers(t *testing.T) {
 	var r Record
 	r.PutSession(Session{Name: "auth"})
