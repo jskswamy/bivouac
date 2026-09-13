@@ -9,9 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/jskswamy/cloudlab/internal/secrets"
 	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/spf13/cobra"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // writeTokenSecretsFixture points XDG_CONFIG_HOME at a temp directory
@@ -26,7 +28,7 @@ import (
 // pin it, whether or not it wants a fixture.
 func writeTokenSecretsFixture(t *testing.T, token string) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 	recipient := generateTestAgeRecipient(t)
 
 	plainPath := filepath.Join(t.TempDir(), "plain.yaml")
@@ -85,7 +87,7 @@ func TestResolveToken_FallsBackToSecretsFile(t *testing.T) {
 // The error is where a reader learns the precedence, so it has to name
 // both sources rather than only the one that happened to be checked last.
 func TestResolveToken_ErrorNamesBothSources(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	_, err := resolveToken(context.Background())
@@ -105,7 +107,7 @@ func TestResolveToken_ErrorNamesBothSources(t *testing.T) {
 // belongs in that same category, so status stays usable with no key
 // present at all.
 func TestStatusCommand_ReportsLocalStateWithoutAToken(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 	sessionTestStore(t, state.Record{
 		Name: "myinstance",

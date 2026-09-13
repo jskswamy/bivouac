@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func TestParseServeStatus_Empty(t *testing.T) {
@@ -98,7 +100,7 @@ func TestUnserveArgs(t *testing.T) {
 
 func TestServe_RunsTailscaleServe(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var got []string
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
@@ -120,7 +122,7 @@ func TestServe_RunsTailscaleServe(t *testing.T) {
 
 func TestUnserve_TurnsOffOneEntry(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var got []string
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
@@ -145,7 +147,7 @@ func TestUnserve_TurnsOffOneEntry(t *testing.T) {
 
 func TestServeStatus_ParsesRemoteJSON(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	raw, err := os.ReadFile(filepath.Join("testdata", "serve-status-tcp.json"))
 	if err != nil {

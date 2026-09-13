@@ -6,6 +6,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	gopem "encoding/pem"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,9 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
-	"golang.org/x/crypto/ssh/knownhosts"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // startFakeAgent runs an in-process fake ssh-agent (a real
@@ -170,7 +171,7 @@ func readAllChannel(channel ssh.Channel) []byte {
 
 func TestConnect_UsesGivenUsername(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
 
 	client, err := Connect(context.Background(), addr, "devuser")
@@ -220,7 +221,7 @@ func TestConnect_FallsBackToOnDiskKeyWhenAgentHasNone(t *testing.T) {
 }
 
 func TestConnect_NoAgentAndNoKeyOnDisk_ReportsActionableError(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("SSH_AUTH_SOCK", "")
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
@@ -236,7 +237,7 @@ func TestConnect_NoAgentAndNoKeyOnDisk_ReportsActionableError(t *testing.T) {
 
 func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var got sessionResult
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -267,7 +268,7 @@ func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 
 func TestClient_WriteSecretFile_SendsContentViaStdinWithRestrictedMode(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var got sessionResult
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -302,7 +303,7 @@ func TestClient_WriteSecretFile_SendsContentViaStdinWithRestrictedMode(t *testin
 
 func TestClient_Run_ReturnsOutputOnSuccess(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "switch complete\n", 0
@@ -325,7 +326,7 @@ func TestClient_Run_ReturnsOutputOnSuccess(t *testing.T) {
 
 func TestClient_Run_ReturnsErrorOnNonZeroExit(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "boom\n", 1
@@ -348,7 +349,7 @@ func TestClient_Run_ReturnsErrorOnNonZeroExit(t *testing.T) {
 
 func TestClient_RunStreaming_WritesLiveAndReturnsSameOutput(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "building...\nswitch complete\n", 0
@@ -375,7 +376,7 @@ func TestClient_RunStreaming_WritesLiveAndReturnsSameOutput(t *testing.T) {
 
 func TestClient_RunStreaming_ReturnsErrorOnNonZeroExit(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "boom\n", 1

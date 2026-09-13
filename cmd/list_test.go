@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // errWriter always fails, so tests can assert that a write failure
@@ -18,7 +19,7 @@ func (errWriter) Write(p []byte) (int, error) {
 }
 
 func TestListCommand_NoInstances(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	root := newRootCmd()
 	root.SetArgs([]string{"list"})
@@ -35,7 +36,7 @@ func TestListCommand_NoInstances(t *testing.T) {
 }
 
 func TestListCommand_WithInstances(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	store, err := state.Open()
 	if err != nil {
 		t.Fatalf("state.Open() error = %v", err)
@@ -59,7 +60,7 @@ func TestListCommand_WithInstances(t *testing.T) {
 }
 
 func TestListCommand_NoInstances_WriteErrorPropagates(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	root := newRootCmd()
 	root.SetArgs([]string{"list"})
@@ -72,7 +73,7 @@ func TestListCommand_NoInstances_WriteErrorPropagates(t *testing.T) {
 }
 
 func TestListCommand_WithInstances_WriteErrorPropagates(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	store, err := state.Open()
 	if err != nil {
 		t.Fatalf("state.Open() error = %v", err)

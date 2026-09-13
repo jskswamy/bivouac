@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func TestParseListeners_RealSSOutput(t *testing.T) {
@@ -44,7 +46,7 @@ func TestParseListeners_SkipsHeader(t *testing.T) {
 
 func TestListeners_RunsSSAndParses(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	raw, err := os.ReadFile(filepath.Join("testdata", "ss-tlnp.txt"))
 	if err != nil {

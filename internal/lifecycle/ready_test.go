@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,10 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
-
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // startFakeAgent runs an in-process fake ssh-agent (a real
@@ -163,7 +163,7 @@ func readAllChannel(channel ssh.Channel) []byte {
 
 func TestWaitReady_SucceedsOnceCloudInitFinishes(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "status: done\n", 0
@@ -176,7 +176,7 @@ func TestWaitReady_SucceedsOnceCloudInitFinishes(t *testing.T) {
 
 func TestWaitReady_ReportsProgressBeforeWaiting(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		return "status: done\n", 0
@@ -195,7 +195,7 @@ func TestWaitReady_ReportsProgressBeforeWaiting(t *testing.T) {
 
 func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	var calls int
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -229,7 +229,7 @@ func TestWaitReady_TimesOutIfNeverReachable(t *testing.T) {
 // connection rate is the thing worth pinning down.
 func TestWaitReady_BacksOffInsteadOfHammeringPort22(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -268,7 +268,7 @@ func TestWaitReady_BacksOffInsteadOfHammeringPort22(t *testing.T) {
 
 func TestWaitReady_CloudInitHangIsBoundedByTimeout(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
 		time.Sleep(3 * time.Second)

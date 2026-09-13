@@ -13,6 +13,7 @@ import (
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // fakeProvider is a minimal provider.Provider test double: Create
@@ -65,8 +66,7 @@ func minimalCloudlabPkl(t *testing.T, dir string) string {
 
 func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	startFakeAgent(t)
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
@@ -139,7 +139,7 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 }
 
 func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
@@ -176,7 +176,7 @@ func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
 // session on the orphan is unreachable work, which contradicts the whole
 // rescue-before-destroy guarantee.
 func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
@@ -232,7 +232,7 @@ func TestUp_RejectsInvalidInstanceNameBeforeCreate(t *testing.T) {
 }
 
 func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
@@ -277,7 +277,7 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 }
 
 func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
@@ -313,7 +313,7 @@ func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
 }
 
 func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()

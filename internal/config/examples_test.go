@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func repoRoot(t *testing.T) string {
@@ -22,7 +24,7 @@ func TestExamples_Minimal_LoadsCleanly(t *testing.T) {
 	// Isolate from any real user's machine-local base config — this
 	// example must load cleanly on its own, not merged with whatever
 	// happens to live at $XDG_CONFIG_HOME/cloudlab/base.pkl.
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	cfg, err := Resolve(context.Background(), path)
 	if err != nil {

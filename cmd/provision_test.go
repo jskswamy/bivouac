@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 func TestProvisionCommand_NotInRepoErrors(t *testing.T) {
@@ -26,7 +28,7 @@ func TestProvisionCommand_NotInRepoErrors(t *testing.T) {
 
 func TestProvisionCommand_InstanceNotFoundErrors(t *testing.T) {
 	chdir(t, initTestRepo(t))
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	root := newRootCmd()
 	root.SetArgs([]string{"provision"})
@@ -45,7 +47,7 @@ func TestProvisionCommand_InstanceNotFoundErrors(t *testing.T) {
 
 func TestProvisionCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 	chdir(t, initTestRepo(t))
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	testenv.Isolate(t)
 
 	root := newRootCmd()
 	root.SetArgs([]string{"provision", "somename"})

@@ -63,6 +63,30 @@ func Run(t *testing.T, fn func(t *testing.T, env Env)) {
 	fn(t, env)
 }
 
+// Group runs name as a subtest with its own isolated home.
+//
+// Go's subtests nest, so Groups nest, and each level gets a fresh sandbox
+// plus whatever setup its own body does before descending -- the shape a
+// describe/context block gives you, without a DSL:
+//
+//	testenv.Group(t, "a repository with beads", func(t *testing.T, env testenv.Env) {
+//	        repo := seedRepo(t, env)
+//	        testenv.Group(t, "and an external remote", func(t *testing.T, env testenv.Env) {
+//	                ...
+//	        })
+//	})
+//
+// Note that the inner sandbox is a different directory from the outer one,
+// so state a parent set up under its own home is not visible to a child.
+// Pass what the child needs down through the closure, as repo is above.
+func Group(t *testing.T, name string, fn func(t *testing.T, env Env)) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Helper()
+		Run(t, fn)
+	})
+}
+
 // Isolate is Run's setup without the callback, for a TestMain or a test that
 // needs the isolation but not the nesting.
 func Isolate(t *testing.T) Env {

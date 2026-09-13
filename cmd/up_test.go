@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // minimalCloudlabPkl writes a valid cloudlab.pkl into dir, real enough
@@ -70,7 +72,7 @@ func TestUpCommand_MissingTokenErrors(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
 	minimalCloudlabPkl(t, dir)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()
@@ -139,7 +141,7 @@ func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
 	minimalCloudlabPkl(t, dir)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
 	root := newRootCmd()
