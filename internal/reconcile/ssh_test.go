@@ -80,7 +80,29 @@ type sessionResult struct {
 // handler's returned output back to the client, and sends the returned
 // exit code as the channel's exit-status. Returns the server's address
 // ("127.0.0.1:<port>").
+// originalHome is $HOME as this test binary started, before any
+// t.Setenv changed it.
+var originalHome = os.Getenv("HOME")
+
+// requireIsolatedHome fails a test that is about to connect to the fake
+// server without a HOME of its own.
+//
+// Connect records the host key it is shown in $HOME/.ssh/known_hosts.
+// With the real HOME still in place that writes an entry for
+// [127.0.0.1]:<ephemeral port> into the developer's own file -- silent,
+// until the day the OS hands that same port to a later run with a
+// different key and an unrelated test fails as a changed host key. The
+// check costs nothing and names the fix; finding it from the symptom
+// costs an afternoon.
+func requireIsolatedHome(t *testing.T) {
+	t.Helper()
+	if os.Getenv("HOME") == originalHome {
+		t.Fatal(`this test connects to the fake SSH server without isolating HOME: add t.Setenv("HOME", t.TempDir()) before starting it, or it writes a host key into the real ~/.ssh/known_hosts`)
+	}
+}
+
 func startFakeSSHServer(t *testing.T, handler func(cmd string, stdin []byte) (output string, exitCode uint32)) string {
+	requireIsolatedHome(t)
 	t.Helper()
 	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
