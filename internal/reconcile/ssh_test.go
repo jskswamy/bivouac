@@ -6,15 +6,16 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	gopem "encoding/pem"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
-	"golang.org/x/crypto/ssh/knownhosts"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/jskswamy/cloudlab/internal/testenv"
 )

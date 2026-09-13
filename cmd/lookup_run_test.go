@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/spf13/cobra"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"

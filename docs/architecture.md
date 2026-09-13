@@ -41,6 +41,36 @@ instance when a session starts, and moves back as git commits. See
 [docs/superpowers/specs/2026-09-05-git-aware-sync-design.md](superpowers/specs/2026-09-05-git-aware-sync-design.md)
 for why code moves as commits rather than a live sync.
 
+## The leaf tier
+
+Four packages sit below everything else and may be imported from anywhere:
+
+| package | owns |
+| --- | --- |
+| `internal/shellcmd` | quoting a shell argument, the `bash -lc` wrapper, remote argv |
+| `internal/tool` | finding an external binary on PATH, running it, handing it the terminal |
+| `internal/xdg` | where cloudlab keeps its own files under the user's home |
+| `internal/testenv` | an isolated home for a test |
+
+Their defining constraint is that they import only the standard library.
+That is not tidiness — `internal/identity` imports no other internal package
+and is one of their callers, so anything else in them would put them out of
+its reach.
+
+The tier exists because its absence had a cost. A four-line shell-quoting
+helper used to live in `internal/reconcile`, so every package that needed to
+quote an argument also took on reconcile's SSH, home-manager, provider,
+secrets and state dependencies — and could then never be imported back by
+reconcile. `internal/beads` imported reconcile for nothing else, and
+`reconcile.hasBeadsDatabase` existed as a byte-identical copy of
+`beads.Present` because the cycle left no alternative. That copy had already
+drifted from the rule it was meant to enforce.
+
+So when something small is needed in more than one place, it belongs here
+rather than in whichever package happens to have one already. Keep the
+concerns separate: path resolution and subprocess execution are the same
+tier, not the same package.
+
 ## Instance identity
 
 An instance is identified by the git repo it belongs to, not by the
