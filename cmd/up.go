@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -70,17 +71,17 @@ func newUpCmd() *cobra.Command {
 // refusing -- and refusing is still what happens with no terminal to
 // ask on, because a form blocked on stdin that never arrives looks
 // exactly like a hang.
-func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Config, error) {
+func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Resolved, error) {
 	cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		return cfg, err
 	}
 	if terr := requireTerminal(isInteractive()); terr != nil {
-		return config.Config{}, fmt.Errorf("no cloudlab.pkl in %s: %w", root, terr)
+		return config.Resolved{}, fmt.Errorf("no cloudlab.pkl in %s: %w", root, terr)
 	}
 	cmd.Printf("No cloudlab.pkl in %s yet — let's create one.\n", root)
 	if err := runInitFlow(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root); err != nil {
-		return config.Config{}, err
+		return config.Resolved{}, err
 	}
 	return config.Resolve(cmd.Context(), cloudlabPath)
 }

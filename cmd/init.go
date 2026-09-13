@@ -70,7 +70,7 @@ func newInitCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoFlag, _ := cmd.Flags().GetString("repo")
-			root, err := repoRootFromFlag(repoFlag)
+			root, err := repoRootFromFlag(cmd.Context(), repoFlag)
 			if err != nil {
 				return err
 			}
@@ -100,12 +100,12 @@ func requireTerminal(interactive bool) error {
 // repoRootFromFlag resolves the repository the config belongs to, the
 // same way `up` does — one instance per repo means one cloudlab.pkl
 // per repo, at its root.
-func repoRootFromFlag(repoFlag string) (string, error) {
+func repoRootFromFlag(ctx context.Context, repoFlag string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	return identity.RepoRoot(cwd, repoFlag)
+	return identity.RepoRoot(ctx, cwd, repoFlag)
 }
 
 // runInitFlow is the whole interactive flow, shared by `cloudlab init`
