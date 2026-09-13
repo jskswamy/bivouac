@@ -30,7 +30,7 @@ see "A note on trust" near the end of this doc.
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
-| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. |
+| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `cloudlab init` finds and fills these in — see [below](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
@@ -305,6 +305,59 @@ repo, and they'd provision with your key rather than theirs.
 
 The personal questions are asked once. Every run after that shows what
 they're set to and offers to change them.
+
+### SSH keys
+
+`cloudlab init` does not ask you to remember a fingerprint. It lists the
+keys this machine holds and writes the fingerprint for whichever you
+pick:
+
+```
+Which SSH keys should instances accept?
+
+  ✓ me@laptop      (in agent)
+  • old-desktop    (on disk)
+  • Type a fingerprint or key ID…
+```
+
+Keys come from your **ssh-agent** first, then `~/.ssh/*.pub`,
+deduplicated. The agent is the stronger source: a key it holds is one you
+can authenticate with right now, and it is the only place a
+YubiKey-resident key appears at all. Agent keys are the default
+selection; a `.pub` sitting on disk might have lost its private half, so
+picking one is left to you.
+
+The fingerprint written is the one DigitalOcean matches on, and you can
+check it by hand:
+
+```bash
+ssh-keygen -lE md5 -f ~/.ssh/id_ed25519.pub    # the MD5: prefix is dropped
+```
+
+**With a token in `DIGITALOCEAN_TOKEN`**, it also says which keys your
+account already has, lists account keys you do not hold locally (shown
+but never preselected — picking one is how you get an instance you cannot
+log into), and offers to upload a key that is missing:
+
+```
+old-desktop is not on your provider account. Upload it?   [ Yes ]  [ No ]
+Name it:  old-desktop
+```
+
+Nothing private ever leaves your machine — registering a key uploads its
+*public* half, exactly as the web console would.
+
+`init` never reaches for a token that is not already in the environment.
+The other route to your token decrypts through sops, often via a
+hardware key that waits for a touch, and a form silently blocked on that
+is indistinguishable from a hang. So a first run on a new machine
+completes with no credentials at all; a token scoped without SSH-key
+permission simply loses the account features rather than failing.
+
+**If you pick no keys, `init` says so.** An instance created without one
+still boots and still bills, and refuses every login — unlike a wrong
+fingerprint, which DigitalOcean rejects outright before creating
+anything.
 
 ### Only what you chose
 

@@ -153,6 +153,11 @@ type Question struct {
 // base.pkl, and their answers describe the user's own machine
 // preferences rather than any project.
 //
+// sshKeys is routed here but is deliberately absent: its choices are
+// discovered rather than typed -- see OfferKeys -- so the flow asks it
+// separately instead of pretending it is a field with a free-text
+// answer.
+//
 // region and size take typed slugs rather than a list fetched from the
 // provider: the account's real choices need a token, and a flow that
 // cannot start without credentials is a worse first experience than one
@@ -174,13 +179,6 @@ func PersonalQuestions() []Question {
 			Description: "A DigitalOcean size slug. Projects that need more can override it.",
 			Kind:        Text,
 			Placeholder: "s-1vcpu-1gb",
-		},
-		{
-			Field:       config.FieldSSHKeys,
-			Title:       "Which SSH keys?",
-			Description: "Fingerprints or IDs of keys already registered with DigitalOcean, separated by commas.",
-			Kind:        TextList,
-			Placeholder: "aa:bb:cc:...",
 		},
 	}
 }

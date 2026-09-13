@@ -63,6 +63,80 @@ func (formPrompter) Input(m meta, current string) (string, error) {
 	return runInput(m.Title, m.Description, "", current)
 }
 
+// manualKeyEntry is the sentinel option that opens a free-text entry.
+//
+// A NUL keeps it from ever colliding with a real fingerprint, which is
+// colon-separated hex.
+const manualKeyEntry = "\x00manual"
+
+// AskKeys offers the discovered keys as a multi-select, plus a way to
+// type one in.
+//
+// The free-text route stays at every tier: it is what the field accepted
+// before any of this existed, and it is the only way to name a key that
+// is on neither this machine nor the account. A wizard that could not do
+// what the file it writes can do would be a step backwards.
+func (formPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
+	// Nothing was discovered: there is no list to choose from, so ask
+	// for the value directly rather than showing an empty form.
+	if len(offer.Choices) == 0 {
+		typed, err := runInput("Which SSH keys?", "Fingerprints or IDs registered with your provider, separated by commas.", "aa:bb:cc:...", "")
+		if err != nil {
+			return nil, err
+		}
+		return splitList(typed), nil
+	}
+
+	options := make([]huh.Option[string], 0, len(offer.Choices)+1)
+	var value []string
+	for _, c := range offer.Choices {
+		options = append(options, huh.NewOption(keyLabel(c), c.Fingerprint).Selected(c.Selected))
+		if c.Selected {
+			value = append(value, c.Fingerprint)
+		}
+	}
+	options = append(options, huh.NewOption("Type a fingerprint or key ID…", manualKeyEntry))
+
+	description := "Keys on this machine. cloudlab cannot check these against your account without a token, and an unregistered key makes `up` fail before anything is created."
+	if offer.AccountKnown {
+		description = "Keys on this machine and on your provider account."
+	}
+
+	if err := run(huh.NewMultiSelect[string]().
+		Title("Which SSH keys should instances accept?").
+		Description(description).
+		Options(options...).
+		Value(&value)); err != nil {
+		return nil, err
+	}
+
+	chosen := make([]string, 0, len(value))
+	var manual bool
+	for _, fp := range value {
+		if fp == manualKeyEntry {
+			manual = true
+			continue
+		}
+		chosen = append(chosen, fp)
+	}
+	if !manual {
+		return chosen, nil
+	}
+	typed, err := runInput("Which other SSH keys?", "Fingerprints or IDs, separated by commas.", "aa:bb:cc:...", "")
+	if err != nil {
+		return nil, err
+	}
+	return append(chosen, splitList(typed)...), nil
+}
+
+// keyLabel is one row: what the key is called, and where it stands.
+func keyLabel(c wizard.KeyChoice) string {
+	if c.Detail == "" {
+		return c.Label
+	}
+	return c.Label + "  (" + c.Detail + ")"
+}
+
 // runInput collects one line, trimmed: a stray space must not become
 // part of a region slug or a preset name.
 func runInput(title, description, placeholder, current string) (string, error) {
