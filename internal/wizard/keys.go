@@ -101,19 +101,31 @@ func OfferKeys(local []sshkeys.Key, account []provider.SSHKey, accountKnown bool
 	}
 	seen := map[string]bool{}
 
+	// A smartcard's comment is its serial number, which names the card,
+	// not the key slot: a card exposing more than one SSH-capable key
+	// (e.g. separate authentication and signature slots) reports the
+	// same comment for both. Counted up front so two such choices can be
+	// told apart -- picking "the" entry among two identical-looking ones
+	// is a guess, not a choice.
+	labelCount := make(map[string]int, len(local))
+	for _, k := range local {
+		labelCount[k.Comment]++
+	}
+
 	// Any local key is one the user demonstrably holds -- the thing that
 	// actually prevents an unreachable instance.
 	for _, k := range local {
 		_, onAccount := registered[k.Fingerprint]
+		label := disambiguateLabel(k.Comment, k.Fingerprint, labelCount[k.Comment])
 		offer.Choices = append(offer.Choices, KeyChoice{
 			Fingerprint:   k.Fingerprint,
-			Label:         k.Comment,
+			Label:         label,
 			Detail:        localDetail(k, accountKnown, onAccount),
 			Local:         true,
 			Registered:    onAccount,
 			Selected:      selectLocal(k, accountKnown, onAccount, inConfig[k.Fingerprint]),
 			PublicKey:     k.PublicKey,
-			SuggestedName: k.Comment,
+			SuggestedName: label,
 		})
 		seen[k.Fingerprint] = true
 	}
@@ -170,6 +182,20 @@ func selectLocal(k sshkeys.Key, accountKnown, onAccount, inConfig bool) bool {
 		return onAccount
 	}
 	return k.Source == sshkeys.Agent
+}
+
+// disambiguateLabel appends a short fingerprint suffix to label when
+// count local keys share it, so two otherwise-identical-looking choices
+// can be told apart in the picker and, if uploaded, on the account.
+func disambiguateLabel(label, fingerprint string, count int) string {
+	if count <= 1 {
+		return label
+	}
+	suffix := fingerprint
+	if parts := strings.Split(fingerprint, ":"); len(parts) >= 2 {
+		suffix = strings.Join(parts[len(parts)-2:], ":")
+	}
+	return label + " (" + suffix + ")"
 }
 
 func localDetail(k sshkeys.Key, accountKnown, onAccount bool) string {
