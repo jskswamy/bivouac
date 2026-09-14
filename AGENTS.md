@@ -50,3 +50,14 @@ You are on an ephemeral cloud VM, in a checkout at
   databases lying around in the working tree.
 - The VM is destroyed on `cloudlab down`. Nothing outside the repository
   survives.
+
+### Development workflow
+
+Enter at whichever stage already exists for the task: a spec with no
+plan goes through `writing-plans` then `executing-plans`; a spec and
+plan both written goes straight to `executing-plans`; a bare beads
+story or epic goes through the full pipeline, `brainstorming` first.
+Before handing back, run `refactor:scan` against what changed and fix
+its findings, then `commit-tools:review-commits` to fold any TDD-churn
+commits into logical units. Full detail:
+[`docs/superpowers/specs/2026-09-14-session-development-workflow-design.md`](docs/superpowers/specs/2026-09-14-session-development-workflow-design.md).
