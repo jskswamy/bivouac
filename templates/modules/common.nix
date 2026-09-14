@@ -55,6 +55,9 @@ in
     pkgs.git
     pkgs.age
     beads
+    # Renders markdown in the terminal -- specs and plans under
+    # docs/superpowers are read this way rather than as raw text.
+    pkgs.glow
     pkgs.devbox
     # Started as a headless server by the systemd --user unit below, so
     # one is listening before anyone attaches.
