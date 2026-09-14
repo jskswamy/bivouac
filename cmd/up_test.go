@@ -2,17 +2,28 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/sshkeys"
 	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
 // minimalCloudlabPkl writes a valid cloudlab.pkl into dir, real enough
 // for config.Resolve to evaluate with the pkl CLI.
+//
+// sshKeys is set so tests exercising something other than the SSH-key
+// question -- most of them -- don't trip ensureSSHKeys' refusal, which
+// runs before any of them reach the check they actually mean to test.
 func minimalCloudlabPkl(t *testing.T, dir string) {
 	t.Helper()
 	path := filepath.Join(dir, "cloudlab.pkl")
@@ -20,6 +31,7 @@ func minimalCloudlabPkl(t *testing.T, dir string) {
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
+		`sshKeys { "aa:bb:cc" }`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
@@ -190,5 +202,127 @@ func TestUpCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
 				t.Errorf("error = %q, want mention of --repo", err.Error())
 			}
 		})
+	}
+}
+
+// noSSHKeysCloudlabPkl writes a resolvable cloudlab.pkl with no sshKeys
+// field, the exact shape that let `up` create an unreachable droplet
+// before ensureSSHKeys existed.
+func noSSHKeysCloudlabPkl(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "cloudlab.pkl")
+	body := strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
+	}
+	return path
+}
+
+// noopKeySources offers nothing local and no provider account, for
+// tests that only care about the empty-choice refusal.
+func noopKeySources() keySources {
+	return keySources{
+		local:    func() ([]sshkeys.Key, error) { return nil, nil },
+		registry: func(ctx context.Context) (provider.KeyRegistry, error) { return nil, nil },
+	}
+}
+
+func TestEnsureSSHKeys_AlreadyConfigured_ReturnsCfgUnchanged(t *testing.T) {
+	keys := []string{"aa:bb"}
+	cfg := config.Resolved{Config: config.Config{SshKeys: &keys}}
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetContext(context.Background())
+
+	got, err := ensureSSHKeys(cmd, cfg, "/unused/cloudlab.pkl")
+	if err != nil {
+		t.Fatalf("ensureSSHKeys() error = %v", err)
+	}
+	if got.SshKeys == nil || !reflect.DeepEqual(*got.SshKeys, keys) {
+		t.Errorf("SshKeys = %v, want unchanged %v", got.SshKeys, keys)
+	}
+}
+
+// Without a terminal, asking is indistinguishable from a hang -- so a
+// missing key must refuse the same way a missing cloudlab.pkl does,
+// not silently proceed as it did before this guard existed.
+func TestEnsureSSHKeys_NoneConfiguredNoTerminal_Refuses(t *testing.T) {
+	cfg := config.Resolved{}
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetContext(context.Background())
+
+	_, err := ensureSSHKeys(cmd, cfg, "/unused/cloudlab.pkl")
+	if err == nil {
+		t.Fatal("ensureSSHKeys() error = nil, want a refusal with no terminal to ask on")
+	}
+	if !strings.Contains(err.Error(), "no SSH keys configured") {
+		t.Errorf("error = %q, want it to name the missing sshKeys", err.Error())
+	}
+}
+
+func TestEnsureSSHKeysWith_WritesChosenKeyAndReResolves(t *testing.T) {
+	dir := t.TempDir()
+	path := noSSHKeysCloudlabPkl(t, dir)
+	testenv.Isolate(t)
+
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetContext(context.Background())
+
+	s := newScript()
+	s.keyChoice = []string{"aa:bb"}
+	sources := keySources{
+		local: func() ([]sshkeys.Key, error) {
+			return []sshkeys.Key{localKey("aa:bb", "laptop", sshkeys.Agent)}, nil
+		},
+		registry: func(ctx context.Context) (provider.KeyRegistry, error) { return nil, nil },
+	}
+
+	cfg, err := ensureSSHKeysWith(cmd, path, s, sources)
+	if err != nil {
+		t.Fatalf("ensureSSHKeysWith() error = %v\n%s", err, out.String())
+	}
+	if cfg.SshKeys == nil || !reflect.DeepEqual(*cfg.SshKeys, []string{"aa:bb"}) {
+		t.Errorf("resolved SshKeys = %v, want [aa:bb]", cfg.SshKeys)
+	}
+
+	basePath, err := config.DefaultBasePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(basePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", basePath, err)
+	}
+	if !strings.Contains(string(written), "aa:bb") {
+		t.Errorf("base.pkl = %s, want it to record the chosen key", written)
+	}
+}
+
+// The one failure ensureSSHKeys exists to prevent must still be
+// possible to choose explicitly -- but only after being asked and
+// warned, never silently as it was before.
+func TestEnsureSSHKeysWith_NoKeysChosen_RefusesRatherThanProceeding(t *testing.T) {
+	dir := t.TempDir()
+	path := noSSHKeysCloudlabPkl(t, dir)
+	testenv.Isolate(t)
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetContext(context.Background())
+
+	s := newScript()
+	s.keyChoice = []string{}
+
+	_, err := ensureSSHKeysWith(cmd, path, s, noopKeySources())
+	if err == nil || !strings.Contains(err.Error(), "no SSH keys selected") {
+		t.Errorf("ensureSSHKeysWith() error = %v, want a refusal naming no keys selected", err)
 	}
 }

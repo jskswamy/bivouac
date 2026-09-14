@@ -29,6 +29,10 @@ func newUpCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			cfg, err = ensureSSHKeys(cmd, cfg, cloudlabPath)
+			if err != nil {
+				return err
+			}
 
 			ctx := progressCtx(cmd)
 			// Resolved before the confirmation prompt, as the inline env
@@ -83,6 +87,68 @@ func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Resolv
 	if err := runInitFlow(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root); err != nil {
 		return config.Resolved{}, err
 	}
+	return config.Resolve(cmd.Context(), cloudlabPath)
+}
+
+// ensureSSHKeys asks for and records at least one SSH key when cfg has
+// none, reusing the exact discovery/upload flow `cloudlab init` offers
+// for the same question -- scoped to just this one field, since up has
+// no business re-litigating region, size or template just because a key
+// is missing.
+//
+// sshKeys is optional in the schema (an empty account has none to name
+// yet), so Resolve does not, and cannot, catch this. Left unchecked, up
+// silently creates a droplet with no key registered: DigitalOcean boots
+// it, bills it, and neither password nor public-key auth has anything
+// to offer, which is exactly the incident that motivated this guard.
+//
+// A user who is asked and still ends with none has that choice
+// respected everywhere else in this codebase (init only warns) -- but
+// up is the one place that spends money on the strength of the answer,
+// so here it refuses rather than repeating the mistake it exists to
+// prevent.
+func ensureSSHKeys(cmd *cobra.Command, cfg config.Resolved, cloudlabPath string) (config.Resolved, error) {
+	if cfg.SshKeys != nil && len(*cfg.SshKeys) > 0 {
+		return cfg, nil
+	}
+	if err := requireTerminal(isInteractive()); err != nil {
+		return config.Resolved{}, fmt.Errorf("no SSH keys configured, and up refuses to create an instance nothing can log into: %w", err)
+	}
+	return ensureSSHKeysWith(cmd, cloudlabPath, newFormPrompter(), defaultKeySources())
+}
+
+// ensureSSHKeysWith asks for and records at least one SSH key, reusing
+// the same discovery/upload flow `cloudlab init` offers for the same
+// question. Split from ensureSSHKeys, which owns the "already has keys"
+// and "no terminal" checks, so this half -- the asking, writing and
+// refuse-on-empty logic -- is testable without a terminal, an ssh-agent
+// or a network, the same split runInitFlow/runInitFlowWith uses.
+func ensureSSHKeysWith(cmd *cobra.Command, cloudlabPath string, p prompter, keys keySources) (config.Resolved, error) {
+	basePath, err := config.DefaultBasePath()
+	if err != nil {
+		return config.Resolved{}, err
+	}
+	existing, _, err := readIfPresent(cmd.Context(), basePath)
+	if err != nil {
+		return config.Resolved{}, err
+	}
+
+	cmd.Printf("%s has no sshKeys configured — up will create an instance nothing can log into without one.\n", cloudlabPath)
+	chosen, err := askSSHKeys(cmd.Context(), cmd.OutOrStdout(), p, keys, currentKeys(existing))
+	if err != nil {
+		return config.Resolved{}, err
+	}
+	if len(chosen) == 0 {
+		return config.Resolved{}, errors.New("no SSH keys selected; refusing to create an instance nothing can log into")
+	}
+
+	existing[config.FieldSSHKeys] = chosen
+	// 0o600: base.pkl records personal choices and is not shared.
+	if err := writeValues(basePath, existing, 0o600); err != nil {
+		return config.Resolved{}, err
+	}
+	cmd.Printf("Wrote %s\n", basePath)
+
 	return config.Resolve(cmd.Context(), cloudlabPath)
 }
 
