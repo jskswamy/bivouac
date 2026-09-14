@@ -147,8 +147,8 @@ The setting is inert in a repository with no `.beads/`.
 `"python"` gives you `python312` and `uv`; `"docker"` gives you `docker` and
 `minikube`, with the daemon and group membership already wired up. Both
 build on a shared module every instance gets — `git`, `age`, `devbox`,
-`herdr`, `mosh`, `moshi-hook`, `tailscale`, `tmux` (preconfigured), plus
-`fish` and `starship`.
+`herdr`, `mosh`, `moshi-hook`, `tailscale`, `tmux` (preconfigured), `glow`,
+plus `fish` and `starship`.
 
 Any other value is passed straight through to home-manager as a flake
 reference, so you can point `template` at your own flake's
