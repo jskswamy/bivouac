@@ -152,6 +152,35 @@ func TestOfferKeys_UnknownCurrentValueIsKept(t *testing.T) {
 	}
 }
 
+// A smartcard's comment names the card, not the slot: two SSH-capable
+// keys on the same card report the same comment. Left alone, that makes
+// two choices in the picker impossible to tell apart -- and impossible
+// to tell which one was actually picked afterward.
+func TestOfferKeys_SharedCommentIsDisambiguatedByFingerprint(t *testing.T) {
+	o := OfferKeys([]sshkeys.Key{
+		agentKey("05:55:6c:fb:81:45:3d:3e:f2:4f:e7:a0:16:6e:2d:d1", "cardno:26_969_765"),
+		agentKey("44:06:b5:b5:2a:17:1b:e1:6b:ec:51:4c:f7:86:ce:17", "cardno:26_969_765"),
+	}, nil, false, nil)
+
+	want := []string{
+		"cardno:26_969_765 (2d:d1)",
+		"cardno:26_969_765 (ce:17)",
+	}
+	if got := labels(o); !reflect.DeepEqual(got, want) {
+		t.Errorf("labels = %v, want %v", got, want)
+	}
+}
+
+// A comment only one key holds needs no disambiguation -- appending a
+// fingerprint suffix to every label regardless would make the common
+// case noisier for the sake of the rare one.
+func TestOfferKeys_UniqueCommentIsLeftAlone(t *testing.T) {
+	o := OfferKeys([]sshkeys.Key{agentKey("aa", "laptop")}, nil, false, nil)
+	if got := labels(o); !reflect.DeepEqual(got, []string{"laptop"}) {
+		t.Errorf("labels = %v, want the comment unchanged", got)
+	}
+}
+
 func TestOfferKeys_NothingAnywhere(t *testing.T) {
 	o := OfferKeys(nil, nil, false, nil)
 	if len(o.Choices) != 0 {
