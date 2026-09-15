@@ -505,7 +505,14 @@ begin marker -- and discards wholesale from that marker to end of file.
 This is not an edge case worth a comment and no more: `Splice` runs on
 every `up`, every `provision` and every `session start`, so repeated
 application against whatever the previous run left behind is the normal
-case, not a retry path.
+case, not a retry path. For the same reason `Splice` recognises a marker
+only when it stands alone on its own line: a Markdown instructions file
+may quote either marker as prose -- this document quotes both, in order
+-- and a substring search would take that quotation for a managed block,
+splice cloudlab's block into the middle of the user's sentence and leave
+the real block below it untouched, so the facts would never update
+again. cloudlab always writes its own markers on lines of their own, so
+nothing it wrote is missed.
 
 **Dogfooding is deferred.** This repository does not declare
 `instructions`, and a first attempt to make it do so was reverted.

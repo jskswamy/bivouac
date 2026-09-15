@@ -89,7 +89,7 @@ func Render(files []string) (string, error) {
 // again, so an appending implementation would grow the file without
 // bound.
 func Splice(existing, block string) string {
-	start := strings.Index(existing, BeginMarker)
+	start := lineIndex(existing, BeginMarker, 0)
 	if start < 0 {
 		// No managed block yet -- an end marker elsewhere in the file,
 		// with no begin marker, is just text and not ours to touch.
@@ -106,8 +106,7 @@ func Splice(existing, block string) string {
 	// searched for after it -- an end marker earlier in the file cannot
 	// close a block that starts here.
 	afterBegin := start + len(BeginMarker)
-	if relEnd := strings.Index(existing[afterBegin:], EndMarker); relEnd >= 0 {
-		end := afterBegin + relEnd
+	if end := lineIndex(existing, EndMarker, afterBegin); end >= 0 {
 		tail := existing[end+len(EndMarker):]
 		return existing[:start] + strings.TrimSuffix(block, "\n") + tail
 	}
@@ -119,4 +118,31 @@ func Splice(existing, block string) string {
 	// wholesale -- content before the marker is still the user's and is
 	// kept.
 	return existing[:start] + block
+}
+
+// lineIndex finds the first occurrence of marker at or after from that
+// stands alone on its own line, or -1.
+//
+// A marker has to be alone on its line to count, because a Markdown file
+// may quote one as prose -- cloudlab's own documentation quotes both, in
+// order, and a user may well paste that into an instructions file. A
+// plain substring search would take those quoted markers for a managed
+// block, splice cloudlab's block into the middle of the user's sentence
+// and leave the real block below it untouched, so the facts would stop
+// updating from then on. cloudlab always writes its own markers on lines
+// of their own, so nothing it wrote is missed by this.
+func lineIndex(s, marker string, from int) int {
+	for i := from; i <= len(s); {
+		rel := strings.Index(s[i:], marker)
+		if rel < 0 {
+			return -1
+		}
+		at := i + rel
+		after := at + len(marker)
+		if (at == 0 || s[at-1] == '\n') && (after == len(s) || s[after] == '\n') {
+			return at
+		}
+		i = at + 1
+	}
+	return -1
 }
