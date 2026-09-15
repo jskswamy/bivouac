@@ -33,6 +33,7 @@ see "A note on trust" near the end of this doc.
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `cloudlab init` finds and fills these in — see [below](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
+| `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
 | `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
 

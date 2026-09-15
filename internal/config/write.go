@@ -25,18 +25,19 @@ type Values map[string]any
 // table and the preset store cannot drift from each other or from
 // Config.pkl.
 const (
-	FieldBasePath  = "basePath"
-	FieldRegion    = "region"
-	FieldSize      = "size"
-	FieldTemplate  = "template"
-	FieldArch      = "arch"
-	FieldImage     = "image"
-	FieldTailscale = "tailscale"
-	FieldBeads     = "beads"
-	FieldSSHKeys   = "sshKeys"
-	FieldPackages  = "packages"
-	FieldAgents    = "agents"
-	FieldFlakes    = "flakes"
+	FieldBasePath     = "basePath"
+	FieldRegion       = "region"
+	FieldSize         = "size"
+	FieldTemplate     = "template"
+	FieldArch         = "arch"
+	FieldImage        = "image"
+	FieldTailscale    = "tailscale"
+	FieldBeads        = "beads"
+	FieldSSHKeys      = "sshKeys"
+	FieldPackages     = "packages"
+	FieldAgents       = "agents"
+	FieldInstructions = "instructions"
+	FieldFlakes       = "flakes"
 )
 
 // fieldOrder is Config.pkl's own declaration order. Rendered files
@@ -55,6 +56,7 @@ var fieldOrder = []string{
 	FieldSSHKeys,
 	FieldPackages,
 	FieldAgents,
+	FieldInstructions,
 	FieldFlakes,
 }
 
@@ -68,18 +70,19 @@ const (
 )
 
 var fieldKinds = map[string]fieldKind{
-	FieldBasePath:  kindString,
-	FieldRegion:    kindString,
-	FieldSize:      kindString,
-	FieldTemplate:  kindString,
-	FieldArch:      kindString,
-	FieldImage:     kindString,
-	FieldTailscale: kindBool,
-	FieldBeads:     kindString,
-	FieldSSHKeys:   kindStringList,
-	FieldPackages:  kindStringList,
-	FieldAgents:    kindStringList,
-	FieldFlakes:    kindFlakeList,
+	FieldBasePath:     kindString,
+	FieldRegion:       kindString,
+	FieldSize:         kindString,
+	FieldTemplate:     kindString,
+	FieldArch:         kindString,
+	FieldImage:        kindString,
+	FieldTailscale:    kindBool,
+	FieldBeads:        kindString,
+	FieldSSHKeys:      kindStringList,
+	FieldPackages:     kindStringList,
+	FieldAgents:       kindStringList,
+	FieldInstructions: kindStringList,
+	FieldFlakes:       kindFlakeList,
 }
 
 // KnownField reports whether name is a field of Config.pkl.
