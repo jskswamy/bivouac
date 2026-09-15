@@ -248,9 +248,9 @@ base config. If one exists, the two are merged:
   resolved value (each has its own schema-level default) -- unlike the
   scalars above, a personal base config's value for any of these four
   is never consulted, even if the project doesn't set one explicitly.
-- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`): additive — your
-  base's entries first, then the project's. Nothing is dropped from
-  either side.
+- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`):
+  additive — your base's entries first, then the project's. Nothing is
+  dropped from either side.
 
 If your base config doesn't exist yet, this isn't an error — your
 project's `cloudlab.pkl` is used on its own, and any field it doesn't
