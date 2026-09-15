@@ -175,13 +175,17 @@ func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string
 // one-line change into a diff other people have to read. Both outcomes
 // resolve to the same config, because a project file's scalars override
 // base and its listings merge additively.
+//
+// That last sentence is what the offer rests on, and it is not true of
+// every personal field -- see wizard.MovablePersonalFields, which is
+// the set asked about here for that reason.
 func offerMove(out io.Writer, p prompter, existing config.Values, exists bool) (lifted, remaining config.Values, err error) {
 	if !exists {
 		return config.Values{}, existing, nil
 	}
 
 	var found []string
-	for _, field := range wizard.PersonalFields() {
+	for _, field := range wizard.MovablePersonalFields() {
 		if _, ok := existing[field]; ok {
 			found = append(found, field)
 		}
@@ -246,13 +250,13 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 			return nil, err
 		}
 		if action == personalChange {
-			values, err = askPersonal(ctx, out, p, values, keys)
+			values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys)
 			if err != nil {
 				return nil, err
 			}
 		}
 	default:
-		values, err = askPersonal(ctx, out, p, values, keys)
+		values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys)
 		if err != nil {
 			return nil, err
 		}
@@ -281,8 +285,8 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 // from ~/.ssh and from the provider account, and choosing one can lead
 // to registering it. Keeping it out of the declarative question list is
 // what stops that machinery leaking into every other field.
-func askPersonal(ctx context.Context, out io.Writer, p prompter, values config.Values, keys keySources) (config.Values, error) {
-	values, err := ask(p, wizard.PersonalQuestions(), values)
+func askPersonal(ctx context.Context, out io.Writer, p prompter, baseDir string, values config.Values, keys keySources) (config.Values, error) {
+	values, err := ask(p, wizard.PersonalQuestions(baseDir), values)
 	if err != nil {
 		return nil, err
 	}

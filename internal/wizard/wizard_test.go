@@ -109,8 +109,104 @@ func TestPersonalFields_AreExactlyTheRoutedOnes(t *testing.T) {
 	}
 }
 
+// instructions routes to base.pkl like the others but cannot be lifted
+// into it: its value is a path read relative to the file that declares
+// it, so the same line means two different files in the two places.
+func TestMovablePersonalFields_ExcludeInstructions(t *testing.T) {
+	got := append([]string{}, MovablePersonalFields()...)
+	sort.Strings(got)
+	want := []string{config.FieldRegion, config.FieldSSHKeys, config.FieldSize}
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MovablePersonalFields() = %v, want %v", got, want)
+	}
+}
+
+// Personal, so it is asked once when base.pkl is created and again only
+// on [change] -- not on every init. A path has nothing to enumerate, so
+// unlike sshKeys it is an ordinary question rather than its own step.
+func TestPersonalQuestions_IncludesInstructions(t *testing.T) {
+	var found *Question
+	qs := PersonalQuestions(t.TempDir())
+	for i := range qs {
+		if qs[i].Field == config.FieldInstructions {
+			found = &qs[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("PersonalQuestions() has no instructions question")
+	}
+	if found.Kind != TextList {
+		t.Errorf("Kind = %v, want TextList", found.Kind)
+	}
+	if found.Validate == nil {
+		t.Error("the instructions question carries no validator")
+	}
+}
+
+// Checked while the question is on screen, because the wizard can tell
+// with what it already has and an answer that gets through fails every
+// later up outright.
+func TestPersonalQuestions_InstructionsValidatorChecksThePath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.md"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v := instructionsQuestion(t, dir).Validate
+
+	if err := v("real.md"); err != nil {
+		t.Errorf("Validate(%q) = %v, want nil", "real.md", err)
+	}
+	if err := v(""); err != nil {
+		t.Errorf("Validate(\"\") = %v, want nil -- blank means none", err)
+	}
+	err := v("gone.md")
+	if err == nil {
+		t.Fatal("Validate(\"gone.md\") = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "gone.md") {
+		t.Errorf("error %q does not name the path", err)
+	}
+}
+
+// Every other question keeps the wizard's existing rule: region and size
+// take typed slugs and are caught by the provider at up, not here.
+func TestPersonalQuestions_OtherQuestionsAreNotValidated(t *testing.T) {
+	for _, q := range PersonalQuestions(t.TempDir()) {
+		if q.Field == config.FieldInstructions {
+			continue
+		}
+		if q.Validate != nil {
+			t.Errorf("question %q gained a validator", q.Field)
+		}
+	}
+}
+
+// Presets carry the project's shape. A path like docs/agent-workflow.md
+// means nothing stamped into another repository, and a personal one
+// belongs to the user rather than the shape -- the same reasoning that
+// keeps sshKeys out.
+func TestPresetShape_ExcludesInstructions(t *testing.T) {
+	for _, f := range presetShape {
+		if f == config.FieldInstructions {
+			t.Error("a preset must not capture instructions")
+		}
+	}
+}
+
+func instructionsQuestion(t *testing.T, dir string) Question {
+	t.Helper()
+	for _, q := range PersonalQuestions(dir) {
+		if q.Field == config.FieldInstructions {
+			return q
+		}
+	}
+	t.Fatal("no instructions question")
+	return Question{}
+}
+
 func TestQuestions_AskOnlyFieldsThatRouteToTheirOwnHalf(t *testing.T) {
-	for _, q := range PersonalQuestions() {
+	for _, q := range PersonalQuestions(t.TempDir()) {
 		if d, err := Route(q.Field); err != nil || d != Personal {
 			t.Errorf("personal question %q routes to %v (err %v)", q.Field, d, err)
 		}
@@ -123,7 +219,7 @@ func TestQuestions_AskOnlyFieldsThatRouteToTheirOwnHalf(t *testing.T) {
 }
 
 func TestQuestions_EveryQuestionIsAnswerable(t *testing.T) {
-	for _, q := range append(PersonalQuestions(), ProjectQuestions()...) {
+	for _, q := range append(PersonalQuestions(t.TempDir()), ProjectQuestions()...) {
 		if q.Title == "" {
 			t.Errorf("question %q has no title", q.Field)
 		}
@@ -196,7 +292,7 @@ func unionMembers(t *testing.T, schema, field string) []string {
 
 func optionsFor(t *testing.T, field string) []string {
 	t.Helper()
-	for _, q := range append(PersonalQuestions(), ProjectQuestions()...) {
+	for _, q := range append(PersonalQuestions(t.TempDir()), ProjectQuestions()...) {
 		if q.Field == field {
 			return append([]string{}, q.Options...)
 		}

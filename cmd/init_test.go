@@ -535,6 +535,37 @@ func TestInitFlow_NoPersonalFieldsMeansNoMoveQuestion(t *testing.T) {
 	}
 }
 
+// instructions is a personal field but must never be offered the move.
+// Its value is a path resolved against the file that declares it, so
+// lifting the line into base.pkl silently repoints it at
+// ~/.config/cloudlab -- and config.InstructionFiles errors on a file
+// that is not there, so the user's next up would fail. The move is
+// offered on the promise that both outcomes resolve to the same config,
+// and this is the one field that would break it.
+func TestInitFlow_InstructionsAreNotOfferedAMove(t *testing.T) {
+	f := newInitFixture(t)
+	f.write(t, filepath.Join(f.root, "docs", "workflow.md"), "# how I work\n")
+	f.write(t, f.project, "template = \"python\"\ninstructions {\n  \"docs/workflow.md\"\n}\n")
+
+	s := newScript()
+	s.answers = map[string]any{"region": "nyc3", "size": "s-1vcpu-1gb"}
+	s.decisions = map[string]any{promptSavePreset: false}
+	// promptMovePersonal is deliberately unscripted: asking it at all
+	// fails this test rather than quietly taking a default.
+	if err := f.run(t, s); err != nil {
+		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
+	}
+
+	project := f.values(t, f.project)
+	if !reflect.DeepEqual(project[config.FieldInstructions], []string{"docs/workflow.md"}) {
+		t.Errorf("cloudlab.pkl instructions = %v, want the path left where it resolves", project[config.FieldInstructions])
+	}
+	base := f.values(t, f.basePath)
+	if _, moved := base[config.FieldInstructions]; moved {
+		t.Errorf("base.pkl declares instructions = %v; the path would resolve against the wrong directory there", base[config.FieldInstructions])
+	}
+}
+
 func TestInitFlow_SavesAPreset(t *testing.T) {
 	f := newInitFixture(t)
 	s := newScript()
