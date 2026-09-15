@@ -1,0 +1,122 @@
+// Package agentcontext builds the instructions cloudlab delivers to the
+// coding agents on an instance.
+//
+// Two kinds of content, and only one is cloudlab's. cloudlab authors the
+// session facts, because it is the only thing that knows them and they
+// are true of every session. The workflow is the user's, named by the
+// config's instructions field and transported verbatim -- shipping a
+// workflow of cloudlab's own would push one harness's plugins on users
+// running another.
+package agentcontext
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+// The managed block's delimiters. Everything between them belongs to
+// cloudlab and is replaced wholesale on every write; everything outside
+// belongs to whoever put it there and is preserved.
+const (
+	BeginMarker = "<!-- cloudlab:begin -->"
+	EndMarker   = "<!-- cloudlab:end -->"
+)
+
+// sessionFacts is what only cloudlab can say. The closing paragraph
+// matters as much as the rest: these files load before a project's own,
+// so without it cloudlab's generic advice reads as outranking the
+// repository's actual conventions.
+const sessionFacts = `# Working in a cloudlab session
+
+You are a coding agent on an ephemeral cloud VM created by cloudlab.
+Your checkout is at ~/sessions/<name>/<repo> on branch cloudlab/<name>.
+Run ` + "`pwd`" + ` and ` + "`git branch --show-current`" + ` for the actual values.
+
+- **Do not push anywhere.** You have no credentials, no GitHub access
+  and no network git remote.
+- **Commits are what survive.** Work returns to the user's machine via
+  ` + "`cloudlab session pull`" + ` and ` + "`cloudlab session merge`" + `, run from their
+  end. Uncommitted changes are swept into a checkpoint commit, so commit
+  deliberately rather than relying on that.
+- **Anything untracked gets committed** by that checkpoint (` + "`git add -A`" + `).
+  Leave no scratch files, archives or databases in the working tree.
+- The VM is destroyed on ` + "`cloudlab down`" + `. Nothing outside the repository
+  survives.
+
+## What this session is for
+
+1. If ` + "`../TASK.md`" + ` exists beside your checkout, read it -- that is what
+   you were started for.
+2. Otherwise, if the repository uses beads, check ` + "`bd list --status in_progress`" + `,
+   then ` + "`bd ready`" + `.
+3. Otherwise, ask before starting work.
+
+The repository's own AGENTS.md, CLAUDE.md or CONTRIBUTING.md still apply
+and win wherever they disagree with this file.
+`
+
+// Render builds the managed block: cloudlab's session facts, then each
+// named file's contents verbatim.
+func Render(files []string) (string, error) {
+	var b strings.Builder
+	b.WriteString(BeginMarker)
+	b.WriteString("\n")
+	b.WriteString(sessionFacts)
+
+	for _, path := range files {
+		content, err := os.ReadFile(path) // #nosec G304 -- the user named this file in their own config
+		if err != nil {
+			return "", fmt.Errorf("reading instructions %s: %w", path, err)
+		}
+		b.WriteString("\n")
+		b.Write(content)
+		if !strings.HasSuffix(string(content), "\n") {
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(EndMarker)
+	b.WriteString("\n")
+	return b.String(), nil
+}
+
+// Splice puts block into existing, replacing a previous managed block if
+// there is one and appending it otherwise.
+//
+// Replacing rather than appending is what makes repeated writes safe:
+// reconcile runs on every up and provision, and session start writes
+// again, so an appending implementation would grow the file without
+// bound.
+func Splice(existing, block string) string {
+	start := strings.Index(existing, BeginMarker)
+	if start < 0 {
+		// No managed block yet -- an end marker elsewhere in the file,
+		// with no begin marker, is just text and not ours to touch.
+		if existing == "" {
+			return block
+		}
+		if !strings.HasSuffix(existing, "\n") {
+			existing += "\n"
+		}
+		return existing + "\n" + block
+	}
+
+	// The end marker must belong to *this* begin marker, so it is only
+	// searched for after it -- an end marker earlier in the file cannot
+	// close a block that starts here.
+	afterBegin := start + len(BeginMarker)
+	if relEnd := strings.Index(existing[afterBegin:], EndMarker); relEnd >= 0 {
+		end := afterBegin + relEnd
+		tail := existing[end+len(EndMarker):]
+		return existing[:start] + strings.TrimSuffix(block, "\n") + tail
+	}
+
+	// A begin marker with nothing to close it is our own interrupted
+	// write, never the user's: nothing but cloudlab ever writes a begin
+	// marker, and cloudlab always writes both together. So everything
+	// from here to EOF is a truncated cloudlab block, safe to discard
+	// wholesale -- content before the marker is still the user's and is
+	// kept.
+	return existing[:start] + block
+}

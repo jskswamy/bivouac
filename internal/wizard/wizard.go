@@ -44,17 +44,21 @@ func (d Destination) String() string {
 // base file to merge, and a flow that could write it could repoint its
 // own base out from under itself.
 var destinations = map[string]Destination{
-	config.FieldRegion:    Personal,
-	config.FieldSize:      Personal,
-	config.FieldSSHKeys:   Personal,
-	config.FieldTemplate:  Project,
-	config.FieldArch:      Project,
-	config.FieldImage:     Project,
-	config.FieldTailscale: Project,
-	config.FieldBeads:     Project,
-	config.FieldPackages:  Project,
-	config.FieldAgents:    Project,
-	config.FieldFlakes:    Project,
+	config.FieldRegion:  Personal,
+	config.FieldSize:    Personal,
+	config.FieldSSHKeys: Personal,
+	// Personal, unlike agents: the paths it names are files on this
+	// user's own machine, so committing them would point everyone who
+	// clones the repository at a workflow only the author has.
+	config.FieldInstructions: Personal,
+	config.FieldTemplate:     Project,
+	config.FieldArch:         Project,
+	config.FieldImage:        Project,
+	config.FieldTailscale:    Project,
+	config.FieldBeads:        Project,
+	config.FieldPackages:     Project,
+	config.FieldAgents:       Project,
+	config.FieldFlakes:       Project,
 }
 
 // Route reports which file field's answer belongs in.
@@ -156,7 +160,10 @@ type Question struct {
 // sshKeys is routed here but is deliberately absent: its choices are
 // discovered rather than typed -- see OfferKeys -- so the flow asks it
 // separately instead of pretending it is a field with a free-text
-// answer.
+// answer. instructions is routed here and absent for now because its
+// question has not been written yet; a field routes so Split and the
+// personal-field move know where it belongs, which is decided before
+// anyone is asked about it.
 //
 // region and size take typed slugs rather than a list fetched from the
 // provider: the account's real choices need a token, and a flow that
