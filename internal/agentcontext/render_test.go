@@ -143,6 +143,83 @@ func TestSplice_TruncatedBeginWithNoEndIsDiscarded(t *testing.T) {
 	}
 }
 
+// countOnOwnLines counts only the marker occurrences Splice acts on: the
+// ones alone on a line. A marker quoted inside a sentence is user text,
+// so a plain strings.Count would conflate the two and pass against the
+// bug these tests pin.
+func countOnOwnLines(s, marker string) int {
+	n := 0
+	for _, line := range strings.Split(s, "\n") {
+		if line == marker {
+			n++
+		}
+	}
+	return n
+}
+
+// cloudlab's own documentation quotes both markers in order, so a user's
+// instructions file can hold the pair as prose while holding no managed
+// block at all. A substring search finds the quoted end marker, cuts the
+// file there and re-appends the tail alongside a fresh block -- on every
+// up, every provision and every session start, into a file an agent
+// loads each session.
+func TestSplice_IgnoresMarkersQuotedInUserProse(t *testing.T) {
+	existing := "# Notes\n\n" +
+		"The block is delimited by `" + BeginMarker + "` and `" + EndMarker + "`.\n" +
+		"Everything between them belongs to cloudlab.\n"
+	block := BeginMarker + "\nnew content\n" + EndMarker
+
+	got := Splice(existing, block)
+
+	if !strings.HasPrefix(got, existing) {
+		t.Errorf("user content was not left alone:\nwant prefix:\n%s\ngot:\n%s", existing, got)
+	}
+	if !strings.Contains(got, "new content") {
+		t.Errorf("block not appended:\n%s", got)
+	}
+	if n := countOnOwnLines(got, BeginMarker); n != 1 {
+		t.Errorf("begin markers on their own line = %d, want 1:\n%s", n, got)
+	}
+	if n := countOnOwnLines(got, EndMarker); n != 1 {
+		t.Errorf("end markers on their own line = %d, want 1:\n%s", n, got)
+	}
+}
+
+// A file cloudlab has already written, whose user half quotes both
+// markers above the managed block, must still converge on exactly one
+// pair. A substring search cuts at the quoted markers instead, burying
+// the new block inside the user's sentence and leaving the real block
+// below it untouched -- so the user's prose is destroyed and cloudlab's
+// own facts silently stop updating on every later write.
+func TestSplice_ConvergesWhenUserProseQuotesTheMarkers(t *testing.T) {
+	prose := "# Notes\n\nSee `" + BeginMarker + "` and `" + EndMarker + "` in the docs.\n"
+	existing := prose + "\n" + BeginMarker + "\nv0\n" + EndMarker + "\n"
+	block := BeginMarker + "\nv1\n" + EndMarker
+
+	first := Splice(existing, block)
+	second := Splice(first, block)
+	third := Splice(second, block)
+
+	if second != first {
+		t.Errorf("second application changed the result:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if third != first {
+		t.Errorf("third application changed the result:\nfirst:\n%s\nthird:\n%s", first, third)
+	}
+	if n := countOnOwnLines(third, BeginMarker); n != 1 {
+		t.Errorf("begin markers on their own line = %d, want 1:\n%s", n, third)
+	}
+	if n := countOnOwnLines(third, EndMarker); n != 1 {
+		t.Errorf("end markers on their own line = %d, want 1:\n%s", n, third)
+	}
+	if !strings.HasPrefix(third, prose) {
+		t.Errorf("user prose quoting the markers was lost:\n%s", third)
+	}
+	if strings.Contains(third, "v0") {
+		t.Errorf("the previous block survived:\n%s", third)
+	}
+}
+
 // An end marker with no begin marker anywhere in the file is not a
 // managed block at all -- just text that happens to contain the string.
 // Splice must not treat it as a block to close: it appends, losing
