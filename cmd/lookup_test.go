@@ -224,3 +224,22 @@ func TestLookupCommandSpecs_SessionListSpansInstances(t *testing.T) {
 	}
 	t.Fatal("no session list spec found in lookupCommandSpecs")
 }
+
+// The runSessionStart tests elsewhere in this package drive it through
+// sessionTestCmd, which registers its own --task/--issue flags -- so none of
+// them would notice if lookupCommandSpecs' own registration were deleted.
+// Found through newRootCmd/newLookupCommands, the real command tree
+// Execute() runs, not the spec table directly: that is what proves the
+// flags are actually wired to `cloudlab session start`, not merely declared
+// somewhere.
+func TestSessionStartCommand_HasTaskAndIssueFlags(t *testing.T) {
+	start, _, err := newRootCmd().Find([]string{"session", "start"})
+	if err != nil {
+		t.Fatalf("Find(session start) error = %v", err)
+	}
+	for _, name := range []string{"task", "issue"} {
+		if start.Flags().Lookup(name) == nil {
+			t.Errorf("session start has no --%s flag", name)
+		}
+	}
+}

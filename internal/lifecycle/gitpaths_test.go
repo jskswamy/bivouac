@@ -12,6 +12,17 @@ func TestSessionBranch_IsNamespaced(t *testing.T) {
 	}
 }
 
+func TestSessionDir_IsTheRepoPathsParent(t *testing.T) {
+	got := SessionDir("devuser", "auth-refactor")
+	want := "/home/devuser/sessions/auth-refactor"
+	if got != want {
+		t.Errorf("SessionDir() = %q, want %q", got, want)
+	}
+	if RemoteRepoPath("devuser", "auth-refactor", "cloudlab") != got+"/cloudlab" {
+		t.Errorf("RemoteRepoPath() and SessionDir() disagree; they must derive from the same path")
+	}
+}
+
 func TestRemoteRepoPath_IsPerSession(t *testing.T) {
 	got := RemoteRepoPath("devuser", "auth-refactor", "cloudlab")
 	want := "/home/devuser/sessions/auth-refactor/cloudlab"

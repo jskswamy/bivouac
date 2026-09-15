@@ -67,6 +67,7 @@ func TestInstanceCommands_RunInALoginShell(t *testing.T) {
 		"remoteAdd": remoteAddCmd("/home/u/sessions/s/repo", "dolthub", "https://doltremoteapi.dolthub.com/j/c"),
 		"push":      pushCmd("/home/u/sessions/s/repo"),
 		"version":   versionCmd("/home/u/sessions/s/repo"),
+		"claim":     claimCmd("/home/u/sessions/s/repo", "cloudlab-bv5"),
 	}
 	for name, cmd := range cmds {
 		if !strings.HasPrefix(cmd, "bash -lc ") {
@@ -95,6 +96,15 @@ func TestInitCmd_IsStealthAndCarriesTheRemote(t *testing.T) {
 	want := []string{"init", "--stealth", "--remote", "git+file:///home/u/sessions/s/repo"}
 	if argv := bdArgv(t, got); !slices.Equal(argv, want) {
 		t.Errorf("initCmd() ran bd with argv %v, want %v", argv, want)
+	}
+}
+
+func TestClaimCmd_ClaimsTheNamedIssue(t *testing.T) {
+	repo := t.TempDir()
+	got := claimCmd(repo, "cloudlab-bv5")
+	want := []string{"update", "cloudlab-bv5", "--claim"}
+	if argv := bdArgv(t, got); !slices.Equal(argv, want) {
+		t.Errorf("claimCmd() ran bd with argv %v, want %v", argv, want)
 	}
 }
 

@@ -10,6 +10,15 @@ func SessionBranch(session string) string {
 	return "cloudlab/" + session
 }
 
+// SessionDir is a session's own directory on the instance -- the parent
+// RemoteRepoPath's checkout sits inside. Extracted so anything that belongs
+// beside the checkout rather than in it, like TASK.md, has a name for that
+// directory instead of hand-assembling RemoteRepoPath's path and lopping off
+// the last segment.
+func SessionDir(user, session string) string {
+	return "/home/" + user + "/sessions/" + session
+}
+
 // RemoteRepoPath is a session's repository on the instance. This is the
 // directory an agent is pointed at, and it is an ordinary git repository
 // rather than a worktree of a shared store: one session, one clone.
@@ -21,7 +30,7 @@ func SessionBranch(session string) string {
 // side now, and a clone each still buys the isolation for less: the extra
 // objects are copied once, on a link that is already moving the whole repo.
 func RemoteRepoPath(user, session, repo string) string {
-	return "/home/" + user + "/sessions/" + session + "/" + repo
+	return SessionDir(user, session) + "/" + repo
 }
 
 // LocalWorktreePath is the Mac-side worktree for reviewing and running a

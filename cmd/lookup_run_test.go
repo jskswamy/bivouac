@@ -35,6 +35,8 @@ func sessionTestStore(t *testing.T, record state.Record) *state.Store {
 func sessionTestCmd() *cobra.Command {
 	c := &cobra.Command{}
 	c.Flags().String("repo", "", "")
+	c.Flags().String("task", "", "")
+	c.Flags().String("issue", "", "")
 	c.SetOut(&bytes.Buffer{})
 	c.SetContext(context.Background())
 	return c
@@ -58,6 +60,29 @@ func TestRunSessionStart_AllowsASecondSession(t *testing.T) {
 	}
 	if _, ok := got.FindSession("beta"); !ok {
 		t.Error("beta was not recorded")
+	}
+}
+
+// The both-flags refusal must fire before resolveInstance, so this must
+// fail even against an instance name no state store has ever heard of --
+// proving the check costs nothing in instance work.
+func TestRunSessionStart_RefusesBothTaskAndIssue(t *testing.T) {
+	cmd := sessionTestCmd()
+	if err := cmd.Flags().Set("task", "do the thing"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("issue", "cloudlab-bv5"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runSessionStart(cmd, "no-such-instance", []string{"alpha"})
+	if err == nil {
+		t.Fatal("runSessionStart() = nil, want the --task/--issue refusal")
+	}
+	for _, want := range []string{"--task", "--issue"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
 	}
 }
 
