@@ -10,3 +10,10 @@ packages {
   "git"
   "ripgrep"
 }
+// Delivered to every coding agent on the instance, for every project.
+// Paths are relative to this file: on a real machine this would be
+// "workflow.md", naming ~/.config/cloudlab/workflow.md. This copy
+// reaches sideways so the example resolves from inside the repo.
+instructions {
+  "../instructions/workflow.md"
+}
