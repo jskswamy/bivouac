@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jskswamy/cloudlab/internal/agentcontext"
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/provisioning"
@@ -71,6 +72,13 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	}
 	defer func() { _ = client.Close() }()
 
+	// Before the switch, which runs for minutes: an instructions file the
+	// config names but the disk does not have is a typo, and a typo should
+	// surface now rather than after a build.
+	if err := WriteAgentContext(ctx, client, record.User, cfg.Agents, cloudlabPath); err != nil {
+		return err
+	}
+
 	// Pre-flight, before anything is written and before the switch. A
 	// mistyped package name is otherwise a Nix evaluation error part-way
 	// through a build that has already been running for minutes, and the
@@ -127,6 +135,51 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// `up` and `provision` run -- so recovery after a reboot clears tmpfs is
 	// `cloudlab provision`, which is already idempotent.
 	placeDoltCredential(ctx, client, config.BeadsMode(cfg.Beads), filepath.Dir(cloudlabPath))
+	return nil
+}
+
+// WriteAgentContext delivers cloudlab's session facts and the user's
+// instructions files to every configured harness's global instruction
+// file, and names the harnesses it cannot reach.
+//
+// Exported because session start needs the identical write: Reconcile runs
+// on up and provision, while seedSession only borrows Connect for a
+// client. instructions names files the user edits between sessions, so a
+// session started after an edit would otherwise carry whatever the last up
+// delivered, silently -- and that is the failure this feature exists to
+// prevent. One function rather than two call sites each writing their own,
+// so the two can never drift.
+//
+// agents comes from the caller because Reconcile has a resolved config in
+// hand already and seedSession does not; resolving it twice here would cost
+// a second pkl run on the path that already has the answer.
+//
+// An unreachable harness is a warning rather than an error in both
+// callers. There is nothing to fix and nothing to retry -- the tool simply
+// has no file for cross-project instructions -- so refusing to provision
+// over it would only make a supported config unusable.
+func WriteAgentContext(ctx context.Context, client *Client, user string, agents []string, cloudlabPath string) error {
+	// Nobody to deliver to means nothing to read. agents is empty by
+	// default, so this is the common case, and InstructionFiles is a pkl
+	// run -- worth not paying on every up and every session start.
+	if len(agents) == 0 {
+		return nil
+	}
+	files, err := config.InstructionFiles(ctx, cloudlabPath)
+	if err != nil {
+		return err
+	}
+	unreachable, err := agentcontext.Write(
+		agentcontext.Remote(client.Run, client.WriteFile, "/home/"+user),
+		agents,
+		files,
+	)
+	if err != nil {
+		return err
+	}
+	for _, name := range unreachable {
+		provider.ReportWarning(ctx, "instructions: "+name+" has no global instruction file, so cloudlab cannot deliver to it — put them in that tool's own settings")
+	}
 	return nil
 }
 

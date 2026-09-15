@@ -102,7 +102,7 @@ func TestSplit_EmptyAnswersGiveEmptyHalves(t *testing.T) {
 func TestPersonalFields_AreExactlyTheRoutedOnes(t *testing.T) {
 	got := append([]string{}, PersonalFields()...)
 	sort.Strings(got)
-	want := []string{config.FieldRegion, config.FieldSSHKeys, config.FieldSize}
+	want := []string{config.FieldRegion, config.FieldSSHKeys, config.FieldSize, config.FieldInstructions}
 	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("PersonalFields() = %v, want %v", got, want)

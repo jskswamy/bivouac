@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/cloudlab/internal/agentcontext"
 	"github.com/jskswamy/cloudlab/internal/provider"
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/jskswamy/cloudlab/internal/testenv"
@@ -305,5 +306,56 @@ func TestReconcile_BadPackageStopsBeforeAnythingIsShipped(t *testing.T) {
 	}
 	if switched {
 		t.Error("home-manager switch ran despite the config not resolving")
+	}
+}
+
+// Delivery belongs on this path as much as on session start: an instance
+// the user just ran up or provision against must already carry the
+// instructions, without waiting for a session to be created.
+func TestReconcile_DeliversInstructionsToEachConfiguredHarness(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	writes := map[string]string{}
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		if strings.Contains(cmd, "cat >") {
+			writes[cmd] = string(stdin)
+		}
+		return "", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "workflow.md"), "my own workflow\n")
+	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`agents { "claude" }`,
+		`instructions { "workflow.md" }`,
+	}, "\n")+"\n")
+
+	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// An absolute path, not "$HOME/...": WriteFile quotes what it is
+	// given, so a shell variable would arrive at the remote shell as a
+	// literal and make a directory actually called $HOME.
+	var content string
+	for cmd, stdin := range writes {
+		if strings.Contains(cmd, "'/home/devuser/.claude/CLAUDE.md'") {
+			content = stdin
+		}
+	}
+	if content == "" {
+		t.Fatalf("no write to the harness's global instruction file; writes = %v", writes)
+	}
+	if !strings.Contains(content, agentcontext.BeginMarker) {
+		t.Errorf("delivered content = %q, want the managed block's markers", content)
+	}
+	if !strings.Contains(content, "my own workflow") {
+		t.Errorf("delivered content = %q, want the user's instructions file in it", content)
 	}
 }

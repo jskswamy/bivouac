@@ -81,11 +81,50 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 		return fmt.Errorf("checking out %s on instance: %w\n%s", branch, err, out)
 	}
 
+	// Again here, not only in reconcile. instructions names files the user
+	// edits between sessions, so a session started after an edit must carry
+	// the edit rather than whatever the last up delivered.
+	//
+	// A warning rather than an error, for seedBeads' reason: the session
+	// itself is already created and usable, and a failed instruction write
+	// must not strand an instance the user now has to clean up by hand.
+	if err := writeAgentContext(ctx, client, localRepo, user); err != nil {
+		provider.ReportWarning(ctx, "instructions: "+err.Error()+
+			"\nthe session is usable, but its agents may be working from older instructions;"+
+			" fix this and run `cloudlab provision` to deliver them")
+	}
+
 	// Last, deliberately. Beads never fails a session, so this returns
 	// nothing -- but it also has to run after the push and checkout above,
 	// because pushing dolt data into a git remote with no branches fails.
 	seedBeads(ctx, client, localRepo, repo, user, host, session, beadsMode)
 	return nil
+}
+
+// writeAgentContext resolves the repository's config and delivers its
+// instructions to the session's harnesses.
+//
+// The config is resolved here rather than threaded down from the command,
+// which resolves it once already for the beads mode. A second pkl run costs
+// less than widening StartSession's signature through every caller, and it
+// keeps the instructions the session gets tied to the config as it stands
+// now -- which is the whole point of writing them again at session start.
+func writeAgentContext(ctx context.Context, client *reconcile.Client, localRepo, user string) error {
+	cloudlabPath := filepath.Join(localRepo, "cloudlab.pkl")
+	// Absent and broken are different answers, the distinction
+	// config.Resolve and config.InstructionFiles already draw for the base
+	// config: a repository with no config declares no agents and no
+	// instructions, so there is nothing that failed to arrive. A config
+	// that exists and will not resolve does warn, below -- that one may
+	// well name instructions nobody got.
+	if _, err := os.Stat(cloudlabPath); os.IsNotExist(err) {
+		return nil
+	}
+	cfg, err := config.Resolve(ctx, cloudlabPath)
+	if err != nil {
+		return err
+	}
+	return reconcile.WriteAgentContext(ctx, client, user, cfg.Agents, cloudlabPath)
 }
 
 // trackSession registers the session's remote on this machine and creates the
