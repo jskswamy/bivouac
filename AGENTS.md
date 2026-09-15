@@ -11,10 +11,15 @@ exercised against a real instance — see `internal/lifecycle/session_localgit_t
 which exists precisely because `seedSession`'s push has no in-process harness.
 
 ```bash
-go test ./...              # the Go suite
+go test ./...              # the Go suite -- redirect to a file, never pipe (see below)
 pre-commit run --all-files # gofmt, golangci-lint, nixfmt, deadnix, trufflehog
 nix flake check            # the same checks, as CI runs them
 ```
+
+Piping `go test ./...` into `tail`, `tee` or `grep` hangs forever after the
+tests finish: a leaked `crashpad_handler` (sentry-native, via pkl) inherits
+the pipe and keeps its write end open, so the reader never sees EOF. Redirect
+to a file (`go test ./... > /tmp/out.log 2>&1`) instead.
 
 ## Conventions
 
