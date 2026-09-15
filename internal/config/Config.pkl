@@ -38,6 +38,18 @@ packages: Listing<String> = new Listing {}
 /// unfree software in general.
 agents: Listing<"claude"|"codex"|"copilot"|"cursor"|"opencode"|"pi"> = new Listing {}
 
+/// Markdown files whose contents are delivered to every configured
+/// coding agent on the instance.
+///
+/// Paths are relative to the file that declares them, so a base.pkl
+/// entry resolves against ~/.config/cloudlab and a project entry
+/// against the repository root. Merges additively like `packages`:
+/// base's files are delivered before this file's.
+///
+/// cloudlab never parses the content. What a workflow says, and which
+/// harness's vocabulary it is written in, is the author's business.
+instructions: Listing<String> = new Listing {}
+
 flakes: Listing<Flake> = new Listing {}
 
 class Flake {

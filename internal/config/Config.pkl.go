@@ -51,6 +51,18 @@ type Config struct {
 	// unfree software in general.
 	Agents []string `pkl:"agents"`
 
+	// Markdown files whose contents are delivered to every configured
+	// coding agent on the instance.
+	//
+	// Paths are relative to the file that declares them, so a base.pkl
+	// entry resolves against ~/.config/cloudlab and a project entry
+	// against the repository root. Merges additively like `packages`:
+	// base's files are delivered before this file's.
+	//
+	// cloudlab never parses the content. What a workflow says, and which
+	// harness's vocabulary it is written in, is the author's business.
+	Instructions []string `pkl:"instructions"`
+
 	Flakes []Flake `pkl:"flakes"`
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -164,5 +165,35 @@ func TestRender_RoundTripsThroughResolve(t *testing.T) {
 	}
 	if len(cfg.Flakes) != 1 || cfg.Flakes[0].Url != "github:foo/bar" || !cfg.Flakes[0].Modules {
 		t.Errorf("Flakes = %+v", cfg.Flakes)
+	}
+}
+
+// A config declaring instructions must survive ReadValues then Render
+// unchanged. declaredFields filters through KnownField, so a field added
+// to Config.pkl but not to fieldKinds is invisible here and `cloudlab
+// init` would drop the line when it rewrites the file.
+func TestReadValues_KeepsInstructions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cloudlab.pkl")
+	rendered, err := Render(Values{
+		FieldRegion:       "nyc3",
+		FieldSize:         "s-1vcpu-1gb",
+		FieldTemplate:     "docker",
+		FieldInstructions: []string{"docs/workflow.md", "docs/extra.md"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte(rendered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadValues(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadValues() error = %v\nrendered:\n%s", err, rendered)
+	}
+	want := []string{"docs/workflow.md", "docs/extra.md"}
+	if !reflect.DeepEqual(want, got[FieldInstructions]) {
+		t.Errorf("instructions round trip = %#v, want %#v", got[FieldInstructions], want)
 	}
 }

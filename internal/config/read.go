@@ -71,6 +71,8 @@ func fieldValue(c Config, name string) (any, bool) {
 		return append([]string{}, c.Packages...), true
 	case FieldAgents:
 		return append([]string{}, c.Agents...), true
+	case FieldInstructions:
+		return append([]string{}, c.Instructions...), true
 	case FieldFlakes:
 		return append([]Flake{}, c.Flakes...), true
 	}
@@ -96,13 +98,14 @@ func derefString(p *string) (any, bool) {
 // are the ones the schema leaves null, so any value for them says
 // something the schema would not.
 var fieldDefaults = map[string]any{
-	FieldArch:      "x86_64",
-	FieldImage:     "ubuntu-24-04-x64",
-	FieldTailscale: false,
-	FieldBeads:     "session",
-	FieldPackages:  []string{},
-	FieldAgents:    []string{},
-	FieldFlakes:    []Flake{},
+	FieldArch:         "x86_64",
+	FieldImage:        "ubuntu-24-04-x64",
+	FieldTailscale:    false,
+	FieldBeads:        "session",
+	FieldPackages:     []string{},
+	FieldAgents:       []string{},
+	FieldInstructions: []string{},
+	FieldFlakes:       []Flake{},
 }
 
 // IsDefault reports whether value is what field would resolve to anyway,
