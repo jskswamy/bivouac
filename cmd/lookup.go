@@ -14,8 +14,13 @@ import (
 // instance name (false for sync/download, whose positionals are paths).
 type lookupCommandSpec struct {
 	use, short, verb string
-	args             cobra.PositionalArgs
-	named            bool
+	// long is the help text cobra shows for `cloudlab <verb> --help`, on top
+	// of short. Left empty for every command whose flags speak for
+	// themselves; start's flags need the extra explanation of how --task and
+	// --issue relate.
+	long  string
+	args  cobra.PositionalArgs
+	named bool
 	// parent groups this command under a noun instead of putting it at the
 	// top level. Session verbs live under "session" so cloudlab's top level
 	// stays about the instance -- up, down, ssh, status, provision -- and a
@@ -85,13 +90,26 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run: runPair,
 	},
 	{
-		use:    "start <name>",
-		short:  "Start a named agent session on the instance",
+		use:   "start <name>",
+		short: "Start a named agent session on the instance",
+		long: "Start a named agent session on the instance.\n\n" +
+			"--task and --issue say what the session is for, so the agent working\n" +
+			"in it knows without being told again. They are mutually exclusive:\n" +
+			"--task takes free text in your own words; --issue names a beads issue\n" +
+			"by ID and, where this repository has beads, claims it in the session's\n" +
+			"own database. Passing neither is fine -- both are optional, and a\n" +
+			"session started before you have decided what it is for is still a\n" +
+			"normal session. Re-running start without either leaves an existing\n" +
+			"TASK.md untouched.",
 		verb:   "session start",
 		args:   cobra.ExactArgs(1),
 		named:  false,
 		parent: "session",
-		run:    runSessionStart,
+		flags: func(c *cobra.Command) {
+			c.Flags().String("task", "", "What this session is for, in your own words")
+			c.Flags().String("issue", "", "The beads issue this session is for, e.g. cloudlab-bv5")
+		},
+		run: runSessionStart,
 	},
 	{
 		use:            "list",
@@ -218,6 +236,7 @@ func newLookupCommands() []*cobra.Command {
 		c := &cobra.Command{
 			Use:   spec.use,
 			Short: spec.short,
+			Long:  spec.long,
 			Args:  spec.args,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if spec.spansInstances {

@@ -185,3 +185,14 @@ func InstanceVersion(client instanceRunner, repo string) (string, error) {
 	}
 	return out, nil
 }
+
+// ClaimIssue marks id in progress in the session's own database, for
+// `session start --issue`. Behind instanceRunner like Bootstrap, Pull,
+// Unpulled and InstanceVersion, so a caller can drive it with a fake in
+// tests rather than only against a live SSH connection.
+func ClaimIssue(client instanceRunner, repo, id string) error {
+	if out, err := client.Run(claimCmd(repo, id)); err != nil {
+		return fmt.Errorf("claiming issue %s: %w\n%s", id, err, out)
+	}
+	return nil
+}

@@ -48,3 +48,9 @@ func pushCmd(repo string) string {
 func versionCmd(repo string) string {
 	return instanceCmd(repo, "version")
 }
+
+// claimCmd marks id in progress in the session's own database -- the same
+// `bd update --claim` a human would run, per .beads/README.md's quick start.
+func claimCmd(repo, id string) string {
+	return instanceCmd(repo, "update", id, "--claim")
+}

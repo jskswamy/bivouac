@@ -8,10 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jskswamy/cloudlab/internal/beads"
 	"github.com/jskswamy/cloudlab/internal/config"
 	"github.com/jskswamy/cloudlab/internal/identity"
 	"github.com/jskswamy/cloudlab/internal/lifecycle"
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/reconcile"
 	"github.com/jskswamy/cloudlab/internal/state"
 )
 
@@ -31,10 +33,44 @@ func beadsModeFor(ctx context.Context, root string) config.BeadsMode {
 	return config.BeadsMode(cfg.Beads)
 }
 
+// markIssueStarted claims a --issue session's issue in the session's own
+// beads database, so `bd list --status in_progress` finds it on the
+// instance without the agent having to remember to say so itself.
+//
+// beads.Wired is the same check pullBeads and requireBeadsLanded use to
+// tell "this session never had beads" apart from a real failure -- and a
+// repository with none is a supported configuration, not a reason to skip
+// TASK.md, which StartSession has already written by the time this runs.
+func markIssueStarted(ctx context.Context, ip, user, localRepo, repo, session, issue string) {
+	if !beads.Wired(ctx, localRepo, session) {
+		provider.ReportWarning(ctx, "beads: issue "+issue+" cannot be marked in progress -- this session has no issue tracker")
+		return
+	}
+	client, err := reconcile.Connect(ctx, ip, user)
+	if err != nil {
+		provider.ReportWarning(ctx, "beads: could not connect to mark "+issue+" in progress: "+err.Error())
+		return
+	}
+	defer func() { _ = client.Close() }()
+	if err := beads.ClaimIssue(client, repo, issue); err != nil {
+		provider.ReportWarning(ctx, "beads: "+err.Error())
+	}
+}
+
 // runSessionStart backs `cloudlab session start <name>`. Cobra resolves the
 // verb now, so there is no hand-rolled dispatch here and no unknown-subcommand
 // error to maintain -- an unrecognised verb gets cobra's own suggestion.
 func runSessionStart(cmd *cobra.Command, name string, args []string) error {
+	// Before any instance work: the --task/--issue conflict TaskText refuses
+	// must cost nothing, and resolveInstance below is the first step that
+	// touches state or the network.
+	task, _ := cmd.Flags().GetString("task")
+	issue, _ := cmd.Flags().GetString("issue")
+	taskText, err := lifecycle.TaskText(task, issue)
+	if err != nil {
+		return err
+	}
+
 	store, record, err := resolveInstance(name)
 	if err != nil {
 		return err
@@ -82,8 +118,11 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	if err := store.Put(record); err != nil {
 		return err
 	}
-	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session, beadsModeFor(ctx, root)); err != nil {
+	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session, beadsModeFor(ctx, root), taskText); err != nil {
 		return err
+	}
+	if issue != "" {
+		markIssueStarted(ctx, record.IP, record.User, root, lifecycle.RemoteRepoPath(record.User, session, name), session, issue)
 	}
 	cmd.Printf("Session %s started on %s\n", session, name)
 	cmd.Printf("\nLocal   %s\n", lifecycle.LocalWorktreePath(root, session))

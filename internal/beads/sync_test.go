@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -196,6 +197,33 @@ func TestInstanceVersion_SurfacesAFailure(t *testing.T) {
 
 	if _, err := InstanceVersion(fr, "/repo"); err == nil {
 		t.Fatal("InstanceVersion() error = nil, want the runner's failure surfaced")
+	}
+}
+
+func TestClaimIssue_RunsTheClaimCommand(t *testing.T) {
+	fr := newFakeRunner()
+
+	if err := ClaimIssue(fr, "/repo", "cloudlab-bv5"); err != nil {
+		t.Fatalf("ClaimIssue() error = %v", err)
+	}
+
+	want := []string{claimCmd("/repo", "cloudlab-bv5")}
+	if !slices.Equal(fr.commands, want) {
+		t.Fatalf("commands = %v, want %v", fr.commands, want)
+	}
+}
+
+func TestClaimIssue_SurfacesAFailure(t *testing.T) {
+	fr := newFakeRunner()
+	fr.failAt = 0
+	fr.failErr = errors.New("ssh connection reset")
+
+	err := ClaimIssue(fr, "/repo", "cloudlab-bv5")
+	if err == nil {
+		t.Fatal("ClaimIssue() error = nil, want the runner's failure surfaced")
+	}
+	if !strings.Contains(err.Error(), "cloudlab-bv5") {
+		t.Errorf("error = %q, want it to name the issue", err.Error())
 	}
 }
 

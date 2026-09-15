@@ -21,7 +21,11 @@ import (
 // Every step is retry-safe, because a start that fails partway through --
 // most easily at the push or fetch, the first real network operations -- must
 // be fixable by running the same command again.
-func StartSession(ctx context.Context, ip, user, localRepo, repoName, session string, beadsMode config.BeadsMode) error {
+//
+// task is TaskText's already-built content, or "" -- resolved by the caller
+// before any of this runs, so the --task/--issue conflict TaskText refuses
+// costs nothing.
+func StartSession(ctx context.Context, ip, user, localRepo, repoName, session string, beadsMode config.BeadsMode, task string) error {
 	if err := CheckSessionName(session); err != nil {
 		return err
 	}
@@ -34,7 +38,7 @@ func StartSession(ctx context.Context, ip, user, localRepo, repoName, session st
 	branch := SessionBranch(session)
 	url := sshGitURL(user, host, repo)
 
-	if err := seedSession(ctx, ip, user, localRepo, repo, branch, url, host, session, beadsMode); err != nil {
+	if err := seedSession(ctx, ip, user, localRepo, repo, branch, url, host, session, beadsMode, task); err != nil {
 		return err
 	}
 	return trackSession(ctx, localRepo, session, branch, url)
@@ -49,7 +53,7 @@ func StartSession(ctx context.Context, ip, user, localRepo, repoName, session st
 // HEAD on an unborn branch, so the pushed branch is not the checked-out one
 // and the push is legal; the checkout afterwards gives the agent its files.
 // Reversing those two steps makes every seed fail.
-func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, host, session string, beadsMode config.BeadsMode) error {
+func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, host, session string, beadsMode config.BeadsMode, task string) error {
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
 		return err
@@ -79,6 +83,16 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 	}
 	if out, err := client.Run(checkoutSessionCmd(repo, branch)); err != nil {
 		return fmt.Errorf("checking out %s on instance: %w\n%s", branch, err, out)
+	}
+
+	// Beside the checkout, never inside it -- WriteTask's own doc comment
+	// says why. A warning rather than a failed session for the same reason
+	// writeAgentContext below is one: the session is already usable, and a
+	// failed TASK.md must not strand an instance the user now has to clean
+	// up by hand.
+	if err := WriteTask(client, user, session, task); err != nil {
+		provider.ReportWarning(ctx, "task: "+err.Error()+
+			"\nthe session is usable, but its agent may not know what it is for")
 	}
 
 	// Again here, not only in reconcile. instructions names files the user
