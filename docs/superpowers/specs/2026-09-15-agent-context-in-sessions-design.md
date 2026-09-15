@@ -144,9 +144,10 @@ mode worth continuing into.
 cloudlab never parses the content. It does not validate skill names,
 does not care which harness they belong to, and does not rewrite them.
 
-This repository will set `instructions` to its own 2026-09-14 workflow
-spec, which stops that document being hardcoded policy and makes it one
-repository's choice.
+The field is what stops the 2026-09-14 workflow spec being hardcoded
+policy: any repository wanting it points `instructions` at it, and
+cloudlab ships none of its own. This repository does not yet do so --
+see "Dogfooding is deferred" below for what that would take.
 
 ## Where the wizard fits
 
@@ -456,7 +457,7 @@ subcommand-free `cloudlab instructions` printing the assembled block.
 
 ## As implemented (2026-09-15)
 
-Built as designed. Four notes for anyone reading the code against this
+Built as designed. Five notes for anyone reading the code against this
 document.
 
 **`offerMove` excludes `instructions`.** Routing it to `Personal` in the
@@ -505,6 +506,27 @@ This is not an edge case worth a comment and no more: `Splice` runs on
 every `up`, every `provision` and every `session start`, so repeated
 application against whatever the previous run left behind is the normal
 case, not a retry path.
+
+**Dogfooding is deferred.** This repository does not declare
+`instructions`, and a first attempt to make it do so was reverted.
+Pointing cloudlab at its own 2026-09-14 workflow needs more than the one
+field: `cloudlab.pkl` must also carry `region`, `size` and `template`,
+because `resolveOrInit` falls back to the first-run wizard only on
+`os.ErrNotExist` and hands back a validation failure for a file that
+exists but is incomplete -- so a partial config turns `cloudlab up` in
+this repository from a wizard into an error. It must also carry at least
+one `agents` entry, and both of those are the repository author's
+choices to make rather than something this design can settle.
+
+The `agents` requirement is the part worth stating plainly, because it
+is silent: `reconcile.WriteAgentContext` returns early when
+`len(agents) == 0`, before it ever calls `config.InstructionFiles`. A
+config that names `instructions` but no `agents` therefore delivers
+nothing, with no warning and no error -- the field is accepted, merged
+and resolved by nothing. That is exactly what made the first attempt
+inert. The short-circuit is deliberate, since it saves a pkl run on the
+common path, but anyone configuring `instructions` should know that
+`agents` is what turns it on.
 
 **One exported `reconcile.WriteAgentContext`, called from both
 `Reconcile` and `seedSession`**, rather than the same write duplicated
