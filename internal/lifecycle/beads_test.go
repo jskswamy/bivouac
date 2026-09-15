@@ -30,6 +30,14 @@ func requireBd(t *testing.T) {
 // tests do: a real .beads/ directory that `bd dolt remote list` can actually
 // answer, rather than a bare directory that would trip Detect's Present
 // check and hide what "off" is really guarding.
+//
+// bd auto-starts a dolt sql-server for repo and leaves it running for reuse
+// by later bd commands -- nothing about `bd init` itself stops it. Left
+// alone, that server keeps writing to .beads/ (WAL flush, background GC)
+// after this function returns, racing t.TempDir()'s removal of repo once
+// the test ends. Stopping it here, registered right after the server
+// exists, unwinds before that removal: t.Cleanup runs LIFO, and every
+// TempDir a caller passes in was already created before this call.
 func bdInitStealth(t *testing.T, repo string) {
 	t.Helper()
 	// #nosec G204 -- test-only, fixed argv.
@@ -38,6 +46,12 @@ func bdInitStealth(t *testing.T, repo string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("bd init --stealth in %s: %v\n%s", repo, err, out)
 	}
+	t.Cleanup(func() {
+		// #nosec G204 -- test-only, fixed argv.
+		stop := exec.Command("bd", "dolt", "stop", "--force")
+		stop.Dir = repo
+		_ = stop.Run()
+	})
 }
 
 // Beads must never fail a session. seedBeads returns nothing at all, so there
