@@ -1,6 +1,6 @@
 # Agent context in sessions
 
-Status: designed, not implemented
+Status: implemented
 Date: 2026-09-15
 Tracks: `cloudlab-bsw` (this design)
 Builds on: `docs/superpowers/specs/2026-09-07-beads-in-sessions-design.md`,
@@ -192,13 +192,22 @@ The wizard deliberately does not validate. Region and size take typed
 slugs, and their comment says so: a wrong-but-valid slug is caught by the
 provider at `up`.
 
-`instructions` breaks that rule, and the reason is where the failure
-lands rather than a different appetite for checking. A wrong region
-surfaces at `up`, long after the wizard exited cleanly. A missing
-`instructions` path is a hard error inside `config.Resolve` -- which is
-the wizard's own read-back, run before the flow exits. Deferring would
-not defer it anywhere useful: it would fail the wizard at the finish
-line, every question already answered.
+`instructions` breaks that rule, and the reason is not a different
+appetite for checking but what the wizard has on hand to check with. A
+region or size slug needs a provider token to know if it is real, and
+the first run may not have one -- so the wizard cannot tell a wrong slug
+from a right one, and the provider is left to reject it at `up`. A path
+is one `os.Stat` away with nothing the first run does not already have,
+so there is no reason to defer a check the wizard is fully equipped to
+make.
+
+It also matters more when it is wrong. A wrong slug is a provider
+rejection: `up` fails once, with a message naming the field, and a
+retry with the right value succeeds. A missing `instructions` path is a
+hard error out of `config.InstructionFiles`, which fails every later
+`up` and `session start` over a file the user could have been told
+about here, with the question in front of them -- not a degraded mode
+worth continuing into.
 
 So this question checks that the path exists when it is answered.
 
@@ -444,3 +453,64 @@ on the instance by `cloudlab ssh -- cat ~/.claude/CLAUDE.md` than by a
 local render of what cloudlab would have sent, which is precisely the
 thing that might differ. If it earns a place later, the shape is a single
 subcommand-free `cloudlab instructions` printing the assembled block.
+
+## As implemented (2026-09-15)
+
+Built as designed. Four notes for anyone reading the code against this
+document.
+
+**`offerMove` excludes `instructions`.** Routing it to `Personal` in the
+destinations table made it a member of `wizard.PersonalFields()`, and
+`cmd/init.go`'s `offerMove` uses that list to offer lifting fields out of
+a project file that predates the split, into `base.pkl`. That offer is
+safe for every other personal field this design or the 2026-09-09 one
+routes there, because those fields read the same regardless of which
+file holds them. `instructions` does not: its value is a path, resolved
+against the file that declares it, so `"docs/agent-workflow.md"` names
+the repository root while the line sits in `cloudlab.pkl` and
+`~/.config/cloudlab` once the same line sits in `base.pkl`. Accepting the
+offer would silently repoint the field at a file that is not there, and
+the next `up` or `session start` fails over it. This is the first field
+for which the 2026-09-09 spec's "moving a field between the two files is
+behaviour-preserving" is false, so the offer is now built from
+`wizard.MovablePersonalFields()` -- `PersonalFields()` minus
+`instructions` -- rather than from `PersonalFields()` itself, and derived
+from it so the two lists cannot drift apart by hand-editing one.
+
+**Remote paths are absolute, never `$HOME`-relative.** `reconcile
+.Client.WriteFile` passes every path it is given through
+`shellcmd.Quote`, and a quoted `$HOME` reaches the remote shell as a
+literal four characters, not an expansion -- it would have created a
+directory actually named `$HOME`. `agentcontext.Remote` takes the
+instance's home as a plain string and joins paths under it instead, and
+every caller passes `/home/<user>`, which `internal/lifecycle`'s
+`gitpaths.go` already composes the same way and `remotepath.go`
+documents as always exact: `cloud-init.sh` creates the remote user with
+a plain `useradd --create-home` and no `--home-dir` override, so the
+assumption costs nothing to rely on.
+
+**`Splice` treats a begin marker with no end as a truncated block.** The
+first implementation paired the first begin marker with the first end
+marker found anywhere in the file, so a file already holding an orphaned
+begin -- left by an interrupted write -- took the append path on the next
+write, producing a second begin with no end of its own between the
+orphan and the new block. The write after *that* one then paired the
+orphan's begin with the new block's end and deleted everything between
+them, including whatever the user had added in the meantime. `Splice`
+now searches for the end marker only after the begin it is closing, and
+treats a begin with nothing to close it as cloudlab's own interrupted
+write -- never the user's, since nothing but cloudlab ever writes a
+begin marker -- and discards wholesale from that marker to end of file.
+This is not an edge case worth a comment and no more: `Splice` runs on
+every `up`, every `provision` and every `session start`, so repeated
+application against whatever the previous run left behind is the normal
+case, not a retry path.
+
+**One exported `reconcile.WriteAgentContext`, called from both
+`Reconcile` and `seedSession`**, rather than the same write duplicated
+into a second helper. `internal/lifecycle` already imports
+`internal/reconcile` for `Connect`, so exporting the function adds no
+new dependency edge between the packages. Duplicating it instead would
+have meant copying the unreachable-harness warning text -- and the
+`agents`-empty short-circuit that skips a pkl run on the common path --
+into two places free to drift the next time either changed.
