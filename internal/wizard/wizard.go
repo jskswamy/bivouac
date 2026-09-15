@@ -9,6 +9,8 @@ package wizard
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 
 	"github.com/jskswamy/cloudlab/internal/config"
@@ -99,6 +101,32 @@ func PersonalFields() []string {
 	return fields
 }
 
+// MovablePersonalFields are the personal fields that a project file can
+// hand over to base.pkl without changing what the config means. The
+// offer to lift them out of a committed cloudlab.pkl is built from
+// these rather than from PersonalFields.
+//
+// instructions is the one that cannot move, and nothing in its value
+// shows it: the value is a path, resolved against the file that declares
+// it, so "docs/agent-workflow.md" means the repository root while it
+// sits in cloudlab.pkl and ~/.config/cloudlab once it sits in base.pkl.
+// Moving the line would silently repoint it at a file that is not there,
+// and config.InstructionFiles treats a missing file as a hard error --
+// so the move would break the next up rather than leave the config
+// meaning the same thing. Every other personal field reads identically
+// in either file, which is the whole reason the move can be offered at
+// all; this one field is the exception, not an oversight to tidy away.
+func MovablePersonalFields() []string {
+	var fields []string
+	for _, field := range PersonalFields() {
+		if field == config.FieldInstructions {
+			continue
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
 // Kind is how a question is asked.
 type Kind int
 
@@ -151,19 +179,30 @@ type Question struct {
 	Freeform bool
 	// Placeholder is an example value, for Text and TextList.
 	Placeholder string
+	// Validate rejects an answer while the question is still on screen.
+	//
+	// Nil for almost every question, deliberately: region and size take
+	// typed slugs whose real choices need a provider token the first run
+	// does not have, so they are checked at up instead. It is set only
+	// where the wizard can decide the answer is wrong with what it
+	// already has, and where letting it through would break a later
+	// command outright.
+	Validate func(string) error
 }
 
 // PersonalQuestions are asked once, on the first run that finds no
 // base.pkl, and their answers describe the user's own machine
 // preferences rather than any project.
 //
+// baseDir is the directory the answers are written beside, which the
+// instructions question needs to resolve a relative path the same way
+// the file it lands in will.
+//
 // sshKeys is routed here but is deliberately absent: its choices are
 // discovered rather than typed -- see OfferKeys -- so the flow asks it
 // separately instead of pretending it is a field with a free-text
-// answer. instructions is routed here and absent for now because its
-// question has not been written yet; a field routes so Split and the
-// personal-field move know where it belongs, which is decided before
-// anyone is asked about it.
+// answer. instructions needs no such step: a path has nothing to
+// enumerate, so it is an ordinary typed question.
 //
 // region and size take typed slugs rather than a list fetched from the
 // provider: the account's real choices need a token, and a flow that
@@ -171,7 +210,16 @@ type Question struct {
 // that checks the value when it is used. The read-back through
 // config.Resolve catches a malformed file; a wrong-but-valid slug is
 // caught by the provider at up.
-func PersonalQuestions() []Question {
+//
+// instructions is the one question checked while it is still on screen,
+// against that rule. The difference is not that a wrong answer matters
+// more but that this flow can tell it is wrong: a slug needs a token,
+// whereas a path is one stat away with nothing the first run does not
+// already have. And an answer that gets through is not a provider
+// rejection at up but a hard error out of config.InstructionFiles,
+// which fails every later up and session start over a file the user
+// could have been told about here, with the question in front of them.
+func PersonalQuestions(baseDir string) []Question {
 	return []Question{
 		{
 			Field:       config.FieldRegion,
@@ -186,6 +234,32 @@ func PersonalQuestions() []Question {
 			Description: "A DigitalOcean size slug. Projects that need more can override it.",
 			Kind:        Text,
 			Placeholder: "s-1vcpu-1gb",
+		},
+		{
+			Field:       config.FieldInstructions,
+			Title:       "Any instructions for your coding agents?",
+			Description: "Markdown files delivered to every agent on the instance, relative to this file. Leave blank for none.",
+			Kind:        TextList,
+			Placeholder: "instructions/my-workflow.md",
+			Validate: func(v string) error {
+				// Blank is an answer: it means no instruction files, and
+				// the flow writes no line for it.
+				if v == "" {
+					return nil
+				}
+				path := v
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(baseDir, v)
+				}
+				// Resolved the way config.InstructionFiles will resolve
+				// it, against the file this answer is written into --
+				// checking it against anything else would pass here and
+				// fail there.
+				if _, err := os.Stat(path); err != nil {
+					return fmt.Errorf("%s: no such file, relative to %s", v, baseDir)
+				}
+				return nil
+			},
 		},
 	}
 }

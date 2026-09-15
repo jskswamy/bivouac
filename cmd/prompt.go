@@ -28,7 +28,7 @@ const otherChoice = "Something else…"
 func (formPrompter) Ask(q wizard.Question, current any) (any, error) {
 	switch q.Kind {
 	case wizard.Text:
-		return runInput(q.Title, q.Description, q.Placeholder, asString(current))
+		return runValidatedInput(q.Title, q.Description, q.Placeholder, asString(current), answerValidator(q))
 	case wizard.TextList:
 		return runTextList(q, asStrings(current))
 	case wizard.Select:
@@ -140,15 +140,53 @@ func keyLabel(c wizard.KeyChoice) string {
 // runInput collects one line, trimmed: a stray space must not become
 // part of a region slug or a preset name.
 func runInput(title, description, placeholder, current string) (string, error) {
+	return runValidatedInput(title, description, placeholder, current, nil)
+}
+
+// runValidatedInput is runInput with a check the form itself enforces.
+//
+// Handed to huh's own Validate rather than looped over out here: huh
+// already keeps the field on screen with the message under it until the
+// answer is acceptable, and a re-ask loop written here would have to
+// reproduce that and would spin forever against the scripted prompter
+// the tests drive, which returns one answer per field.
+func runValidatedInput(title, description, placeholder, current string, validate func(string) error) (string, error) {
 	value := current
 	field := huh.NewInput().Title(title).Description(description).Value(&value)
 	if placeholder != "" {
 		field = field.Placeholder(placeholder)
 	}
+	if validate != nil {
+		field = field.Validate(validate)
+	}
 	if err := run(field); err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(value), nil
+}
+
+// answerValidator adapts a question's validator to the line huh hands
+// it, which is not always one answer.
+//
+// A TextList is rendered as a single comma-separated input (see
+// runTextList), so the check runs per entry after splitting: the
+// validator a question carries is written against one value, and
+// handing it the whole line would reject every list of more than one.
+func answerValidator(q wizard.Question) func(string) error {
+	if q.Validate == nil {
+		return nil
+	}
+	if q.Kind == wizard.TextList {
+		return func(line string) error {
+			for _, entry := range splitList(line) {
+				if err := q.Validate(entry); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+	return func(line string) error { return q.Validate(strings.TrimSpace(line)) }
 }
 
 // runTextList collects a list on one line, separated by commas.
@@ -158,7 +196,7 @@ func runInput(title, description, placeholder, current string) (string, error) {
 // entry and the way to type a second is not on screen. A comma-separated
 // line has no hidden binding to discover.
 func runTextList(q wizard.Question, current []string) (any, error) {
-	value, err := runInput(q.Title, q.Description, listPlaceholder(q.Placeholder), strings.Join(current, ", "))
+	value, err := runValidatedInput(q.Title, q.Description, listPlaceholder(q.Placeholder), strings.Join(current, ", "), answerValidator(q))
 	if err != nil {
 		return nil, err
 	}
