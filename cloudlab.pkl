@@ -1,0 +1,6 @@
+// Delivered to the agents on the instance. The workflow is this
+// repository's choice, not cloudlab's default -- see the 2026-09-15
+// agent-context spec for why cloudlab ships none of its own.
+instructions {
+  "docs/superpowers/specs/2026-09-14-session-development-workflow-design.md"
+}
