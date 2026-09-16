@@ -572,3 +572,213 @@ func TestRun_StillWorksWithoutADeadline(t *testing.T) {
 		t.Errorf("Run() = %q, want it to carry the command's output", out)
 	}
 }
+
+// startFakeSSHServerWithAgentForwarding is startFakeSSHServer, plus:
+// when a session requests "auth-agent-req@openssh.com" before its
+// exec, the server opens an "auth-agent@openssh.com" channel back to
+// the client and hands onForwardedAgent an agent.Agent wrapping it --
+// letting a test prove the client actually served its local agent
+// over the forwarded channel, not just that it replied ok to the
+// forwarding request.
+func startFakeSSHServerWithAgentForwarding(
+	t *testing.T,
+	onForwardedAgent func(agent.Agent),
+	handler func(cmd string, stdin []byte) (output string, exitCode uint32),
+) string {
+	requireIsolatedHome(t)
+	t.Helper()
+	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostSigner, err := ssh.NewSignerFromKey(hostPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := &ssh.ServerConfig{
+		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			return &ssh.Permissions{}, nil
+		},
+	}
+	config.AddHostKey(hostSigner)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
+				if err != nil {
+					return
+				}
+				defer func() { _ = sshConn.Close() }()
+				go ssh.DiscardRequests(reqs)
+				for newChannel := range chans {
+					if newChannel.ChannelType() != "session" {
+						_ = newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+						continue
+					}
+					channel, requests, err := newChannel.Accept()
+					if err != nil {
+						continue
+					}
+					go handleFakeSessionWithAgentForwarding(sshConn, channel, requests, onForwardedAgent, handler)
+				}
+			}()
+		}
+	}()
+
+	return listener.Addr().String()
+}
+
+func handleFakeSessionWithAgentForwarding(
+	sshConn *ssh.ServerConn,
+	channel ssh.Channel,
+	requests <-chan *ssh.Request,
+	onForwardedAgent func(agent.Agent),
+	handler func(cmd string, stdin []byte) (string, uint32),
+) {
+	for req := range requests {
+		if req.Type == "auth-agent-req@openssh.com" {
+			if req.WantReply {
+				_ = req.Reply(true, nil)
+			}
+			agentChannel, agentReqs, err := sshConn.OpenChannel("auth-agent@openssh.com", nil)
+			if err == nil {
+				go ssh.DiscardRequests(agentReqs)
+				onForwardedAgent(agent.NewClient(agentChannel))
+			}
+			continue
+		}
+		if req.Type != "exec" {
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+			continue
+		}
+		var payload struct{ Command string }
+		_ = ssh.Unmarshal(req.Payload, &payload)
+		_ = req.Reply(true, nil)
+
+		stdin := readAllChannel(channel)
+		output, exitCode := handler(payload.Command, stdin)
+		_, _ = channel.Write([]byte(output))
+		exitMsg := struct{ ExitStatus uint32 }{exitCode}
+		_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(exitMsg))
+		_ = channel.Close()
+		return
+	}
+}
+
+func TestClient_EnableAgentForwarding_ServesLocalAgentOverForwardedChannel(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	forwarded := make(chan agent.Agent, 1)
+	addr := startFakeSSHServerWithAgentForwarding(t,
+		func(ag agent.Agent) { forwarded <- ag },
+		func(cmd string, stdin []byte) (string, uint32) { return "", 0 },
+	)
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if err := client.EnableAgentForwarding(); err != nil {
+		t.Fatalf("EnableAgentForwarding() error = %v", err)
+	}
+
+	if _, err := client.Run("anything"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	select {
+	case ag := <-forwarded:
+		keys, err := ag.List()
+		if err != nil {
+			t.Fatalf("forwarded agent List() error = %v", err)
+		}
+		if len(keys) != 1 {
+			t.Errorf("forwarded agent listed %d keys, want 1 (the fake local agent's key)", len(keys))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server never received a forwarded agent channel -- RunContext did not request forwarding")
+	}
+}
+
+func TestClient_EnableAgentForwarding_ReturnsNilWhenSSH_AUTH_SOCKUnset(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SSH_AUTH_SOCK", "")
+
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "id_ed25519"), gopem.EncodeToMemory(pem), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if err := client.EnableAgentForwarding(); err != nil {
+		t.Errorf("EnableAgentForwarding() error = %v, want nil when SSH_AUTH_SOCK is unset", err)
+	}
+}
+
+func TestClient_EnableAgentForwarding_ReturnsNilWhenAgentUnreachable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SSH_AUTH_SOCK", "/nonexistent/socket/path")
+
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "id_ed25519"), gopem.EncodeToMemory(pem), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if err := client.EnableAgentForwarding(); err != nil {
+		t.Errorf("EnableAgentForwarding() error = %v, want nil when agent socket is unreachable", err)
+	}
+}

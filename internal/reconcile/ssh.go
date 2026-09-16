@@ -27,6 +27,10 @@ import (
 // Client wraps an established SSH connection to an instance.
 type Client struct {
 	conn *ssh.Client
+	// forwardAgent is set by EnableAgentForwarding; when non-nil, every
+	// session RunContext/RunStreaming opens requests agent forwarding
+	// on it.
+	forwardAgent agent.Agent
 }
 
 // Connect dials ip on port 22 (or, if ip already has an explicit port —
@@ -89,6 +93,35 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
 	}
 	return &Client{conn: ssh.NewClient(sshConn, chans, reqs)}, nil
+}
+
+// EnableAgentForwarding dials the local ssh-agent (SSH_AUTH_SOCK) and
+// arranges for it to be forwarded to the instance: every session
+// RunContext/RunStreaming opens afterward requests forwarding, so a
+// remote git+ssh fetch (a private flake input) can authenticate
+// against the same agent this process already uses for its own auth.
+//
+// A missing or unreachable local agent is not an error -- same as
+// authMethods()'s own fallback to on-disk keys, a command that never
+// attempts a private fetch is unaffected either way.
+func (c *Client) EnableAgentForwarding() error {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil
+	}
+	// #nosec G704 -- sock is SSH_AUTH_SOCK, a local unix-domain-socket
+	// path the user's own ssh-agent set in their own environment; see
+	// the identical note on authMethods' own dial.
+	agentConn, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil
+	}
+	ag := agent.NewClient(agentConn)
+	if err := agent.ForwardToAgent(c.conn, ag); err != nil {
+		return fmt.Errorf("enabling agent forwarding: %w", err)
+	}
+	c.forwardAgent = ag
+	return nil
 }
 
 // defaultIdentityFiles are the private keys OpenSSH itself tries by
@@ -307,6 +340,10 @@ func (c *Client) RunContext(ctx context.Context, cmd string) (output string, err
 	}
 	defer func() { _ = session.Close() }()
 
+	if c.forwardAgent != nil {
+		_ = agent.RequestAgentForwarding(session)
+	}
+
 	type result struct {
 		out []byte
 		err error
@@ -337,6 +374,10 @@ func (c *Client) RunStreaming(cmd string, out, errOut io.Writer) (output string,
 		return "", fmt.Errorf("opening session: %w", err)
 	}
 	defer func() { _ = session.Close() }()
+
+	if c.forwardAgent != nil {
+		_ = agent.RequestAgentForwarding(session)
+	}
 
 	var buf bytes.Buffer
 	session.Stdout = io.MultiWriter(out, &buf)
