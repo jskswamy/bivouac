@@ -1,6 +1,6 @@
 # SSH agent forwarding to instances
 
-Status: proposed
+Status: implemented
 Date: 2026-09-16
 
 ## Context
@@ -69,13 +69,24 @@ to fetch just never asks.
 
 ### Opt-in `--forward-agent` flag elsewhere
 
-The ad-hoc `lookupCommandSpecs` entries — `shell`, `ssh`, `herdr`,
-`tmux`, `pair`, `connect` — get a `--forward-agent` bool flag via each
-spec's existing `flags func(*cobra.Command)` hook. Off by default: these
-are interactive/ad-hoc commands where forwarding the agent is a
-deliberate, occasional choice (cloning something by hand mid-session),
-not an implicit part of what the command does. No restriction on why —
-the flag just does it.
+The ad-hoc `lookupCommandSpecs` entries — `ssh`, `tmux`, `pair` — get a
+`--forward-agent` bool flag via each spec's existing
+`flags func(*cobra.Command)` hook. Off by default: these are
+interactive/ad-hoc commands where forwarding the agent is a deliberate,
+occasional choice (cloning something by hand mid-session), not an
+implicit part of what the command does. No restriction on why — the
+flag just does it.
+
+**`herdr`, `connect`, and `shell` are excluded**, discovered during
+implementation rather than assumed upfront: `herdr` manages its own SSH
+bridge (not the `ssh` binary) and its CLI exposes no forwarding flag
+today, so there is no lever here to pull; `connect`'s `Forward` never
+executes a remote command (`ssh -N` is a silent port tunnel), so
+forwarding would have nothing to attach to; `shell` has no
+implementation yet (`lookupCommandSpecs`' entry has no `run`). All
+three are documented gaps, not oversights — see the plan
+(`docs/superpowers/plans/2026-09-16-ssh-agent-forwarding.md`) for the
+exact reasoning.
 
 ### What this doesn't touch
 
@@ -86,12 +97,18 @@ benefits from, not an aide feature.
 ## Testing
 
 - A fake-SSH-server test (the existing pattern in `internal/reconcile`'s
-  test suite) asserting that, for the automatic paths, the forwarding
-  channel is requested and the remote environment's `SSH_AUTH_SOCK`
-  points at a working forwarded socket.
+  test suite) asserting that, for the automatic paths, the server
+  actually opens an `auth-agent@openssh.com` channel back and can list
+  a key through it — proof the forwarding round trip completed, not
+  just that the client didn't error. Checking the remote environment's
+  `SSH_AUTH_SOCK` was the original idea but isn't reachable from a fake
+  server with no real remote shell; the channel-open proof is the
+  stronger and only implementable check.
 - A flag-wiring test per opt-in command: `--forward-agent` present and
-  off by default; passing it results in the same forwarding request as
-  the automatic paths.
+  off by default (`internal/reconcile.Client`'s forwarding mechanism is
+  what actually gets exercised end to end; the flag tests only prove
+  the argv/registration wiring, since `ssh`/`tmux`/`pair` shell out to
+  the real `ssh` binary rather than going through `reconcile.Client`).
 - No test for "a private flake input actually resolves" — that's
   `nix`'s contract, not this code's.
 
