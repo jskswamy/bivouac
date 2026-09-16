@@ -60,6 +60,10 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 	}
 	defer func() { _ = client.Close() }()
 
+	if err := client.EnableAgentForwarding(); err != nil {
+		provider.ReportWarning(ctx, "agent forwarding: "+err.Error())
+	}
+
 	if out, err := client.Run(ensureRepoCmd(repo)); err != nil {
 		return fmt.Errorf("creating session repo on instance: %w\n%s", err, out)
 	}
