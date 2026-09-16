@@ -17,12 +17,16 @@ import (
 // the trailing argv into one string the remote shell parses. An empty
 // dir returns today's plain form: no remote command, ssh's own
 // default session handling.
-func sshArgs(ip, user, dir string) []string {
+func sshArgs(ip, user, dir string, forwardAgent bool) []string {
+	var flags []string
+	if forwardAgent {
+		flags = append(flags, "-A")
+	}
 	if dir == "" {
-		return []string{user + "@" + ip}
+		return append(flags, user+"@"+ip)
 	}
 	inner := "[[ -d " + shellcmd.Quote(dir) + " ]] && cd " + shellcmd.Quote(dir) + "; exec \"$SHELL\" -l"
-	return []string{"-t", user + "@" + ip, shellcmd.LoginShell(inner)}
+	return append(flags, "-t", user+"@"+ip, shellcmd.LoginShell(inner))
 }
 
 // SSH opens an interactive session on the instance at ip as user,
@@ -31,7 +35,7 @@ func sshArgs(ip, user, dir string) []string {
 // handling of our own beyond -t when dir is set. Reuses whatever
 // trust-on-first-connect entry already exists in the user's real
 // ~/.ssh/known_hosts from up's WaitReady/Connect call.
-func SSH(ctx context.Context, ip, user, dir string) error {
+func SSH(ctx context.Context, ip, user, dir string, forwardAgent bool) error {
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
@@ -40,5 +44,5 @@ func SSH(ctx context.Context, ip, user, dir string) error {
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but dir is shell-quoted via shellcmd.Quote before being
 	// embedded.
-	return tool.Passthrough(ctx, "ssh", sshArgs(ip, user, dir)...)
+	return tool.Passthrough(ctx, "ssh", sshArgs(ip, user, dir, forwardAgent)...)
 }
