@@ -253,6 +253,33 @@ func TestInitFlow_ExistingBaseKept(t *testing.T) {
 	}
 }
 
+// A base.pkl written before `size` existed, or edited by hand, is
+// missing a field config.Resolve requires. "Use these" must not trust it
+// blindly and let that surface only at the read-back, after cloudlab.pkl
+// has already been written: it should ask for exactly what is missing.
+func TestInitFlow_ExistingBaseMissingSizeIsAsked(t *testing.T) {
+	f := newInitFixture(t)
+	f.write(t, f.basePath, "region = \"ams3\"\n")
+
+	s := newScript()
+	s.answers = map[string]any{"size": "s-2vcpu-4gb", "template": "docker"}
+	s.decisions = map[string]any{
+		promptPersonalAction: personalUse,
+		promptSavePreset:     false,
+	}
+
+	if err := f.run(t, s); err != nil {
+		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
+	}
+	got := f.values(t, f.basePath)
+	if got["size"] != "s-2vcpu-4gb" {
+		t.Errorf("base.pkl size = %v, want the answer for the missing field", got["size"])
+	}
+	if got["region"] != "ams3" {
+		t.Errorf("base.pkl region = %v, want the existing region kept, not re-asked", got["region"])
+	}
+}
+
 // Entry condition 2, "change": the personal questions come back
 // pre-filled, and fields the flow never asks about survive.
 func TestInitFlow_ExistingBaseChanged(t *testing.T) {

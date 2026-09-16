@@ -235,6 +235,7 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 	}
 
 	values := merge(existing, lifted)
+	asked := false
 	switch {
 	case len(lifted) > 0:
 		// The user has just decided about these fields; asking again in
@@ -254,11 +255,28 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 			if err != nil {
 				return nil, err
 			}
+			asked = true
 		}
 	default:
 		values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys)
 		if err != nil {
 			return nil, err
+		}
+		asked = true
+	}
+
+	// A base that was trusted as-is (kept, or just lifted from a project
+	// file) rather than freshly asked can still be missing a field
+	// config.Resolve requires -- one written before that field existed,
+	// or edited by hand. Left unchecked, that surfaces only at the
+	// read-back in runInitFlowWith, after cloudlab.pkl has already been
+	// written. Catching it here asks for exactly what is missing instead.
+	if !asked {
+		if missing := missingQuestions(wizard.PersonalQuestions(filepath.Dir(basePath)), values); len(missing) > 0 {
+			values, err = ask(p, missing, values)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -431,6 +449,17 @@ func ask(p prompter, questions []wizard.Question, seed config.Values) (config.Va
 		values[q.Field] = answer
 	}
 	return values, nil
+}
+
+// missingQuestions is questions whose field values does not have.
+func missingQuestions(questions []wizard.Question, values config.Values) []wizard.Question {
+	var missing []wizard.Question
+	for _, q := range questions {
+		if _, ok := values[q.Field]; !ok {
+			missing = append(missing, q)
+		}
+	}
+	return missing
 }
 
 // zeroFor is the value a question starts from when nothing has answered
