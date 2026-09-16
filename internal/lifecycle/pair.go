@@ -21,9 +21,13 @@ import (
 // instance's Tailscale address -- so pairing keeps working even when
 // this machine is not currently on the tailnet, while still handing the
 // phone a private address to use.
-func pairArgs(sshHost, advertiseHost, user string) []string {
+func pairArgs(sshHost, advertiseHost, user string, forwardAgent bool) []string {
+	var flags []string
+	if forwardAgent {
+		flags = append(flags, "-A")
+	}
 	inner := "moshi-hook host setup --host " + shellcmd.Quote(advertiseHost)
-	return []string{"-t", user + "@" + sshHost, shellcmd.LoginShell(inner)}
+	return append(flags, "-t", user+"@"+sshHost, shellcmd.LoginShell(inner))
 }
 
 // Pair runs moshi-hook's Easy Pair QR flow on the instance, connecting
@@ -31,7 +35,7 @@ func pairArgs(sshHost, advertiseHost, user string) []string {
 // real ssh binary with stdio passed straight through -- same shape as
 // Tmux/SSH. Blocks in the foreground showing the QR until
 // scanned/claimed, or until Ctrl+C.
-func Pair(ctx context.Context, sshHost, advertiseHost, user string) error {
+func Pair(ctx context.Context, sshHost, advertiseHost, user string, forwardAgent bool) error {
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
@@ -39,5 +43,5 @@ func Pair(ctx context.Context, sshHost, advertiseHost, user string) error {
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but advertiseHost is shell-quoted via shellcmd.Quote before
 	// being embedded, and the hosts/user are never attacker-controlled.
-	return tool.Passthrough(ctx, "ssh", pairArgs(sshHost, advertiseHost, user)...)
+	return tool.Passthrough(ctx, "ssh", pairArgs(sshHost, advertiseHost, user, forwardAgent)...)
 }

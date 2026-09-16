@@ -8,7 +8,7 @@ import (
 )
 
 func TestPairArgs_BuildsExpectedCommand(t *testing.T) {
-	got := pairArgs("203.0.113.5", "203.0.113.5", "devuser")
+	got := pairArgs("203.0.113.5", "203.0.113.5", "devuser", false)
 	inner := "moshi-hook host setup --host " + shellcmd.Quote("203.0.113.5")
 	want := []string{"-t", "devuser@203.0.113.5", shellcmd.LoginShell(inner)}
 	if len(got) != len(want) {
@@ -25,7 +25,7 @@ func TestPairArgs_BuildsExpectedCommand(t *testing.T) {
 // reaches the instance over the public one -- otherwise pairing would
 // break whenever this machine happens to be off the tailnet.
 func TestPairArgs_SSHesOverPublicWhileAdvertisingTailnet(t *testing.T) {
-	got := pairArgs("203.0.113.5", "100.87.102.110", "devuser")
+	got := pairArgs("203.0.113.5", "100.87.102.110", "devuser", false)
 
 	if got[1] != "devuser@203.0.113.5" {
 		t.Errorf("ssh target = %q, want the public address", got[1])
@@ -36,5 +36,19 @@ func TestPairArgs_SSHesOverPublicWhileAdvertisingTailnet(t *testing.T) {
 	}
 	if strings.Contains(remote, "203.0.113.5") {
 		t.Errorf("remote command = %q, must not advertise the public address when a tailnet one was chosen", remote)
+	}
+}
+
+func TestPairArgs_ForwardAgent_PrependsDashA(t *testing.T) {
+	got := pairArgs("203.0.113.5", "203.0.113.5", "devuser", true)
+	inner := "moshi-hook host setup --host " + shellcmd.Quote("203.0.113.5")
+	want := []string{"-A", "-t", "devuser@203.0.113.5", shellcmd.LoginShell(inner)}
+	if len(got) != len(want) {
+		t.Fatalf("pairArgs() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("pairArgs()[%d] = %q, want %q", i, got[i], want[i])
+		}
 	}
 }
