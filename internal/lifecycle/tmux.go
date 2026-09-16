@@ -16,9 +16,13 @@ import (
 // shellcmd.LoginShell. session is shell-quoted since ssh concatenates
 // the trailing argv into one string that sshd hands to the remote
 // shell to parse.
-func tmuxArgs(ip, user, session string) []string {
+func tmuxArgs(ip, user, session string, forwardAgent bool) []string {
+	var flags []string
+	if forwardAgent {
+		flags = append(flags, "-A")
+	}
 	inner := "tmux new-session -A -s " + shellcmd.Quote(session)
-	return []string{"-t", user + "@" + ip, shellcmd.LoginShell(inner)}
+	return append(flags, "-t", user+"@"+ip, shellcmd.LoginShell(inner))
 }
 
 // Tmux opens an interactive tmux session named session on the
@@ -26,7 +30,7 @@ func tmuxArgs(ip, user, session string) []string {
 // exist), execing the real ssh binary with stdio passed straight
 // through -- same shape as SSH. -t forces PTY allocation, which tmux
 // requires.
-func Tmux(ctx context.Context, ip, user, session string) error {
+func Tmux(ctx context.Context, ip, user, session string, forwardAgent bool) error {
 	if _, err := tool.Require("ssh"); err != nil {
 		return err
 	}
@@ -34,5 +38,5 @@ func Tmux(ctx context.Context, ip, user, session string) error {
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but session is shell-quoted via shellcmd.Quote before
 	// being embedded, and ip/user are never attacker-controlled.
-	return tool.Passthrough(ctx, "ssh", tmuxArgs(ip, user, session)...)
+	return tool.Passthrough(ctx, "ssh", tmuxArgs(ip, user, session, forwardAgent)...)
 }

@@ -69,7 +69,10 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		verb:  "tmux",
 		args:  cobra.MaximumNArgs(1),
 		named: false,
-		run:   runTmux,
+		flags: func(c *cobra.Command) {
+			c.Flags().Bool("forward-agent", false, "forward your local SSH agent to the instance for this connection")
+		},
+		run: runTmux,
 	},
 	{
 		use:   "tailscale [name]",
