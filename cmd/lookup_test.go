@@ -243,3 +243,25 @@ func TestSessionStartCommand_HasTaskAndIssueFlags(t *testing.T) {
 		}
 	}
 }
+
+// runSSH/runTmux/runPair all call cmd.Flags().GetBool("forward-agent")
+// unconditionally -- if a command's flags func ever stopped registering
+// it, that call would return pflag's "flag accessed but not defined"
+// error and break the whole command for every user, silently (nothing
+// else in the suite exercises these commands' flag definitions).
+func TestLookupCommands_HaveForwardAgentFlag(t *testing.T) {
+	for _, args := range [][]string{{"ssh"}, {"tmux"}, {"pair"}} {
+		cmd, _, err := newRootCmd().Find(args)
+		if err != nil {
+			t.Fatalf("Find(%v) error = %v", args, err)
+		}
+		flag := cmd.Flags().Lookup("forward-agent")
+		if flag == nil {
+			t.Errorf("%v has no --forward-agent flag", args)
+			continue
+		}
+		if flag.DefValue != "false" {
+			t.Errorf("%v --forward-agent default = %q, want %q", args, flag.DefValue, "false")
+		}
+	}
+}

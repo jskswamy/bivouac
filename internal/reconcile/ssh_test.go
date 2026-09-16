@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	gopem "encoding/pem"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -685,7 +686,12 @@ func TestClient_EnableAgentForwarding_ServesLocalAgentOverForwardedChannel(t *te
 
 	forwarded := make(chan agent.Agent, 1)
 	addr := startFakeSSHServerWithAgentForwarding(t,
-		func(ag agent.Agent) { forwarded <- ag },
+		func(ag agent.Agent) {
+			select {
+			case forwarded <- ag:
+			default:
+			}
+		},
 		func(cmd string, stdin []byte) (string, uint32) { return "", 0 },
 	)
 
@@ -714,6 +720,48 @@ func TestClient_EnableAgentForwarding_ServesLocalAgentOverForwardedChannel(t *te
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("server never received a forwarded agent channel -- RunContext did not request forwarding")
+	}
+}
+
+// RunStreaming is the one call path that carries the actual home-manager
+// switch -- the only place a private flake input gets fetched -- so
+// forwarding must be requested on it directly, not just proven via some
+// other session-opening method.
+func TestClient_RunStreaming_RequestsAgentForwarding(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	forwarded := make(chan agent.Agent, 1)
+	addr := startFakeSSHServerWithAgentForwarding(t,
+		func(ag agent.Agent) { forwarded <- ag },
+		func(cmd string, stdin []byte) (string, uint32) { return "", 0 },
+	)
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if err := client.EnableAgentForwarding(); err != nil {
+		t.Fatalf("EnableAgentForwarding() error = %v", err)
+	}
+
+	if _, err := client.RunStreaming("anything", io.Discard, io.Discard); err != nil {
+		t.Fatalf("RunStreaming() error = %v", err)
+	}
+
+	select {
+	case ag := <-forwarded:
+		keys, err := ag.List()
+		if err != nil {
+			t.Fatalf("forwarded agent List() error = %v", err)
+		}
+		if len(keys) != 1 {
+			t.Errorf("forwarded agent listed %d keys, want 1 (the fake local agent's key)", len(keys))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server never received a forwarded agent channel -- RunStreaming did not request forwarding")
 	}
 }
 
