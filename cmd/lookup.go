@@ -90,6 +90,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		named: true,
 		flags: func(c *cobra.Command) {
 			c.Flags().String("host", "", "address the QR advertises to the phone (defaults to prompting when a Tailscale address is available)")
+			c.Flags().Bool("forward-agent", false, "forward your local SSH agent to the instance for this connection")
 		},
 		run: runPair,
 	},

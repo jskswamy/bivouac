@@ -154,7 +154,11 @@ func runPair(cmd *cobra.Command, name string, args []string) error {
 			return err
 		}
 	}
-	return lifecycle.Pair(cmd.Context(), record.IP, advertise, record.User)
+	forwardAgent, err := cmd.Flags().GetBool("forward-agent")
+	if err != nil {
+		return err
+	}
+	return lifecycle.Pair(cmd.Context(), record.IP, advertise, record.User, forwardAgent)
 }
 
 // choosePairHost returns the address the pairing QR should advertise.
