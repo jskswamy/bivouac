@@ -205,6 +205,10 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	forwardAgent, err := cmd.Flags().GetBool("forward-agent")
+	if err != nil {
+		return err
+	}
 	session := tmuxSession(args)
 	// nil, not args: args[0] here is a tmux session name, a different
 	// namespace from a cloudlab session name (see the nil-args comment on
@@ -216,5 +220,5 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 			session = sess.Name
 		}
 	}
-	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, session)
+	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, session, forwardAgent)
 }
