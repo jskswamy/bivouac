@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/jskswamy/cloudlab/internal/agentcontext"
 	"github.com/jskswamy/cloudlab/internal/provider"
@@ -357,5 +360,41 @@ func TestReconcile_DeliversInstructionsToEachConfiguredHarness(t *testing.T) {
 	}
 	if !strings.Contains(content, "my own workflow") {
 		t.Errorf("delivered content = %q, want the user's instructions file in it", content)
+	}
+}
+
+func TestReconcile_ForwardsAgentDuringSwitch(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	forwarded := make(chan agent.Agent, 2)
+	addr := startFakeSSHServerWithAgentForwarding(t,
+		func(ag agent.Agent) {
+			select {
+			case forwarded <- ag:
+			default:
+			}
+		},
+		func(cmd string, stdin []byte) (string, uint32) { return "", 0 },
+	)
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
+	writeFixture(t, cloudlabPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n")+"\n")
+
+	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	select {
+	case <-forwarded:
+		// Forwarding was requested — channel received an agent
+	case <-time.After(2 * time.Second):
+		t.Fatal("home-manager switch's session never requested a forwarded agent channel")
 	}
 }
