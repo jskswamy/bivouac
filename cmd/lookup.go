@@ -51,6 +51,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		named: true,
 		flags: func(c *cobra.Command) {
 			c.Flags().String("dir", "", "remote directory to cd into (defaults to the synced repo's location)")
+			c.Flags().Bool("forward-agent", false, "forward your local SSH agent to the instance for this connection")
 		},
 		run: runSSH,
 	},

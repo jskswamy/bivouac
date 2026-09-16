@@ -21,6 +21,10 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	forwardAgent, err := cmd.Flags().GetBool("forward-agent")
+	if err != nil {
+		return err
+	}
 	if dir == "" {
 		// record.RepoPath is a mirror of the local checkout path that rsync
 		// used to create; nothing creates it now, so it silently landed the
@@ -36,7 +40,7 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name))
 		}
 	}
-	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir)
+	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir, forwardAgent)
 }
 
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
