@@ -72,6 +72,10 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	}
 	defer func() { _ = client.Close() }()
 
+	if err := client.EnableAgentForwarding(); err != nil {
+		provider.ReportWarning(ctx, "agent forwarding: "+err.Error())
+	}
+
 	// Before the switch, which runs for minutes: an instructions file the
 	// config names but the disk does not have is a typo, and a typo should
 	// surface now rather than after a build.
