@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/jskswamy/cloudlab/internal/state"
 	"github.com/jskswamy/cloudlab/internal/testenv"
@@ -297,6 +300,44 @@ func TestMergeSession_RefusesOnADirtyTree(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "uncommitted") {
 		t.Errorf("error = %q, want it to name the uncommitted changes", err.Error())
+	}
+}
+
+func TestSeedSession_ForwardsAgentToTheInstance(t *testing.T) {
+	noGitSSH(t)
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	forwarded := make(chan agent.Agent, 1)
+	addr := startFakeSSHServerWithAgentForwarding(t,
+		func(ag agent.Agent) {
+			select {
+			case forwarded <- ag:
+			default:
+			}
+		},
+		func(cmd string, stdin []byte) (string, uint32) { return "", 0 },
+	)
+
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+
+	remoteRepo := RemoteRepoPath("devuser", "auth", "cloudlab")
+	// seedSession fails at the push -- the fake server has no real git
+	// backend -- but forwarding is requested on the very first session
+	// it opens, before that push ever runs. See
+	// TestSeedSession_CreatesTheRepoThenPushes for the same shape.
+	_ = seedSession(context.Background(), addr, "devuser", repo, remoteRepo,
+		SessionBranch("auth"), sshGitURL("devuser", addr, remoteRepo), addr, "auth", "session", "")
+
+	select {
+	case <-forwarded:
+		// Forwarding was requested and the channel-open round trip
+		// completed -- that's the evidence, since by the time we get
+		// here seedSession has already closed the connection this
+		// agent handle depended on.
+	case <-time.After(2 * time.Second):
+		t.Fatal("seedSession never requested agent forwarding on its first remote session")
 	}
 }
 
