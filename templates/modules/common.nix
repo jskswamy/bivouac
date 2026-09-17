@@ -53,6 +53,11 @@ in
 
   config.home.packages = [
     pkgs.git
+    # Unconditional, like git and tmux: useful to every instance, and a
+    # coding agent looking things up on GitHub needs no per-project
+    # opt-in. Authenticated only if the user has a github_token secret --
+    # see internal/reconcile/github.go.
+    pkgs.gh
     pkgs.age
     beads
     # Renders markdown in the terminal -- specs and plans under
