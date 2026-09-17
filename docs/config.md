@@ -143,13 +143,40 @@ repository alongside `refs/dolt/data`. It is harmless but visible in `git branch
 
 The setting is inert in a repository with no `.beads/`.
 
+### GitHub
+
+There is no `cloudlab.pkl` field for this one. `gh` is installed on every
+instance and works unauthenticated out of the box — fine for public repos,
+subject to GitHub's anonymous rate limit of 60 requests an hour, which an
+agent making a few lookups a session can reach.
+
+To raise that ceiling, add `github_token` to `cloudlab secrets`:
+
+```yaml
+github_token: ghp_…         # a PAT; public_repo scope is enough to read
+```
+
+Presence of the key is the only switch. If it is there, `up`/`provision`
+decrypt it just-in-time and configure `gh` with it, the same way
+`tailscale_authkey` and the DoltHub credential reach an instance: streamed
+over SSH into tmpfs, never written to the instance's persistent disk, never
+an environment variable. If it is absent, `gh` is simply left
+unauthenticated — not a warning, not a failure.
+
+Nothing is overwritten: if `~/.config/gh` on the instance is already
+something other than cloudlab's own symlink — a real `gh auth login`, say —
+cloudlab warns and leaves it alone.
+
+A reboot clears tmpfs, as with the other secrets placed this way.
+`cloudlab provision` restores it.
+
 ### Templates
 
 `"python"` gives you `python312` and `uv`; `"docker"` gives you `docker` and
 `minikube`, with the daemon and group membership already wired up. Both
-build on a shared module every instance gets — `git`, `age`, `devbox`,
-`herdr`, `mosh`, `moshi-hook`, `tailscale`, `tmux` (preconfigured), `glow`,
-plus `fish` and `starship`.
+build on a shared module every instance gets — `git`, `gh`, `age`,
+`devbox`, `herdr`, `mosh`, `moshi-hook`, `tailscale`, `tmux`
+(preconfigured), `glow`, plus `fish` and `starship`.
 
 Any other value is passed straight through to home-manager as a flake
 reference, so you can point `template` at your own flake's
