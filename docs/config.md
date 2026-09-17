@@ -163,6 +163,11 @@ over SSH into tmpfs, never written to the instance's persistent disk, never
 an environment variable. If it is absent, `gh` is simply left
 unauthenticated — not a warning, not a failure.
 
+The token is checked against GitHub before it is placed, because `gh` needs
+to be told which account it belongs to. If GitHub rejects it — expired,
+revoked, mistyped — cloudlab says so and leaves the instance untouched
+rather than installing a credential that would only fail there.
+
 Nothing is overwritten: if `~/.config/gh` on the instance is already
 something other than cloudlab's own symlink — a real `gh auth login`, say —
 cloudlab warns and leaves it alone.

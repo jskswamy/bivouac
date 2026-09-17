@@ -3,6 +3,8 @@ package reconcile
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +46,8 @@ func TestPlaceGitHubToken_SkipsCleanlyWhenNoSecretIsConfigured(t *testing.T) {
 }
 
 func TestPlaceGitHubTokenValue_LeavesAForeignConfigGhAlone(t *testing.T) {
+	fakeGitHubAPI(t, 200, `{"login":"octocat"}`)
+
 	var out, errOut bytes.Buffer
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
 
@@ -129,6 +133,7 @@ func writeGitHubTokenSecretsFixture(t *testing.T, token string) {
 }
 
 func TestPlaceGitHubToken_WritesHostsYAMLWhenTokenIsConfigured(t *testing.T) {
+	fakeGitHubAPI(t, 200, `{"login":"octocat"}`)
 	startFakeAgent(t)
 	testenv.Isolate(t)
 	writeGitHubTokenSecretsFixture(t, "ghp_exampletoken123")
@@ -163,7 +168,7 @@ func TestPlaceGitHubToken_WritesHostsYAMLWhenTokenIsConfigured(t *testing.T) {
 	if !strings.Contains(commands[1], "config/gh") {
 		t.Errorf("commands[1] = %q, want it to prepare ~/.config/gh", commands[1])
 	}
-	wantYAML := "github.com:\n    oauth_token: ghp_exampletoken123\n    git_protocol: https\n"
+	wantYAML := hostsYAML("octocat", []byte("ghp_exampletoken123"))
 	if string(stdins[2]) != wantYAML {
 		t.Errorf("stdin to the write step = %q, want %q", stdins[2], wantYAML)
 	}
@@ -176,5 +181,103 @@ func TestPlaceGitHubToken_WritesHostsYAMLWhenTokenIsConfigured(t *testing.T) {
 		if strings.Contains(cmd, "ghp_exampletoken123") {
 			t.Errorf("commands[%d] = %q contains the token literal -- it must only travel via stdin", i, cmd)
 		}
+	}
+}
+
+// fakeGitHubAPI points githubAPIBase at a test server that answers
+// GET /user with status and body, and returns the Authorization headers it
+// saw so a test can prove the token was actually presented.
+func fakeGitHubAPI(t *testing.T, status int, body string) *[]string {
+	t.Helper()
+	var auths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		if r.URL.Path != "/user" {
+			t.Errorf("request path = %q, want /user", r.URL.Path)
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	old := githubAPIBase
+	githubAPIBase = srv.URL
+	t.Cleanup(func() { githubAPIBase = old })
+	return &auths
+}
+
+// TestPlaceGitHubTokenValue_NamesTheAccountInHostsYAML covers what a bare
+// oauth_token cannot: gh refuses to run at all against a hosts.yml with no
+// account name under it, aborting every command with a multi-account
+// migration error rather than falling back to unauthenticated.
+func TestPlaceGitHubTokenValue_NamesTheAccountInHostsYAML(t *testing.T) {
+	auths := fakeGitHubAPI(t, 200, `{"login":"octocat"}`)
+
+	var commands []string
+	var stdins [][]byte
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		stdins = append(stdins, stdin)
+		if strings.Contains(cmd, "XDG_RUNTIME_DIR") {
+			return "/run/user/1000", 0
+		}
+		return "", 0
+	})
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	placeGitHubTokenValue(ctx, client, []byte("ghp_exampletoken123"))
+
+	if errOut.Len() != 0 {
+		t.Fatalf("errOut = %q, want no warnings on a clean write", errOut.String())
+	}
+	if len(*auths) != 1 || (*auths)[0] != "Bearer ghp_exampletoken123" {
+		t.Errorf("Authorization headers = %v, want exactly one bearing the token", *auths)
+	}
+	want := "github.com:\n" +
+		"    users:\n" +
+		"        octocat:\n" +
+		"            oauth_token: ghp_exampletoken123\n" +
+		"    user: octocat\n" +
+		"    oauth_token: ghp_exampletoken123\n" +
+		"    git_protocol: https\n"
+	if got := string(stdins[len(stdins)-1]); got != want {
+		t.Errorf("hosts.yml = %q, want %q", got, want)
+	}
+}
+
+func TestPlaceGitHubTokenValue_SkipsWhenGitHubRejectsTheToken(t *testing.T) {
+	fakeGitHubAPI(t, 401, `{"message":"Bad credentials"}`)
+
+	var commands []string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		return "", 0
+	})
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	placeGitHubTokenValue(ctx, client, []byte("ghp_expired"))
+
+	if !strings.Contains(errOut.String(), "unauthenticated") {
+		t.Errorf("errOut = %q, want a warning that gh is left unauthenticated", errOut.String())
+	}
+	if len(commands) != 0 {
+		t.Errorf("commands = %v, want the instance left untouched when the token is rejected", commands)
 	}
 }
