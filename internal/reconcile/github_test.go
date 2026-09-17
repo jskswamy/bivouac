@@ -3,10 +3,14 @@ package reconcile
 import (
 	"bytes"
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/cloudlab/internal/secrets"
 	"github.com/jskswamy/cloudlab/internal/testenv"
 )
 
@@ -71,6 +75,106 @@ func TestPlaceGitHubTokenValue_LeavesAForeignConfigGhAlone(t *testing.T) {
 	for _, cmd := range commands {
 		if strings.Contains(cmd, "install") || strings.Contains(cmd, "hosts.yml") {
 			t.Errorf("commands = %v, want no write attempted once NOTASYMLINK is seen", commands)
+		}
+	}
+}
+
+// writeGitHubTokenSecretsFixture generates a fresh age identity, points
+// SOPS_AGE_KEY_FILE and the isolated home at temp locations, and writes a
+// real sops-encrypted secrets.yaml containing github_token -- exactly what
+// placeGitHubToken decrypts in production. The age-keygen boilerplate is
+// duplicated from internal/lifecycle/tailscale_test.go's
+// writeTailscaleSecretsFixture rather than shared; see that function's own
+// comment for why.
+func writeGitHubTokenSecretsFixture(t *testing.T, token string) {
+	t.Helper()
+	keyPath := filepath.Join(t.TempDir(), "age-key.txt")
+	if out, err := exec.Command("age-keygen", "-o", keyPath).CombinedOutput(); err != nil {
+		t.Fatalf("age-keygen: %v\n%s", err, out)
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recipient string
+	for _, line := range strings.Split(string(keyData), "\n") {
+		if strings.HasPrefix(line, "# public key: ") {
+			recipient = strings.TrimPrefix(line, "# public key: ")
+		}
+	}
+	if recipient == "" {
+		t.Fatalf("couldn't find public key in age-keygen output:\n%s", keyData)
+	}
+	t.Setenv("SOPS_AGE_KEY_FILE", keyPath)
+	testenv.Isolate(t)
+
+	plainPath := filepath.Join(t.TempDir(), "plain.yaml")
+	if err := os.WriteFile(plainPath, []byte("github_token: "+token+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("sops", "--age", recipient, "-e", plainPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sops -e: %v\n%s", err, out)
+	}
+	secretsPath, err := secrets.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(secretsPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secretsPath, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPlaceGitHubToken_WritesHostsYAMLWhenTokenIsConfigured(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	writeGitHubTokenSecretsFixture(t, "ghp_exampletoken123")
+
+	var commands []string
+	var stdins [][]byte
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		commands = append(commands, cmd)
+		stdins = append(stdins, stdin)
+		if strings.Contains(cmd, "XDG_RUNTIME_DIR") {
+			return "/run/user/1000", 0
+		}
+		return "", 0
+	})
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	placeGitHubToken(ctx, client)
+
+	if errOut.Len() != 0 {
+		t.Fatalf("errOut = %q, want no warnings on a clean write", errOut.String())
+	}
+	if len(commands) != 3 {
+		t.Fatalf("commands = %v, want 3 (resolve runtime dir, prepare symlink, write hosts.yml)", commands)
+	}
+	if !strings.Contains(commands[1], "config/gh") {
+		t.Errorf("commands[1] = %q, want it to prepare ~/.config/gh", commands[1])
+	}
+	wantYAML := "github.com:\n    oauth_token: ghp_exampletoken123\n    git_protocol: https\n"
+	if string(stdins[2]) != wantYAML {
+		t.Errorf("stdin to the write step = %q, want %q", stdins[2], wantYAML)
+	}
+	if !strings.Contains(commands[2], "/run/user/1000/cloudlab/gh/hosts.yml") {
+		t.Errorf("commands[2] = %q, want it to write into the resolved runtime dir", commands[2])
+	}
+	// The token must only ever travel over stdin: a command line is visible
+	// in the instance's process table to anyone who looks.
+	for i, cmd := range commands {
+		if strings.Contains(cmd, "ghp_exampletoken123") {
+			t.Errorf("commands[%d] = %q contains the token literal -- it must only travel via stdin", i, cmd)
 		}
 	}
 }
