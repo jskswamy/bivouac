@@ -169,8 +169,9 @@ and the errors you might see. Worked examples live in
 `cloudlab secrets init/edit/keys` manage a personal,
 [sops](https://github.com/getsops/sops)-encrypted file at
 `~/.config/cloudlab/secrets.yaml`. It holds `tailscale_authkey`,
-`digitalocean_token`, and — for `beads = "dolthub"` — a DoltHub credential
-(`dolthub_creds` and `dolthub_creds_id`).
+`digitalocean_token`, an optional `github_token` for `gh` on the instance,
+and — for `beads = "dolthub"` — a DoltHub credential (`dolthub_creds` and
+`dolthub_creds_id`).
 
 `up`/`cloudlab tailscale` and `beads = "dolthub"` decrypt the Tailscale and
 DoltHub secrets just-in-time, stream them to the instance's tmpfs over SSH

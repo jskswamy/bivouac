@@ -447,6 +447,17 @@ there could ever use it. A reboot clears tmpfs and leaves the symlink
 dangling; `cloudlab provision` restores it, the same recovery path `up`
 already runs.
 
+`placeGitHubToken` is the same sequence once more, for `github_token` into
+`~/.config/gh/hosts.yml` — the file `gh` already reads, rather than a
+`GH_TOKEN` environment variable that would have to reach ssh, tmux, herdr
+and the agent's own shell and would fail silently for whichever it missed.
+It differs from the DoltHub credential in what a missing secret means: no
+`cloudlab.pkl` field enables this, so an absent key is an ordinary choice,
+reported as progress rather than a warning, and `gh` is left
+unauthenticated. The `~/.dolt` and `~/.config/gh` symlinks are prepared by
+one shared script builder, `symlinkPrepareScript`, which refuses to touch
+anything already there that is not cloudlab's own link.
+
 > **Note on agent credentials.** [ADR-0006](adr/0006-credentials-via-aide-secrets.md)
 > describes injecting `SOPS_AGE_KEY` into `shell`/`ssh` sessions so aide can
 > decrypt an agent's API key in-process. None of that is implemented: `shell`
