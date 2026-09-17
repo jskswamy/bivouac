@@ -41,7 +41,33 @@ func RescueSession(ctx context.Context, ip, user, localRepo, repoName, session s
 	tip = trimLine(tip)
 
 	remote := sessionRemote(session)
-	if out, err := runLocalGit(ctx, localRepo, fetchRemoteArgs(remote)...); err != nil {
+	storedURL, err := runLocalGit(ctx, localRepo, "remote", "get-url", remote)
+	if err != nil {
+		return "", "", fmt.Errorf("reading remote %s's URL: %w", remote, err)
+	}
+	storedURL = trimLine(storedURL)
+
+	// The remote's stored URL was set once, at session start, and
+	// never revisited -- if it preferred the tailnet address then and
+	// that route is dead now, every later pull/merge/delete must not
+	// find out by letting a real fetch fail. Probe both up front: ip
+	// is Connect's own parameter, already proven reachable above in
+	// this same call, so it is always a fair fallback to check.
+	fallbackURL := sshGitURL(user, ip, repo)
+	storedOK, fallbackOK := chooseReachableAddress(storedURL, fallbackURL, probeTimeout)
+	switch {
+	case storedOK:
+		// Nothing to change -- the stored address still answers.
+	case fallbackOK:
+		if _, err := runLocalGit(ctx, localRepo, "remote", "set-url", remote, fallbackURL); err != nil {
+			return "", "", fmt.Errorf("pointing session %s at a reachable address: %w", session, err)
+		}
+	default:
+		return "", "", fmt.Errorf("fetching session %s: neither its stored address nor %s answered", session, ip)
+	}
+
+	out, err := runLocalGit(ctx, localRepo, fetchRemoteFastArgs(remote)...)
+	if err != nil {
 		return "", "", fmt.Errorf("fetching session %s: %w\n%s", session, err, out)
 	}
 	ref := remote + "/" + branch

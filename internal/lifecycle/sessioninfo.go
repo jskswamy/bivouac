@@ -144,10 +144,11 @@ const remoteProbeTimeout = 15 * time.Second
 // ConnectTimeout bounds the part of the wait that actually hurt -- the TCP
 // connect to a host that is not there -- and BatchMode makes ssh fail
 // instead of stopping to ask for a passphrase or a host-key confirmation,
-// which in a listing would look exactly like a hang.
+// which in a listing would look exactly like a hang. fastSSHCommand
+// (gitlocal.go) is the same override RescueSession's fetch uses.
 func lsRemoteArgs(remote, branch string) []string {
 	return []string{
-		"-c", "core.sshCommand=ssh -o ConnectTimeout=2 -o BatchMode=yes",
+		"-c", fastSSHCommand,
 		"ls-remote", "--heads", remote, "refs/heads/" + branch,
 	}
 }
