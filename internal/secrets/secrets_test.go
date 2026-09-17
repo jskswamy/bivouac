@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jskswamy/cloudlab/internal/provider"
 )
 
 // setupSecretsTest generates a fresh age identity and points
@@ -64,6 +66,36 @@ func TestDecrypt_ReturnsPlaintextValue(t *testing.T) {
 	}
 	if string(got) != "tskey-abc123-example" {
 		t.Errorf("Decrypt() = %q, want %q", got, "tskey-abc123-example")
+	}
+}
+
+// A PIN-required YubiKey prompt needs the real terminal, which
+// something else (tui.Run's bubbletea program) may be holding in raw
+// mode mid-Reconcile. Decrypt must release it for the sops call and
+// take it back afterward -- verified here by attaching a fake
+// suspender and checking it fires around the real sops invocation,
+// not whether an actual terminal changed modes (no TTY in CI).
+func TestDecrypt_SuspendsAndResumesTheTerminalAroundSops(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := writeEncryptedFixture(t, t.TempDir(), recipient, "tailscale_authkey: tskey-abc123-example\n")
+
+	var suspended, resumed bool
+	ctx := provider.WithTerminalSuspend(context.Background(), func() (func() error, error) {
+		suspended = true
+		return func() error {
+			resumed = true
+			return nil
+		}, nil
+	})
+
+	if _, err := Decrypt(ctx, path, "tailscale_authkey"); err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if !suspended {
+		t.Error("Decrypt() never suspended the terminal before running sops")
+	}
+	if !resumed {
+		t.Error("Decrypt() never resumed the terminal after running sops")
 	}
 }
 

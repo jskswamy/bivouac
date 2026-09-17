@@ -64,9 +64,22 @@ func Decrypt(ctx context.Context, path, key string) ([]byte, error) {
 	// cloudlab's own fixed secrets path and key is a fixed constant
 	// supplied by callers in this codebase, never external input.
 	cmd := exec.CommandContext(ctx, "sops", "-d", "--extract", fmt.Sprintf(`["%s"]`, key), path)
+	// A touch prompt needs no typed input, so this went unnoticed until a
+	// PIN-required YubiKey slot needed one: with Stdin left nil, the
+	// child reads from /dev/null, age-plugin-yubikey's PIN prompt gets an
+	// immediate empty read, and sops fails with "PIN was too short"
+	// instead of ever reaching the user's terminal.
+	cmd.Stdin = os.Stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	// A correct Stdin still isn't enough when something else (tui.Run's
+	// bubbletea program, mid-Reconcile) owns the terminal in raw mode:
+	// its own event loop intercepts the keystrokes meant for this PIN
+	// prompt before sops ever sees them. Releasing it for the call and
+	// restoring it after is a no-op when nothing is currently rendering.
+	resume := provider.SuspendTerminal(ctx)
 	out, err := cmd.Output()
+	_ = resume()
 	if err != nil {
 		return nil, fmt.Errorf("sops -d --extract %q %s: %w\n%s", key, path, err, stderr.String())
 	}
