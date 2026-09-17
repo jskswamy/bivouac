@@ -139,6 +139,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// `up` and `provision` run -- so recovery after a reboot clears tmpfs is
 	// `cloudlab provision`, which is already idempotent.
 	placeDoltCredential(ctx, client, config.BeadsMode(cfg.Beads), filepath.Dir(cloudlabPath))
+	placeGitHubToken(ctx, client)
 	return nil
 }
 
