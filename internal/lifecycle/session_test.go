@@ -102,6 +102,46 @@ func TestRescueSession_CheckpointsBeforeFetching(t *testing.T) {
 	}
 }
 
+// The stored remote's URL is set once, at session start, and never
+// revisited -- if it preferred a route that has since gone dead
+// (Tailscale disconnected, a reboot reassigned the public IP), every
+// later pull/merge/delete must not pay a full OS connect-timeout for
+// it, and must adopt the address this same call already proved
+// reachable via Connect so the next call skips the dead route
+// entirely.
+func TestRescueSession_FailsFastAndAdoptsTheKnownGoodAddressWhenTheStoredRemoteIsDead(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "", 0
+	})
+
+	repo := t.TempDir()
+	initRepo(t, repo)
+	remote := sessionRemote("auth")
+	// RFC 5737 TEST-NET-1: guaranteed non-routable, stands in for a
+	// route that used to work and no longer does.
+	mustGit(t, repo, "remote", "add", remote, "ssh://user@192.0.2.1/repo")
+
+	start := time.Now()
+	_, _, err := RescueSession(context.Background(), addr, "devuser", repo, "cloudlab", "auth")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("RescueSession() error = nil, want an error -- the fake SSH server cannot serve a real fetch")
+	}
+	if elapsed > 20*time.Second {
+		t.Errorf("RescueSession took %s against a dead stored remote, want the fast connect timeout to bound it instead of the OS default", elapsed)
+	}
+
+	got := gitOut(t, repo, "remote", "get-url", remote)
+	want := sshGitURL("devuser", addr, RemoteRepoPath("devuser", "auth", "cloudlab"))
+	if got != want {
+		t.Errorf("remote %s = %q after the fallback attempt, want it adopted as %q so the next call skips the dead route", remote, got, want)
+	}
+}
+
 // What RescueSession actually returns, and that the ref resolves, is
 // asserted against real repositories in
 // TestRescueSession_LandsWorkOnTheRemoteTrackingRef (merge_test.go). It
