@@ -451,6 +451,11 @@ already runs.
 `~/.config/gh/hosts.yml` — the file `gh` already reads, rather than a
 `GH_TOKEN` environment variable that would have to reach ssh, tmux, herdr
 and the agent's own shell and would fail silently for whichever it missed.
+It first resolves the token's account name with one `GET /user` against the
+GitHub API, because a `hosts.yml` naming no account sends gh into a
+migration that aborts every command when it cannot make that call itself;
+doing it here also means a rejected token is reported on the machine whose
+user can fix it, before anything reaches the instance.
 It differs from the DoltHub credential in what a missing secret means: no
 `cloudlab.pkl` field enables this, so an absent key is an ordinary choice,
 reported as progress rather than a warning, and `gh` is left

@@ -117,9 +117,17 @@ a foreign `~/.config/gh` means to the user differs.
 
 ```yaml
 github.com:
+    users:
+        <login>:
+            oauth_token: <token>
+    user: <login>
     oauth_token: <token>
     git_protocol: https
 ```
+
+Both the current users-keyed shape and the older top-level one gh itself
+writes after migrating, so whichever a given gh reads, it finds the same
+token and has no migration left to run.
 
 `GH_TOKEN`/environment-variable auth was considered and rejected — it's
 exactly the shape of fix `internal/reconcile/dolt.go`'s own comment already
@@ -129,17 +137,30 @@ it fails silently. Writing to the file `gh` already reads by default is the
 same fix dolt already applies to the identical problem, reused rather than
 reinvented.
 
-Omitting the `user:` field: current `gh` resolves it from the API when
-absent. To confirm during implementation against the actual `gh` version
-nixpkgs pins — if `gh auth status` or another subcommand turns out to want
-it, the fix is resolving it with one extra `gh api user` call before
-shipping the token, not a design change.
+Omitting the `user:` field was the plan, on the assumption `gh` resolves it
+from the API when absent. **Checked during implementation against the `gh`
+2.98 nixpkgs pins, and it does not hold.** A `hosts.yml` naming no account
+sends `gh` into its multi-account migration, which resolves the name over
+the API itself and, when that call fails, aborts *every* `gh` command with
+"cowardly refusing to continue with multi account migration" — not a
+fallback to unauthenticated, but a `gh` that does nothing at all. An
+expired token, or an instance briefly without network, would turn an
+optional nicety into a broken `gh`.
+
+So the fix this section already sanctioned applies: cloudlab resolves the
+account name itself, with one `GET /user` before shipping the token
+(`githubLogin` in `internal/reconcile/github.go`), and writes it into
+`hosts.yml`. Made as a direct API call rather than by running `gh`, since
+cloudlab does not require `gh` on the user's own machine. The call doubles
+as validation: a token GitHub rejects is reported on the machine whose user
+can fix it, and nothing is placed on the instance.
 
 ## Failure and skip behavior
 
 | Condition | Outcome |
 |---|---|
 | No `secrets.yaml`, or no `github_token` key in it | Skip. One `ReportProgress` line noting `gh` will run unauthenticated (60 req/hour, fine for public repos). Not a warning, not a failure. |
+| GitHub rejects the token, or is unreachable | Skip. `ReportWarning` naming what GitHub said. Nothing is placed on the instance. |
 | `~/.config/gh` exists and isn't cloudlab's own symlink | Skip. `ReportWarning`, same wording style as dolt's `NOTASYMLINK` case — a real `gh auth login` on the instance is not cloudlab's to overwrite. |
 | Token decrypts and `~/.config/gh` is free | Written. `gh` authenticated from the next login shell onward. |
 
