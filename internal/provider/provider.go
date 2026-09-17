@@ -137,6 +137,42 @@ func Output(ctx context.Context) (out, errOut io.Writer) {
 	return os.Stdout, os.Stderr
 }
 
+type terminalSuspendKey struct{}
+
+// TerminalSuspender gives up whatever is currently rendering to the
+// terminal so a child process can use it for real interactive input
+// (a YubiKey PIN prompt, an editor), returning a resume func to call
+// once that's done. See WithTerminalSuspend.
+type TerminalSuspender func() (resume func() error, err error)
+
+// WithTerminalSuspend attaches fn to ctx. A caller that owns the
+// terminal for the duration of a long operation (currently: tui.Run's
+// bubbletea program) sets this so any subprocess started underneath
+// it can borrow the terminal back rather than fight over raw-mode
+// input with the owner's own event loop.
+func WithTerminalSuspend(ctx context.Context, fn TerminalSuspender) context.Context {
+	return context.WithValue(ctx, terminalSuspendKey{}, fn)
+}
+
+// SuspendTerminal calls the TerminalSuspender attached to ctx, if any,
+// and returns the resume func to call once the caller is done with
+// the terminal. Both the call and the returned resume func are no-ops
+// when nothing was attached (e.g. no bubbletea program is currently
+// rendering) or the suspend itself failed -- the caller proceeds
+// either way, since forwarding whatever raw terminal state already
+// exists is strictly better than refusing to run at all.
+func SuspendTerminal(ctx context.Context) (resume func() error) {
+	fn, ok := ctx.Value(terminalSuspendKey{}).(TerminalSuspender)
+	if !ok || fn == nil {
+		return func() error { return nil }
+	}
+	r, err := fn()
+	if err != nil || r == nil {
+		return func() error { return nil }
+	}
+	return r
+}
+
 // ReportWarning tells the user something went wrong that was not fatal.
 //
 // Distinct from ReportProgress, which narrates what is happening on the happy

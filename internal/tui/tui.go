@@ -48,6 +48,18 @@ func Run(ctx context.Context, label string, fn func(context.Context) error) erro
 	ctx = provider.WithProgress(ctx, func(status string) {
 		p.Send(outputMsg(ProgressPrefix + status + "\n"))
 	})
+	// fn may need real interactive terminal input mid-run (a YubiKey PIN
+	// prompt, decrypting a secret) -- without this, the program's own
+	// raw-mode event loop and that prompt fight over the same tty, and
+	// the prompt never sees a keystroke. ReleaseTerminal/RestoreTerminal
+	// are bubbletea's own answer to exactly this: pause rendering, hand
+	// the terminal to whatever needs it, take it back.
+	ctx = provider.WithTerminalSuspend(ctx, func() (func() error, error) {
+		if err := p.ReleaseTerminal(); err != nil {
+			return nil, err
+		}
+		return p.RestoreTerminal, nil
+	})
 
 	progDone := make(chan error, 1)
 	go func() {
