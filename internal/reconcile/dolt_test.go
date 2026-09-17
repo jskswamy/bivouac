@@ -280,3 +280,38 @@ func TestSanitizeDoltCredsID_RejectsPathTraversalAndEmptyAcceptsPlainTokens(t *t
 		})
 	}
 }
+
+// runSymlinkPrepareScript is runDoltPrepareScript for an arbitrary link
+// name -- the same real bash process against a scratch $HOME, so the nested
+// case below proves the shell logic rather than a Go reading of it.
+func runSymlinkPrepareScript(t *testing.T, home, linkName, targetDir string) string {
+	t.Helper()
+	cmd := exec.Command("bash", "-c", symlinkPrepareScript(linkName, targetDir))
+	cmd.Env = []string{"HOME=" + home, "PATH=" + os.Getenv("PATH")}
+	out, err := cmd.CombinedOutput()
+	if err != nil && !strings.Contains(string(out), "NOTASYMLINK") {
+		t.Fatalf("symlinkPrepareScript(%q) exited %v, output = %q", linkName, err, out)
+	}
+	return string(out)
+}
+
+// TestSymlinkPrepareScript_CreatesANestedLinksParentDirectory covers what
+// gh needs and dolt does not: .config/gh is nested where .dolt is not, and
+// ln cannot create a link inside a directory that does not exist. $HOME
+// always does, so dolt never had to care.
+func TestSymlinkPrepareScript_CreatesANestedLinksParentDirectory(t *testing.T) {
+	home := t.TempDir()
+	ghDir := filepath.Join(t.TempDir(), "cloudlab", "gh")
+
+	out := runSymlinkPrepareScript(t, home, ".config/gh", ghDir)
+	if strings.Contains(out, "NOTASYMLINK") {
+		t.Fatalf("output = %q, want no NOTASYMLINK for an absent ~/.config/gh", out)
+	}
+	target, err := os.Readlink(filepath.Join(home, ".config", "gh"))
+	if err != nil {
+		t.Fatalf("Readlink(~/.config/gh) error = %v, want a symlink to have been created", err)
+	}
+	if target != ghDir {
+		t.Errorf("~/.config/gh -> %q, want %q", target, ghDir)
+	}
+}

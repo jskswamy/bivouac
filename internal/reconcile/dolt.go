@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,31 +47,51 @@ func sanitizeDoltCredsID(id string) error {
 	return nil
 }
 
-// doltPrepareScript builds the remote shell script that prepares
-// $HOME/.dolt to point at doltDir, without disturbing anything already
-// there that isn't cloudlab's own symlink. It is a plain string builder,
-// deliberately factored out of placeDoltCredential so it can be run
-// directly against a scratch $HOME in tests -- the real target of this
-// logic is the shell, not the Go wrapper around it.
+// symlinkPrepareScript builds the remote shell script that points
+// linkName (a dotfile path relative to $HOME, e.g. ".dolt" or
+// ".config/gh") at targetDir, without disturbing anything already there
+// that isn't cloudlab's own symlink. It is a plain string builder,
+// deliberately factored out of its callers so it can be run directly
+// against a scratch $HOME in tests -- the real target of this logic is the
+// shell, not the Go wrapper around it.
 //
 // -L is checked before -e so a dangling symlink (target gone, -e false) is
 // still recognized as a symlink rather than falling through to the -e
-// branch and being reported as "no ~/.dolt at all". A symlink already
-// pointing at doltDir is left alone (and re-linked, harmlessly, since
+// branch and being reported as "nothing there at all". A symlink already
+// pointing at targetDir is left alone (and re-linked, harmlessly, since
 // ln -sfn is idempotent); a symlink pointing anywhere else, live or
 // dangling, is foreign and reported via NOTASYMLINK exactly like a real
 // directory or a regular file -- none of those are cloudlab's to touch.
-func doltPrepareScript(doltDir string) string {
-	target := shellcmd.Quote(doltDir)
-	guard := "if [ -L \"$HOME/.dolt\" ]; then" +
-		" [ \"$(readlink \"$HOME/.dolt\")\" = " + target + " ] || { echo NOTASYMLINK; exit 0; }" +
-		"; elif [ -e \"$HOME/.dolt\" ]; then echo NOTASYMLINK; exit 0" +
+func symlinkPrepareScript(linkName, targetDir string) string {
+	link := "\"$HOME/" + linkName + "\""
+	target := shellcmd.Quote(targetDir)
+	guard := "if [ -L " + link + " ]; then" +
+		" [ \"$(readlink " + link + ")\" = " + target + " ] || { echo NOTASYMLINK; exit 0; }" +
+		"; elif [ -e " + link + " ]; then echo NOTASYMLINK; exit 0" +
 		"; fi"
+	// A nested link name needs its parent directory to exist before ln can
+	// create the link -- gh's ~/.config/gh does, dolt's ~/.dolt never did,
+	// because $HOME is always there. After the guard, so a foreign link
+	// leaves the instance exactly as it was found.
+	parent := ""
+	if dir := path.Dir(linkName); dir != "." {
+		parent = "; mkdir -p \"$HOME/" + dir + "\""
+	}
+	return "set -e" +
+		"; mkdir -p " + target +
+		"; chmod 700 " + target +
+		"; " + guard +
+		parent +
+		"; ln -sfn " + target + " " + link
+}
+
+// doltPrepareScript prepares $HOME/.dolt to point at doltDir, with the
+// creds subdirectory dolt itself looks for underneath it. See
+// symlinkPrepareScript for the mechanics of the link.
+func doltPrepareScript(doltDir string) string {
 	return "set -e" +
 		"; mkdir -p " + shellcmd.Quote(doltDir+"/creds") +
-		"; chmod 700 " + shellcmd.Quote(doltDir) +
-		"; " + guard +
-		"; ln -sfn " + target + " \"$HOME/.dolt\""
+		"; " + symlinkPrepareScript(".dolt", doltDir)
 }
 
 // placeDoltCredential ships the user's DoltHub credential to the instance, so
