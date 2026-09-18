@@ -124,3 +124,25 @@ func TestValidate_RealTemplates_NoError(t *testing.T) {
 		t.Errorf("Validate() error = %v, want nil (real templates/ flake should validate cleanly)", err)
 	}
 }
+
+// A malformed path is rejected by the same per-segment check Render
+// applies, before nix eval gets a chance to report it less clearly.
+func TestValidate_FlakeModuleWithEmptySegment_NamesItClearly(t *testing.T) {
+	tmpl := validTemplateFor(t)
+	cfg := config.Resolved{
+		Template: tmpl,
+		Config: config.Config{
+			Arch: "x86_64",
+			Flakes: []config.Flake{
+				{Url: testdataFlake(t, "good-flake"), Modules: []string{"tools..git"}},
+			},
+		},
+	}
+	err := Validate(context.Background(), LocalRunner{}, cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error for an empty path segment")
+	}
+	if !strings.Contains(err.Error(), "empty path segment") {
+		t.Errorf("error %q does not say the path has an empty segment", err.Error())
+	}
+}

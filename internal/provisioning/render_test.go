@@ -167,7 +167,20 @@ func TestRender_Output_EvaluatesInNix(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
 	templatesRef := "path:" + filepath.Join(repoRoot, "templates")
 
-	cfg := config.Config{Arch: "x86_64", Packages: []string{"hello"}}
+	// Settings covers every value type the schema's union allows, each
+	// aimed at a real home-manager option, so the synthetic module has
+	// to both parse and type-check against the actual option set. Lists
+	// are []interface{} because that is what pkl-go decodes them to.
+	cfg := config.Config{
+		Arch:     "x86_64",
+		Packages: []string{"hello"},
+		Settings: map[string]any{
+			"home.sessionVariables.BIVOUAC_STR": "x",
+			"home.sessionVariables.BIVOUAC_INT": 42,
+			"programs.jq.enable":                true,
+			"programs.git.ignores":              []interface{}{"*.swp"},
+		},
+	}
 	out, err := Render(cfg, templatesRef+"#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
@@ -348,5 +361,128 @@ func TestRender_MultipleUnfreeAgents_AllPermitted(t *testing.T) {
 	predicate = predicate[:strings.Index(predicate, "\n")]
 	if strings.Contains(predicate, "codex") {
 		t.Errorf("free package listed in the unfree predicate: %s", predicate)
+	}
+}
+
+func TestNixValue_String(t *testing.T) {
+	got, err := nixValue("work@example.com")
+	if err != nil {
+		t.Fatalf("nixValue() error = %v", err)
+	}
+	if got != `"work@example.com"` {
+		t.Errorf("nixValue() = %q, want %q", got, `"work@example.com"`)
+	}
+}
+
+func TestNixValue_Bool(t *testing.T) {
+	got, err := nixValue(false)
+	if err != nil {
+		t.Fatalf("nixValue() error = %v", err)
+	}
+	if got != "false" {
+		t.Errorf("nixValue() = %q, want %q", got, "false")
+	}
+}
+
+func TestNixValue_Int(t *testing.T) {
+	got, err := nixValue(42)
+	if err != nil {
+		t.Fatalf("nixValue() error = %v", err)
+	}
+	if got != "42" {
+		t.Errorf("nixValue() = %q, want %q", got, "42")
+	}
+}
+
+func TestNixValue_StringList(t *testing.T) {
+	got, err := nixValue([]interface{}{"x", "y"})
+	if err != nil {
+		t.Fatalf("nixValue() error = %v", err)
+	}
+	if got != `[ "x" "y" ]` {
+		t.Errorf("nixValue() = %q, want %q", got, `[ "x" "y" ]`)
+	}
+}
+
+func TestNixValue_NonStringListElement_Rejected(t *testing.T) {
+	_, err := nixValue([]interface{}{"x", 42})
+	if err == nil {
+		t.Fatal("nixValue() error = nil, want error for a non-string list element")
+	}
+}
+
+func TestNixValue_UnsupportedType_Rejected(t *testing.T) {
+	_, err := nixValue(3.14)
+	if err == nil {
+		t.Fatal("nixValue() error = nil, want error for an unsupported type")
+	}
+}
+
+func TestNixValue_StringWithEmbeddedQuote_Rejected(t *testing.T) {
+	_, err := nixValue(`work"; malicious = true; "`)
+	if err == nil {
+		t.Fatal("nixValue() error = nil, want error for a string breaking out of its Nix literal")
+	}
+}
+
+func TestRender_WithSettings_AddsSyntheticModule(t *testing.T) {
+	cfg := config.Config{
+		Arch:     "x86_64",
+		Settings: map[string]any{"programs.git.userEmail": "work@example.com"},
+	}
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(out, `{ "programs"."git"."userEmail" = "work@example.com"; }`) {
+		t.Errorf("output does not set the settings override:\n%s", out)
+	}
+}
+
+func TestRender_NoSettings_OmitsSettingsModule(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64"}
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if strings.Contains(out, `." = "`) || strings.Contains(out, `.".`) {
+		t.Errorf("output contains a settings-shaped assignment with no settings configured:\n%s", out)
+	}
+}
+
+func TestNeedsRender_OnlySettings_True(t *testing.T) {
+	cfg := config.Config{Settings: map[string]any{"a.b": "x"}}
+	if !NeedsRender(cfg) {
+		t.Error("NeedsRender() = false, want true for a config with only settings set")
+	}
+}
+
+// A trailing backslash escapes the closing quote Render adds, so the
+// value runs on into the rest of the module -- as much a way out of the
+// literal as an embedded '"'.
+func TestNixValue_StringWithTrailingBackslash_Rejected(t *testing.T) {
+	if _, err := nixValue(`C:\`); err == nil {
+		t.Fatal("nixValue() error = nil, want error for a backslash escaping the closing quote")
+	}
+}
+
+func TestNixValue_ListElementWithBackslash_Rejected(t *testing.T) {
+	if _, err := nixValue([]interface{}{`a\`}); err == nil {
+		t.Fatal("nixValue() error = nil, want error for a backslash in a list element")
+	}
+}
+
+// The charset alone admits '.', so a path with an empty segment would
+// slip through and render as a quoted empty attribute name ("a".""."b").
+func TestRender_DottedPathWithEmptySegment_Rejected(t *testing.T) {
+	for _, path := range []string{"", ".git", "git.", "tools..git"} {
+		settings := config.Config{Arch: "x86_64", Settings: map[string]any{path: true}}
+		if _, err := Render(settings, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux"); err == nil {
+			t.Errorf("Render() with settings key %q: error = nil, want error", path)
+		}
+		modules := config.Config{Arch: "x86_64", Flakes: []config.Flake{{Url: "github:o/r", Modules: []string{path}}}}
+		if _, err := Render(modules, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux"); err == nil {
+			t.Errorf("Render() with module path %q: error = nil, want error", path)
+		}
 	}
 }
