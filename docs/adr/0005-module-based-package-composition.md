@@ -16,6 +16,13 @@ anticipated, which is now implemented. Re-triggering
 `home-manager switch` happens via `up` and `provision`, not the `shell`
 ADR-0007 named — that command is still a stub.
 
+The `flakes[].modules` part is superseded by the
+[curated modules and settings design](../superpowers/specs/2026-09-18-flake-modules-and-settings-design.md):
+it is now a list of dotted `homeManagerModules` paths rather than a flag
+for `.default`, and a top-level `settings` field layers option overrides
+onto the merged result as one more synthetic module. The module-list
+pipeline this ADR chose took both without restructuring.
+
 ## Context
 
 Beyond the two built-in templates, users need to add packages per-repo —
