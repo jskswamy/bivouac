@@ -37,11 +37,11 @@ func parseMachineList(out string) ([]machineProfile, error) {
 // Matched on target and session together, because that pair is what a
 // profile is: herdr's documentation is explicit that "a machine profile
 // targets one remote session; it does not combine every session on the
-// host", so two cloudlab sessions on one instance are two profiles sharing a
+// host", so two bivouac sessions on one instance are two profiles sharing a
 // target and differing only here.
 //
 // Label is deliberately not part of the match. The user may rename a profile
-// from the sidebar, and a rename must not make cloudlab believe the machine
+// from the sidebar, and a rename must not make bivouac believe the machine
 // is gone and add a duplicate.
 func findMachine(profiles []machineProfile, target, session string) (machineProfile, bool) {
 	for _, p := range profiles {
@@ -57,7 +57,7 @@ func findMachine(profiles []machineProfile, target, session string) (machineProf
 //
 // The session is what the user thinks in, and the sidebar is narrow. An
 // earlier scheme qualified every label with the instance and truncated to
-// "jskswamy-cloudlab/su...", cutting the only part that says which session
+// "jskswamy-bivouac/su...", cutting the only part that says which session
 // it is -- the disambiguator survived and the name did not.
 //
 // Cosmetic only. Identity is the recorded machine id, and matching is on
@@ -120,10 +120,10 @@ type herdrRunner interface {
 	Run(args ...string) (output string, err error)
 }
 
-// ownedMachines maps a herdr profile id to the cloudlab instance that
-// registered it, built from what cloudlab recorded in its own state.
+// ownedMachines maps a herdr profile id to the bivouac instance that
+// registered it, built from what bivouac recorded in its own state.
 //
-// It exists so cloudlab can tell its own profiles from ones added by hand.
+// It exists so bivouac can tell its own profiles from ones added by hand.
 // herdr stores no owner field, so this is the only honest answer to "did we
 // make this?" -- and it decides both what may be renamed and what may be
 // removed.
@@ -134,7 +134,7 @@ type OwnedMachines map[string]string
 //
 // The id is what matters. Teardown removes exactly it, so it is returned on
 // every path -- including the two where nothing was created. A session
-// attached before cloudlab recorded ids would otherwise never get one and
+// attached before bivouac recorded ids would otherwise never get one and
 // would leak when it was retired.
 //
 // Lists first, always. `herdr machine add` does not deduplicate, so running
@@ -183,9 +183,9 @@ func EnsureMachine(h herdrRunner, instance, target, session string, owned OwnedM
 //
 // Symmetric on purpose: if only the newcomer were qualified, a bare name
 // would silently mean whichever session was registered first. Renaming is
-// limited to profiles cloudlab recorded -- one the user added by hand keeps
+// limited to profiles bivouac recorded -- one the user added by hand keeps
 // its name even when it is the thing in the way, because it is not
-// cloudlab's to rename.
+// bivouac's to rename.
 //
 // Best-effort on the rename: a label that will not change is cosmetic, and
 // no reason to refuse the attach the user asked for.
@@ -218,15 +218,15 @@ func findMachineByLabel(profiles []machineProfile, label string) (machineProfile
 	return machineProfile{}, false
 }
 
-// RemoveMachine forgets the profile cloudlab registered for a session.
+// RemoveMachine forgets the profile bivouac registered for a session.
 //
 // By recorded id, never by matching. herdr profiles carry no owner field, so
 // a label or target match would let teardown delete a profile the user added
-// themselves -- and a rename in the sidebar would hide cloudlab's own. The
-// id cloudlab wrote down at attach time is the only thing that says "this
+// themselves -- and a rename in the sidebar would hide bivouac's own. The
+// id bivouac wrote down at attach time is the only thing that says "this
 // one is mine".
 //
-// An empty id means cloudlab never attached this session, and then teardown
+// An empty id means bivouac never attached this session, and then teardown
 // does nothing at all: it does not even list, because there is nothing it
 // would be entitled to act on.
 //

@@ -17,7 +17,7 @@ func writeFixture(t *testing.T, path, body string) {
 
 func TestLoad_SelfContainedProjectFile(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\n")
 
 	// No base file at the XDG default location for this test's HOME.
@@ -48,7 +48,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		`packages { "git" }`,
 	}, "\n")+"\n")
 
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`basePath = "./base.pkl"`,
 		`size = "s-2vcpu-4gb"`, // overrides base
@@ -98,7 +98,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 
 func TestLoad_MissingBaseFile_ProjectStandalone(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`basePath = "./does-not-exist.pkl"`,
 		`region = "nyc3"`,
@@ -117,7 +117,7 @@ func TestLoad_MissingBaseFile_ProjectStandalone(t *testing.T) {
 
 func TestLoad_MissingRequiredFieldAfterMerge_ReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, `region = "nyc3"`+"\n") // size, template never set
 
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
@@ -143,7 +143,7 @@ func TestLoad_PklNotOnPATH_ReturnsClearError(t *testing.T) {
 	// exist.
 	t.Setenv("PATH", t.TempDir())
 
-	_, err := Resolve(context.Background(), filepath.Join(dir, "cloudlab.pkl"))
+	_, err := Resolve(context.Background(), filepath.Join(dir, "bivouac.pkl"))
 	if err == nil {
 		t.Fatal("Resolve() error = nil, want error naming pkl CLI not found")
 	}
@@ -162,7 +162,7 @@ func TestLoad_MissingProjectFile_ReturnsNotFoundError(t *testing.T) {
 
 func TestLoad_MalformedProjectFile_ReturnsEvaluationError(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(project, []byte("this is not valid pkl {{{"), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestLoad_BasePathOverride_PointsAtNonDefaultLocation(t *testing.T) {
 	custom := filepath.Join(dir, "custom-base.pkl")
 	writeFixture(t, custom, `region = "sfo3"`+"\n")
 
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`basePath = ` + quote(custom),
 		`size = "s-1vcpu-1gb"`,
@@ -196,7 +196,7 @@ func TestLoad_BasePathOverride_PointsAtNonDefaultLocation(t *testing.T) {
 
 func TestLoad_ProjectFileDeclaresOwnAmends_ReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(project, []byte(`amends "whatever.pkl"`+"\n\n"+`region = "nyc3"`+"\n"), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestLoad_ProjectFileDeclaresOwnAmends_ReturnsClearError(t *testing.T) {
 
 func TestLoad_ArchDefaultsToX86_64(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -232,7 +232,7 @@ func TestLoad_ArchDefaultsToX86_64(t *testing.T) {
 
 func TestLoad_ArchOverride(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -253,7 +253,7 @@ func TestLoad_ArchOverride(t *testing.T) {
 
 func TestLoad_ArchInvalid_ReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -270,7 +270,7 @@ func TestLoad_ArchInvalid_ReturnsClearError(t *testing.T) {
 
 func TestLoad_ImageDefaultsToUbuntu2404(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -290,7 +290,7 @@ func TestLoad_ImageDefaultsToUbuntu2404(t *testing.T) {
 
 func TestLoad_ImageOverride(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -317,7 +317,7 @@ func TestLoad_ImageSurvivesBaseMerge(t *testing.T) {
 		`size = "s-1vcpu-1gb"`,
 	}, "\n")+"\n")
 
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`basePath = "./base.pkl"`,
 		`template = "python"`,
@@ -335,7 +335,7 @@ func TestLoad_ImageSurvivesBaseMerge(t *testing.T) {
 
 func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -364,7 +364,7 @@ func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
 
 func TestLoad_FlakeModulesTrue(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "cloudlab.pkl")
+	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -419,7 +419,7 @@ func TestMergeConfig_AgentsAreAdditiveBaseFirst(t *testing.T) {
 
 func TestResolve_BeadsDefaultsToSession(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(path, []byte(`region = "blr1"
 size = "s-2vcpu-4gb"
 template = "python"
@@ -442,7 +442,7 @@ func TestResolve_BeadsAcceptsDolthubAndOff(t *testing.T) {
 	for _, want := range []string{"dolthub", "off"} {
 		t.Run(want, func(t *testing.T) {
 			dir := t.TempDir()
-			path := filepath.Join(dir, "cloudlab.pkl")
+			path := filepath.Join(dir, "bivouac.pkl")
 			body := `region = "blr1"
 size = "s-2vcpu-4gb"
 template = "python"
@@ -464,7 +464,7 @@ beads = "` + want + `"
 
 func TestResolve_BeadsRejectsAnUnknownMode(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(path, []byte(`region = "blr1"
 size = "s-2vcpu-4gb"
 template = "python"

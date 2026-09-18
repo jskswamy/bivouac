@@ -10,10 +10,10 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/preset"
-	"github.com/jskswamy/cloudlab/internal/wizard"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/preset"
+	"github.com/jskswamy/bivouac/internal/wizard"
 	"github.com/spf13/cobra"
 )
 
@@ -72,10 +72,10 @@ type prompter interface {
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Create or edit this project's cloudlab.pkl interactively",
-		Long: "Walks through the same fields cloudlab.pkl declares and writes the answers out:\n" +
-			"personal choices to ~/.config/cloudlab/base.pkl, this project's shape to\n" +
-			"./cloudlab.pkl. Offers to save the shape as a preset to start the next project from.",
+		Short: "Create or edit this project's bivouac.pkl interactively",
+		Long: "Walks through the same fields bivouac.pkl declares and writes the answers out:\n" +
+			"personal choices to ~/.config/bivouac/base.pkl, this project's shape to\n" +
+			"./bivouac.pkl. Offers to save the shape as a preset to start the next project from.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoFlag, _ := cmd.Flags().GetString("repo")
@@ -97,17 +97,17 @@ func newInitCmd() *cobra.Command {
 // A form blocked on stdin that will never arrive is indistinguishable
 // from a hang, and `up` -- which falls back to this flow -- is the
 // command most likely to be scripted or piped. The message names
-// `cloudlab init` because running it at a terminal is what fixes both
+// `bivouac init` because running it at a terminal is what fixes both
 // paths.
 func requireTerminal(interactive bool) error {
 	if interactive {
 		return nil
 	}
-	return errors.New("this needs a terminal to ask its questions: run `cloudlab init` from one, or write cloudlab.pkl by hand (see docs/config.md)")
+	return errors.New("this needs a terminal to ask its questions: run `bivouac init` from one, or write bivouac.pkl by hand (see docs/config.md)")
 }
 
 // repoRootFromFlag resolves the repository the config belongs to, the
-// same way `up` does — one instance per repo means one cloudlab.pkl
+// same way `up` does — one instance per repo means one bivouac.pkl
 // per repo, at its root.
 func repoRootFromFlag(ctx context.Context, repoFlag string) (string, error) {
 	cwd, err := os.Getwd()
@@ -117,7 +117,7 @@ func repoRootFromFlag(ctx context.Context, repoFlag string) (string, error) {
 	return identity.RepoRoot(ctx, cwd, repoFlag)
 }
 
-// runInitFlow is the whole interactive flow, shared by `cloudlab init`
+// runInitFlow is the whole interactive flow, shared by `bivouac init`
 // and `up`'s fallback so the question set cannot drift between them.
 //
 // The order is: look at the project file first, because what it already
@@ -134,7 +134,7 @@ func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string
 	if err != nil {
 		return err
 	}
-	projectPath := filepath.Join(root, "cloudlab.pkl")
+	projectPath := filepath.Join(root, "bivouac.pkl")
 
 	existingProject, projectExists, err := readIfPresent(ctx, projectPath)
 	if err != nil {
@@ -194,7 +194,7 @@ func offerMove(out io.Writer, p prompter, existing config.Values, exists bool) (
 		return config.Values{}, existing, nil
 	}
 
-	printf(out, "This project's cloudlab.pkl sets %s, which are personal settings.\n", strings.Join(found, ", "))
+	printf(out, "This project's bivouac.pkl sets %s, which are personal settings.\n", strings.Join(found, ", "))
 	if _, committed := existing[config.FieldSSHKeys]; committed {
 		printf(out, "sshKeys in particular is a fingerprint of your own key, committed for anyone who clones this repo.\n")
 	}
@@ -269,7 +269,7 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 	// file) rather than freshly asked can still be missing a field
 	// config.Resolve requires -- one written before that field existed,
 	// or edited by hand. Left unchecked, that surfaces only at the
-	// read-back in runInitFlowWith, after cloudlab.pkl has already been
+	// read-back in runInitFlowWith, after bivouac.pkl has already been
 	// written. Catching it here asks for exactly what is missing instead.
 	if !asked {
 		if missing := missingQuestions(wizard.PersonalQuestions(filepath.Dir(basePath)), values); len(missing) > 0 {
@@ -321,7 +321,7 @@ func askPersonal(ctx context.Context, out io.Writer, p prompter, baseDir string,
 	return values, nil
 }
 
-// settleProject establishes the contents of cloudlab.pkl and returns
+// settleProject establishes the contents of bivouac.pkl and returns
 // them. A project with no file yet is offered the saved presets to
 // start from; one that has a file is edited with its own values
 // pre-filled.
@@ -339,7 +339,7 @@ func settleProject(ctx context.Context, out io.Writer, p prompter, projectPath s
 	if err != nil {
 		return nil, err
 	}
-	// 0o644: cloudlab.pkl is committed and read by whoever clones the
+	// 0o644: bivouac.pkl is committed and read by whoever clones the
 	// repo.
 	if err := writeValues(projectPath, values, 0o644); err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func settleProject(ctx context.Context, out io.Writer, p prompter, projectPath s
 // offerPresets lets a new project start from a shape saved earlier.
 //
 // The chosen preset's fields are stamped into the new file rather than
-// referenced from it: cloudlab.pkl is committed, and a file that reads
+// referenced from it: bivouac.pkl is committed, and a file that reads
 // its settings from a preset only the author has is incomplete for
 // everyone else -- silently, because Resolve skips a base it cannot
 // find rather than failing.

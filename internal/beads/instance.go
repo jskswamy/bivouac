@@ -1,7 +1,7 @@
 package beads
 
 import (
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // instanceCmd wraps a bd invocation for the instance: cd to the repository,

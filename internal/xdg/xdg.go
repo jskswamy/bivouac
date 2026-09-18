@@ -1,4 +1,4 @@
-// Package xdg resolves the directories cloudlab keeps its own files in,
+// Package xdg resolves the directories bivouac keeps its own files in,
 // following the XDG Base Directory specification.
 //
 // One of the two leaf packages (with internal/shellcmd) that the rest of
@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 )
 
-// Base is one of the XDG base directories cloudlab stores things under.
+// Base is one of the XDG base directories bivouac stores things under.
 type Base int
 
 const (
@@ -56,27 +56,27 @@ func (b Base) fallback() []string {
 	return nil
 }
 
-// Path returns the path to parts inside cloudlab's own directory under b:
-// $XDG_<KIND>_HOME/cloudlab/<parts...> when that variable is set to a
-// non-empty value, else $HOME/<fallback>/cloudlab/<parts...>. The
-// "cloudlab" segment is added here, never by the caller.
+// Path returns the path to parts inside bivouac's own directory under b:
+// $XDG_<KIND>_HOME/bivouac/<parts...> when that variable is set to a
+// non-empty value, else $HOME/<fallback>/bivouac/<parts...>. The
+// "bivouac" segment is added here, never by the caller.
 //
 // Linux-shaped on every OS, which is what all four of the resolvers this
 // replaces already did.
 //
 // An empty variable counts as unset, not as the empty path. Every copy of
-// this rule tested the value rather than its presence, and cloudlab's
+// this rule tested the value rather than its presence, and bivouac's
 // tests set XDG_* to "" to reach the fallback -- so os.LookupEnv here
 // would be a silent behaviour change.
 func Path(b Base, parts ...string) (string, error) {
 	if dir := os.Getenv(b.env()); dir != "" {
-		return filepath.Join(append([]string{dir, "cloudlab"}, parts...)...), nil
+		return filepath.Join(append([]string{dir, "bivouac"}, parts...)...), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	segments := append([]string{home}, b.fallback()...)
-	segments = append(segments, "cloudlab")
+	segments = append(segments, "bivouac")
 	return filepath.Join(append(segments, parts...)...), nil
 }

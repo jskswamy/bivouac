@@ -1,4 +1,4 @@
-// Code generated from Pkl module `cloudlab.Config`. DO NOT EDIT.
+// Code generated from Pkl module `bivouac.Config`. DO NOT EDIT.
 package config
 
 import (
@@ -55,11 +55,11 @@ type Config struct {
 	// coding agent on the instance.
 	//
 	// Paths are relative to the file that declares them, so a base.pkl
-	// entry resolves against ~/.config/cloudlab and a project entry
+	// entry resolves against ~/.config/bivouac and a project entry
 	// against the repository root. Merges additively like `packages`:
 	// base's files are delivered before this file's.
 	//
-	// cloudlab never parses the content. What a workflow says, and which
+	// bivouac never parses the content. What a workflow says, and which
 	// harness's vocabulary it is written in, is the author's business.
 	Instructions []string `pkl:"instructions"`
 

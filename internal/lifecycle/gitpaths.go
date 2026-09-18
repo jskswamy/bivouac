@@ -3,11 +3,11 @@ package lifecycle
 import "path/filepath"
 
 // SessionBranch is the branch an agent commits to for a session. Namespaced
-// under cloudlab/ so it can never collide with a branch a human made, and
+// under bivouac/ so it can never collide with a branch a human made, and
 // named for the work rather than the instance -- the instance is where it
 // happened to run, which is not information worth keeping.
 func SessionBranch(session string) string {
-	return "cloudlab/" + session
+	return "bivouac/" + session
 }
 
 // SessionDir is a session's own directory on the instance -- the parent

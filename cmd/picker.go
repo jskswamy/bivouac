@@ -9,19 +9,19 @@ import (
 	"strings"
 
 	term "github.com/charmbracelet/x/term"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/spf13/cobra"
 )
 
 // isInteractive reports whether stdin is a terminal.
 //
 // Guards every prompt. A picker offered to CI, a script, or an agent driving
-// cloudlab is not a prompt -- it is a hang, and unattended runs are the
+// bivouac is not a prompt -- it is a hang, and unattended runs are the
 // workflow this tool exists to serve.
 //
 // term.IsTerminal, not a character-device check: /dev/null is a
-// character device, so `cloudlab up < /dev/null` -- CI's usual shape,
+// character device, so `bivouac up < /dev/null` -- CI's usual shape,
 // and `go test`'s -- read as interactive and opened a form that then
 // failed on /dev/tty with an error naming huh rather than the command
 // to run.

@@ -7,7 +7,7 @@ import (
 )
 
 // Mode is what a repository's beads database is currently synced against.
-// Read from the repository rather than declared in cloudlab.pkl: .beads/
+// Read from the repository rather than declared in bivouac.pkl: .beads/
 // already records it, and a second copy in config would only drift.
 type Mode int
 
@@ -44,7 +44,7 @@ type Remote struct {
 
 // Detection is what Detect found. ExternalURL is set only for ModeExternal,
 // and exists so "dolthub" mode can reuse the URL the repository already
-// records instead of restating it in cloudlab.pkl.
+// records instead of restating it in bivouac.pkl.
 type Detection struct {
 	Mode        Mode
 	ExternalURL string
@@ -54,7 +54,7 @@ type Detection struct {
 //
 // It answers two questions and no others: whether beads exists here at all,
 // and what the external remote's URL is. It never selects behaviour by
-// itself -- cloudlab.pkl does that.
+// itself -- bivouac.pkl does that.
 func Detect(ctx context.Context, repo string) (Detection, error) {
 	if !Present(repo) || !Available() {
 		return Detection{Mode: ModeAbsent}, nil
@@ -76,7 +76,7 @@ func remoteListArgs() []string {
 // Deliberately forgiving: any run of whitespace separates the two columns, a
 // header line is skipped by the URL-shaped check below, and anything that is
 // not two fields is ignored. The alternative -- a strict format -- would turn
-// a cosmetic change in a tool cloudlab does not own into a failed session.
+// a cosmetic change in a tool bivouac does not own into a failed session.
 func parseRemoteList(out string) []Remote {
 	var remotes []Remote
 	for _, line := range strings.Split(out, "\n") {

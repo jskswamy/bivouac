@@ -18,8 +18,8 @@ func TestRootCommandHelp(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "cloudlab") {
-		t.Errorf("expected help output to mention cloudlab, got: %s", out.String())
+	if !strings.Contains(out.String(), "bivouac") {
+		t.Errorf("expected help output to mention bivouac, got: %s", out.String())
 	}
 }
 

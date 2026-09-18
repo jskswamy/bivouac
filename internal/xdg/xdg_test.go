@@ -29,7 +29,7 @@ func TestPath_EnvSetAndFallback(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Path() error = %v", err)
 			}
-			if want := filepath.Join(dir, "cloudlab", "thing.json"); got != want {
+			if want := filepath.Join(dir, "bivouac", "thing.json"); got != want {
 				t.Errorf("Path() = %q, want %q", got, want)
 			}
 		})
@@ -37,7 +37,7 @@ func TestPath_EnvSetAndFallback(t *testing.T) {
 		t.Run(tt.name+"/empty env falls back", func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
-			// Empty rather than unset: that is the state cloudlab's own
+			// Empty rather than unset: that is the state bivouac's own
 			// tests put these variables in to reach the fallback, so it has
 			// to mean "absent" and not "the empty path".
 			t.Setenv(tt.env, "")
@@ -46,7 +46,7 @@ func TestPath_EnvSetAndFallback(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Path() error = %v", err)
 			}
-			want := filepath.Join(append(append([]string{home}, tt.fallback...), "cloudlab", "thing.json")...)
+			want := filepath.Join(append(append([]string{home}, tt.fallback...), "bivouac", "thing.json")...)
 			if got != want {
 				t.Errorf("Path() = %q, want %q", got, want)
 			}
@@ -54,7 +54,7 @@ func TestPath_EnvSetAndFallback(t *testing.T) {
 	}
 }
 
-// The bases must not collide -- a shared "cloudlab" segment under three
+// The bases must not collide -- a shared "bivouac" segment under three
 // different roots is the whole point, and a copy-paste in env() or
 // fallback() would silently alias two of them.
 func TestPath_BasesResolveToDifferentRoots(t *testing.T) {
@@ -78,8 +78,8 @@ func TestPath_BasesResolveToDifferentRoots(t *testing.T) {
 }
 
 // Callers pass a leaf name, not a directory: nothing outside this package
-// should ever have to know the "cloudlab" segment exists.
-func TestPath_JoinsSeveralPartsUnderCloudlab(t *testing.T) {
+// should ever have to know the "bivouac" segment exists.
+func TestPath_JoinsSeveralPartsUnderBivouac(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", dir)
 
@@ -87,7 +87,7 @@ func TestPath_JoinsSeveralPartsUnderCloudlab(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Path() error = %v", err)
 	}
-	if want := filepath.Join(dir, "cloudlab", "pkl"); got != want {
+	if want := filepath.Join(dir, "bivouac", "pkl"); got != want {
 		t.Errorf("Path() = %q, want %q", got, want)
 	}
 }

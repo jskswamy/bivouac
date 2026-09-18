@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 func TestRsyncPushArgs_BuildsExpectedCommand(t *testing.T) {

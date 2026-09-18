@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // DeleteSession discards a session without landing its work: the repository on
@@ -29,7 +29,7 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 		// the agent actually made -- and deletes all of them with exit 0.
 		ref, _, err := RescueSession(ctx, ip, user, s.LocalRepo, repoName, s.Name)
 		if err != nil {
-			return "", fmt.Errorf("cannot confirm what session %s still has on the instance: %w\nrefusing to delete work cloudlab cannot see — fix the instance and retry, or `cloudlab session delete %s --force` to discard it anyway", s.Name, err, s.Name)
+			return "", fmt.Errorf("cannot confirm what session %s still has on the instance: %w\nrefusing to delete work bivouac cannot see — fix the instance and retry, or `bivouac session delete %s --force` to discard it anyway", s.Name, err, s.Name)
 		}
 		// Both refs. ref is everything the agent has, now that it has been
 		// checkpointed and fetched; the session branch additionally carries
@@ -41,7 +41,7 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 				return "", fmt.Errorf("cannot tell whether session %s has unmerged work (git could not compare %s against your branch) — refusing to delete; use --force to discard it anyway", s.Name, rev)
 			}
 			if unmerged > 0 {
-				return "", fmt.Errorf("session %s has %d commit(s) not on your branch — `cloudlab session merge %s` keeps them, or `cloudlab session delete %s --force` throws them away", s.Name, unmerged, s.Name, s.Name)
+				return "", fmt.Errorf("session %s has %d commit(s) not on your branch — `bivouac session merge %s` keeps them, or `bivouac session delete %s --force` throws them away", s.Name, unmerged, s.Name, s.Name)
 			}
 		}
 
@@ -84,7 +84,7 @@ func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Sessi
 	CleanupHerdr(ctx, s.HerdrMachineID, s.Name, onInstance)
 
 	if instanceErr != nil {
-		return fmt.Sprintf("session %s was removed locally, but the instance could not be reached: %v\nthe directory %s is still there; nothing references it now, and `cloudlab down` will take it with the instance", s.Name, instanceErr, RemoteRepoPath(user, s.Name, repoName)), nil
+		return fmt.Sprintf("session %s was removed locally, but the instance could not be reached: %v\nthe directory %s is still there; nothing references it now, and `bivouac down` will take it with the instance", s.Name, instanceErr, RemoteRepoPath(user, s.Name, repoName)), nil
 	}
 	return "", nil
 }

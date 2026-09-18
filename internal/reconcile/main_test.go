@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // Every test in this package starts with an isolated home.

@@ -6,13 +6,13 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // ErrLocalPortBusy is returned when a caller asked for a specific local
 // port and something already holds it. Distinct from the auto-resolving
 // path: an explicit request is honoured or refused, never redirected,
-// because the caller chose that number for a reason cloudlab cannot see.
+// because the caller chose that number for a reason bivouac cannot see.
 var ErrLocalPortBusy = fmt.Errorf("local port is already in use")
 
 // FreeLocalPort returns a local port to forward through.

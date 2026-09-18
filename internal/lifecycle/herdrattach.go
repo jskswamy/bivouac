@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // insideHerdr reports whether this is running in a pane herdr hosts.
@@ -40,7 +40,7 @@ type localHerdr struct{ ctx context.Context }
 
 func (l localHerdr) Run(args ...string) (string, error) {
 	// #nosec G204 -- argv-array exec.Command, no shell. Every argument is
-	// built by this package from a provider-assigned address, a cloudlab
+	// built by this package from a provider-assigned address, a bivouac
 	// session name already checked by CheckSessionName, or an id herdr
 	// itself handed back.
 	out, err := exec.CommandContext(l.ctx, "herdr", args...).CombinedOutput()
@@ -56,7 +56,7 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // anyone.
 //
 // The id comes back so the caller can record it. Teardown removes exactly
-// that profile and nothing else, which is the only way to tell cloudlab's
+// that profile and nothing else, which is the only way to tell bivouac's
 // own entries from ones the user added by hand -- herdr profiles carry no
 // owner field.
 //
@@ -64,12 +64,12 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // no API operation and no keybinding -- verified against herdr 0.9.0 -- so
 // the label comes back for the caller to name, and the user picks it.
 func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string, owned OwnedMachines) (string, string, error) {
-	// No cloudlab session means there is nowhere to record the id, and a
+	// No bivouac session means there is nowhere to record the id, and a
 	// machine standing for "the instance in general" is not what this is
 	// for: it could never be cleaned up, because nothing would remember it.
 	if session == "" {
-		return "", "", fmt.Errorf("no session resolved -- `cloudlab herdr` attaches a session, so " +
-			"start one with `cloudlab session start <name>`, or run it from outside herdr for a plain remote client")
+		return "", "", fmt.Errorf("no session resolved -- `bivouac herdr` attaches a session, so " +
+			"start one with `bivouac session start <name>`, or run it from outside herdr for a plain remote client")
 	}
 	if _, err := tool.Require("herdr"); err != nil {
 		return "", "", err
@@ -99,7 +99,7 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 
 // herdrSessionStopCmd and herdrSessionDeleteCmd retire the session server on
 // the instance. Addressed by name, because a name is all herdr gives us --
-// cloudlab owns that namespace, since it is the same name it created
+// bivouac owns that namespace, since it is the same name it created
 // ~/sessions/<name> under.
 func herdrSessionStopCmd(session string) string {
 	return shellcmd.LoginShell("herdr session stop " + shellcmd.Quote(session))
@@ -109,7 +109,7 @@ func herdrSessionDeleteCmd(session string) string {
 	return shellcmd.LoginShell("herdr session delete " + shellcmd.Quote(session))
 }
 
-// CleanupHerdr removes what `cloudlab herdr` left behind for a session: the
+// CleanupHerdr removes what `bivouac herdr` left behind for a session: the
 // saved machine on this side, and the session server on the instance.
 //
 // The two halves are independent on purpose. Forgetting the profile is a
@@ -125,8 +125,8 @@ func herdrSessionDeleteCmd(session string) string {
 // client may be nil when the instance could not be reached, and then only
 // the local half runs.
 func CleanupHerdr(ctx context.Context, machineID, session string, client remoteRunner) {
-	// No recorded id means cloudlab never attached this session -- and then
-	// there is nothing of its making on either side. Starting a cloudlab
+	// No recorded id means bivouac never attached this session -- and then
+	// there is nothing of its making on either side. Starting a bivouac
 	// session does not create a herdr session; only attaching does. Trying
 	// anyway stopped a server that never existed and told the user to go
 	// and remove it by hand.

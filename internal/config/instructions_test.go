@@ -30,7 +30,7 @@ func TestInstructionFiles_ResolvesAgainstTheDeclaringFile(t *testing.T) {
 		// only across base and project.
 		FieldInstructions: []string{"instructions/mine.md", "instructions/second.md"},
 	}))
-	projectPath := filepath.Join(projectDir, "cloudlab.pkl")
+	projectPath := filepath.Join(projectDir, "bivouac.pkl")
 	mustWrite(t, projectPath, renderFor(t, Values{
 		FieldRegion:       "nyc3",
 		FieldSize:         "s-1vcpu-1gb",
@@ -57,7 +57,7 @@ func TestInstructionFiles_ResolvesAgainstTheDeclaringFile(t *testing.T) {
 // prevent, so a missing file stops the flow and names the path.
 func TestInstructionFiles_MissingFileIsAnError(t *testing.T) {
 	dir := t.TempDir()
-	projectPath := filepath.Join(dir, "cloudlab.pkl")
+	projectPath := filepath.Join(dir, "bivouac.pkl")
 	mustWrite(t, projectPath, renderFor(t, Values{
 		FieldRegion:       "nyc3",
 		FieldSize:         "s-1vcpu-1gb",
@@ -87,7 +87,7 @@ func TestInstructionFiles_MalformedBaseIsAnError(t *testing.T) {
 	mustMkdirAll(t, filepath.Dir(basePath))
 	mustWrite(t, basePath, "this is not valid pkl {{{\n")
 
-	projectPath := filepath.Join(projectDir, "cloudlab.pkl")
+	projectPath := filepath.Join(projectDir, "bivouac.pkl")
 	mustWrite(t, projectPath, renderFor(t, Values{
 		FieldRegion:   "nyc3",
 		FieldSize:     "s-1vcpu-1gb",

@@ -142,7 +142,7 @@ func TestRender_RoundTripsThroughResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
 		t.Fatalf("writing rendered config: %v", err)
 	}
@@ -170,11 +170,11 @@ func TestRender_RoundTripsThroughResolve(t *testing.T) {
 
 // A config declaring instructions must survive ReadValues then Render
 // unchanged. declaredFields filters through KnownField, so a field added
-// to Config.pkl but not to fieldKinds is invisible here and `cloudlab
+// to Config.pkl but not to fieldKinds is invisible here and `bivouac
 // init` would drop the line when it rewrites the file.
 func TestReadValues_KeepsInstructions(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	rendered, err := Render(Values{
 		FieldRegion:       "nyc3",
 		FieldSize:         "s-1vcpu-1gb",

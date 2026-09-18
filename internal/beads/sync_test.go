@@ -92,7 +92,7 @@ func TestBootstrap_SurfacesAnInitFailureWithoutAddingTheRemote(t *testing.T) {
 // An instance with no `bd` on PATH is the one init failure a caller can give
 // a real instruction for, so it has to be distinguishable from every other
 // one. Each entry is a different shell's way of saying it -- the instance's
-// login shell is not cloudlab's to choose.
+// login shell is not bivouac's to choose.
 func TestBootstrap_MarksAMissingBdOnTheInstance(t *testing.T) {
 	for _, out := range []string{
 		"bash: line 1: bd: command not found",
@@ -111,7 +111,7 @@ func TestBootstrap_MarksAMissingBdOnTheInstance(t *testing.T) {
 			}
 			if !errors.Is(err, ErrBdMissing) {
 				t.Errorf("errors.Is(err, ErrBdMissing) = false, want true -- the caller "+
-					"names `cloudlab provision` only for this failure: err = %v", err)
+					"names `bivouac provision` only for this failure: err = %v", err)
 			}
 			if !errors.Is(err, ErrInitFailed) {
 				t.Errorf("errors.Is(err, ErrInitFailed) = false, want true -- a missing bd "+
@@ -122,7 +122,7 @@ func TestBootstrap_MarksAMissingBdOnTheInstance(t *testing.T) {
 }
 
 // Every other init failure -- a broken database, a full disk, a bad file URL
-// -- leaves the instance with `bd` installed, so recommending `cloudlab
+// -- leaves the instance with `bd` installed, so recommending `bivouac
 // provision` there would send the user to reinstall something they already
 // have while the real cause goes unnamed.
 func TestBootstrap_OtherInitFailuresAreNotABdMissing(t *testing.T) {

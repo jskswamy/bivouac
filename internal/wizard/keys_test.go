@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
 func agentKey(fp, comment string) sshkeys.Key {

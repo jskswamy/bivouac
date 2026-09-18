@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // requireBd skips when bd is not installed. It is in the Linux dev shell (see
@@ -209,7 +209,7 @@ func TestRequireBeadsLanded_PassesOnceIssuesHaveLanded(t *testing.T) {
 // remote in place: Wired keys entirely on that remote, so a session with no
 // .beads/ on the instance at all would otherwise read as "wired" and every
 // later requireBeadsLanded call would run `bd dolt push` against an instance
-// that has no beads database, refusing session delete and `cloudlab down`
+// that has no beads database, refusing session delete and `bivouac down`
 // forever. This is the default upgrade path -- any instance provisioned
 // before beads shipped has no `bd` binary, and Bootstrap's "command not
 // found" is exactly the failure this guards.
@@ -332,8 +332,8 @@ func TestBootstrapBeads_WarnsWhenBootstrapFails(t *testing.T) {
 		t.Errorf("errOut = %q, want it to say the session has no issue tracking -- session "+
 			"start reports success either way, so the consequence has to be stated", got)
 	}
-	if !strings.Contains(got, "cloudlab provision") {
-		t.Errorf("errOut = %q, want it to name `cloudlab provision` as the fix", got)
+	if !strings.Contains(got, "bivouac provision") {
+		t.Errorf("errOut = %q, want it to name `bivouac provision` as the fix", got)
 	}
 }
 
@@ -349,7 +349,7 @@ func TestBootstrapWarning_ExplainsAMissingBdInsteadOfQuotingTheShell(t *testing.
 
 	got := bootstrapWarning(err)
 
-	for _, want := range []string{"no issue tracking", "cloudlab provision", "default branch"} {
+	for _, want := range []string{"no issue tracking", "bivouac provision", "default branch"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("bootstrapWarning() = %q, want it to mention %q", got, want)
 		}
@@ -372,7 +372,7 @@ func TestBootstrapWarning_KeepsTheCauseForEveryOtherFailure(t *testing.T) {
 	if !strings.Contains(got, "dolt clone failed") {
 		t.Errorf("bootstrapWarning() = %q, want it to keep the real cause", got)
 	}
-	if strings.Contains(got, "cloudlab provision") {
+	if strings.Contains(got, "bivouac provision") {
 		t.Errorf("bootstrapWarning() = %q, want no provision advice -- bd ran and failed on "+
 			"its own terms, so reinstalling it sends the user nowhere", got)
 	}

@@ -34,7 +34,7 @@ func TestRemoteGitCmd_QuotesAwkwardPaths(t *testing.T) {
 }
 
 func TestEnsureRepoCmd_IsIdempotentAndNotBare(t *testing.T) {
-	got := ensureRepoCmd("/home/devuser/sessions/auth/cloudlab")
+	got := ensureRepoCmd("/home/devuser/sessions/auth/bivouac")
 	if !strings.Contains(got, "init") {
 		t.Errorf("ensureRepoCmd() = %q, want a git init", got)
 	}
@@ -53,15 +53,15 @@ func TestEnsureRepoCmd_IsIdempotentAndNotBare(t *testing.T) {
 // the only reason the push is legal without receive.denyCurrentBranch. So
 // ensureRepoCmd must not check anything out.
 func TestEnsureRepoCmd_LeavesTheRepoUncheckedOut(t *testing.T) {
-	got := ensureRepoCmd("/home/devuser/sessions/auth/cloudlab")
+	got := ensureRepoCmd("/home/devuser/sessions/auth/bivouac")
 	if strings.Contains(got, "checkout") || strings.Contains(got, "switch") {
 		t.Errorf("ensureRepoCmd() = %q, must not check out a branch before the push", got)
 	}
 }
 
 func TestCheckoutSessionCmd_UsesPlainCheckout(t *testing.T) {
-	got := checkoutSessionCmd("/home/devuser/sessions/auth/cloudlab", "cloudlab/auth")
-	if !strings.Contains(got, "checkout") || !strings.Contains(got, "cloudlab/auth") {
+	got := checkoutSessionCmd("/home/devuser/sessions/auth/bivouac", "bivouac/auth")
+	if !strings.Contains(got, "checkout") || !strings.Contains(got, "bivouac/auth") {
 		t.Errorf("checkoutSessionCmd() = %q, want a checkout of the session branch", got)
 	}
 	// -B would reset a branch that already carries the agent's commits, so a
@@ -72,7 +72,7 @@ func TestCheckoutSessionCmd_UsesPlainCheckout(t *testing.T) {
 }
 
 func TestCheckpointCmd_StagesEverythingAndToleratesACleanTree(t *testing.T) {
-	got := checkpointCmd("/home/devuser/sessions/s/repo", "cloudlab: checkpoint")
+	got := checkpointCmd("/home/devuser/sessions/s/repo", "bivouac: checkpoint")
 	if !strings.Contains(got, "add -A") {
 		t.Errorf("checkpointCmd() = %q, want it to stage all changes", got)
 	}
@@ -94,7 +94,7 @@ func TestCheckpointCmd_StagesEverythingAndToleratesACleanTree(t *testing.T) {
 // teardown into either a refusal or, with --force, the discarding of work
 // that was never rescuable.
 func TestCheckpointCmd_IsNotBlockedByTheRepositorysHooks(t *testing.T) {
-	got := checkpointCmd("/home/devuser/sessions/s/repo", "cloudlab: checkpoint")
+	got := checkpointCmd("/home/devuser/sessions/s/repo", "bivouac: checkpoint")
 	if !strings.Contains(got, "--no-verify") {
 		t.Errorf("checkpointCmd() = %q, want --no-verify -- quality gates belong on the "+
 			"commits a human authors, not on the mechanism that stops work disappearing", got)
@@ -105,7 +105,7 @@ func TestCheckpointCmd_IsNotBlockedByTheRepositorysHooks(t *testing.T) {
 // the working tree and the objects together. No shared store survives it, so
 // there is nothing left to prune or delete a branch from.
 func TestRemoveRepoCmd_RemovesTheSessionDirectory(t *testing.T) {
-	repo := "/home/devuser/sessions/auth/cloudlab"
+	repo := "/home/devuser/sessions/auth/bivouac"
 	got := removeRepoCmd(repo)
 	if !strings.Contains(got, "rm -rf") {
 		t.Errorf("removeRepoCmd() = %q, want the directory removed", got)

@@ -3,7 +3,7 @@ package agentcontext
 import (
 	"path"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // Remote adapts an SSH client's Run and WriteFile to RemoteFiles, placing

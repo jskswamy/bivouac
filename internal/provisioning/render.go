@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 // NeedsRender reports whether cfg requires a per-instance wrapper
@@ -15,7 +15,7 @@ import (
 // design spec's render-trigger rule.
 //
 // Tailscale counts alongside packages/flakes because the rendered flake
-// is the only place cloudlab.tailscale is ever set (see renderTmpl);
+// is the only place bivouac.tailscale is ever set (see renderTmpl);
 // the shared template defaults it to false. Left out of this condition,
 // "tailscale = true" in a config with no packages and no flakes renders
 // nothing, so the template's default stands and the tailscaled unit is
@@ -46,7 +46,7 @@ var renderTmpl = template.Must(template.New("flake").Parse(`{
       };
       modules = [
         template.homeManagerModules."{{.TemplateName}}"
-        { cloudlab.tailscale = {{.Tailscale}}; }
+        { bivouac.tailscale = {{.Tailscale}}; }
 {{if .Packages}}        ({ pkgs, ... }: { home.packages = [ {{range .Packages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{if .AgentPackages}}        ({ pkgs, ... }: { home.packages = [ {{range .AgentPackages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{range $i, $f := .Flakes}}{{if $f.Packages}}        { home.packages = [ {{range $f.Packages}}flake{{$i}}.packages."{{$.System}}"."{{.}}" {{end}}]; }

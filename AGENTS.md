@@ -1,4 +1,4 @@
-# Working on cloudlab
+# Working on bivouac
 
 ## Before you write code
 
@@ -39,21 +39,21 @@ Design specs live in `docs/superpowers/specs/`. A spec is the implementation
 contract; if the code and the spec disagree, say so rather than silently
 diverging.
 
-## If you are working inside a cloudlab session
+## If you are working inside a bivouac session
 
 You are on an ephemeral cloud VM, in a checkout at
-`~/sessions/<name>/<repo>` on branch `cloudlab/<name>`.
+`~/sessions/<name>/<repo>` on branch `bivouac/<name>`.
 
 - **Do not push anywhere.** You have no credentials, no GitHub access, and no
   network git remote. There is nothing to push to and nothing to configure.
 - **Commits are what survive.** Your work returns to the user's machine via
-  `cloudlab session pull` and `cloudlab session merge`, run from their end.
+  `bivouac session pull` and `bivouac session merge`, run from their end.
   Uncommitted changes are swept into a checkpoint commit, so commit
   deliberately rather than relying on that.
 - **Anything untracked in this checkout gets committed** by that checkpoint
   (`git add -A`). Do not leave scratch files, downloaded archives, or
   databases lying around in the working tree.
-- The VM is destroyed on `cloudlab down`. Nothing outside the repository
+- The VM is destroyed on `bivouac down`. Nothing outside the repository
   survives.
 
 ### Development workflow

@@ -2,14 +2,14 @@ package lifecycle
 
 import (
 	"context"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
+	"github.com/jskswamy/bivouac/internal/beads"
 )
 
 // sessionFixture is a whole session standing up on one machine: a real
@@ -61,7 +61,7 @@ func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
 		repo:     filepath.Join(base, "repo"),
 		agent:    filepath.Join(base, "agent"),
 		session:  "auth",
-		repoName: "cloudlab",
+		repoName: "bivouac",
 	}
 
 	initRepo(t, f.repo)
@@ -419,12 +419,12 @@ func TestMergeSession_KeepsHumanCoAuthors(t *testing.T) {
 // The gate exists because a cherry-pick can fail on a dirty tree, but
 // untracked files only collide when a replayed commit adds that same path --
 // and git refuses that case on its own. Counting all untracked content made
-// merge unusable in any repository with a stray file: cloudlab's own
-// cloudlab.pkl is untracked and not gitignored, so cloudlab shipped a file
+// merge unusable in any repository with a stray file: bivouac's own
+// bivouac.pkl is untracked and not gitignored, so bivouac shipped a file
 // that broke its own merge command.
 func TestMergeSession_IgnoresUntrackedFilesInTheUsersRepo(t *testing.T) {
 	f := newSessionFixture(t, 1)
-	if err := os.WriteFile(filepath.Join(f.repo, "cloudlab.pkl"), []byte("region = \"blr1\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.repo, "bivouac.pkl"), []byte("region = \"blr1\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -439,7 +439,7 @@ func TestMergeSession_IgnoresUntrackedFilesInTheUsersRepo(t *testing.T) {
 		t.Error("the session was not retired")
 	}
 	// The untracked file is the user's; merge must not touch it.
-	if _, err := os.Stat(filepath.Join(f.repo, "cloudlab.pkl")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.repo, "bivouac.pkl")); err != nil {
 		t.Errorf("merge removed the user's untracked file: %v", err)
 	}
 }

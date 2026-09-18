@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // resolveInstance opens the state store, looks up name, and returns
@@ -28,7 +28,7 @@ func resolveInstance(name string) (*state.Store, state.Record, error) {
 		return nil, state.Record{}, err
 	}
 	if !ok {
-		return nil, state.Record{}, fmt.Errorf("no instance named %q (run cloudlab up first)", name)
+		return nil, state.Record{}, fmt.Errorf("no instance named %q (run bivouac up first)", name)
 	}
 	return store, record, nil
 }

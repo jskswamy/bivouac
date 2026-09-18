@@ -1,4 +1,4 @@
-// Code generated from Pkl module `cloudlab.Config`. DO NOT EDIT.
+// Code generated from Pkl module `bivouac.Config`. DO NOT EDIT.
 package config
 
 type Flake struct {

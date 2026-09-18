@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/jskswamy/cloudlab/internal/xdg"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
 // pklCacheDir returns the directory the Pkl evaluator should cache

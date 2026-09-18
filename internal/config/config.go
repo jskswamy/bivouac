@@ -10,10 +10,10 @@ import (
 
 	"github.com/apple/pkl-go/pkl"
 
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
-// Resolve loads the project's cloudlab.pkl at path, merges it with a
+// Resolve loads the project's bivouac.pkl at path, merges it with a
 // personal base config if one is found (see resolveBasePath), and
 // returns the merged Config. Scalar fields take the project's value if
 // set, else the base's; list fields are additive (base's entries
@@ -58,12 +58,12 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 	return resolved(merged), nil
 }
 
-// loadResolved reads path's raw content, injects cloudlab's own
+// loadResolved reads path's raw content, injects bivouac's own
 // embedded schema as its amends target (path itself must not declare
 // one), and evaluates the result with an evaluator pointed at
 // pklCacheDir() for its package cache.
 func loadResolved(ctx context.Context, path string) (ret Config, err error) {
-	// #nosec G304 -- path is the intended cloudlab.pkl/base.pkl to load;
+	// #nosec G304 -- path is the intended bivouac.pkl/base.pkl to load;
 	// reading a caller-supplied config path is this function's entire
 	// job (see docs/config.md's "A note on trust" -- such a file is
 	// already treated as trusted, script-equivalent input).

@@ -12,7 +12,7 @@ import (
 const machineListJSON = `[
   {
     "id": "6410458fe77e5d1e3d98b7f040545c7b",
-    "label": "cloudlab/status-reporting",
+    "label": "bivouac/status-reporting",
     "target": "ssh://subramk@206.189.140.27",
     "session": "status-reporting",
     "enabled": true,
@@ -63,7 +63,7 @@ func TestParseMachineList_EmptyCatalogIsNotAnError(t *testing.T) {
 }
 
 // Matching is on target+session because that pair is what a profile *is*:
-// a machine profile addresses one remote session, and two cloudlab sessions
+// a machine profile addresses one remote session, and two bivouac sessions
 // on one instance are two profiles sharing a target. Labels are excluded
 // deliberately -- the user may rename a profile, and herdr's own docs warn
 // against deriving identity from anything but the id it hands back.
@@ -94,7 +94,7 @@ func TestFindMachine_MatchesOnTargetAndSessionNotLabel(t *testing.T) {
 
 // The session name is what the user thinks in, and the sidebar is narrow.
 // Qualifying every label put the instance first and truncated to
-// "jskswamy-cloudlab/su...", cutting the only part that identifies which
+// "jskswamy-bivouac/su...", cutting the only part that identifies which
 // session it is.
 func TestMachineLabel_IsJustTheSessionName(t *testing.T) {
 	if got := MachineLabel("auth"); got != "auth" {
@@ -105,12 +105,12 @@ func TestMachineLabel_IsJustTheSessionName(t *testing.T) {
 // Two instances can each hold a session called "auth". The disambiguator is
 // a suffix so that truncation eats the instance rather than the name.
 func TestQualifiedMachineLabel_SuffixesTheInstance(t *testing.T) {
-	got := qualifiedMachineLabel("jskswamy-cloudlab", "auth")
+	got := qualifiedMachineLabel("jskswamy-bivouac", "auth")
 	if !strings.HasPrefix(got, "auth") {
 		t.Errorf("qualifiedMachineLabel() = %q, want the session name first so a "+
 			"truncated label still identifies the session", got)
 	}
-	if !strings.Contains(got, "jskswamy-cloudlab") {
+	if !strings.Contains(got, "jskswamy-bivouac") {
 		t.Errorf("qualifiedMachineLabel() = %q, want it to name the instance", got)
 	}
 	if got == qualifiedMachineLabel("ulai-ai-ulai", "auth") {
@@ -148,7 +148,7 @@ func TestMachineAddArgs_PutsTheTargetFirst(t *testing.T) {
 
 // The default session is herdr's own, and passing --remote-session for it
 // would name a session that need not exist.
-func TestMachineAddArgs_OmitsRemoteSessionWhenThereIsNoCloudlabSession(t *testing.T) {
+func TestMachineAddArgs_OmitsRemoteSessionWhenThereIsNoBivouacSession(t *testing.T) {
 	got := strings.Join(machineAddArgs("ssh://u@1.2.3.4", "inst", ""), " ")
 	if strings.Contains(got, "--remote-session") {
 		t.Errorf("machineAddArgs() = %q, want no --remote-session when the session is empty", got)
@@ -186,10 +186,10 @@ func TestParseWorkspaceList_ReadsIDsAndLabels(t *testing.T) {
 	}
 }
 
-// The session's workspace is found by the label cloudlab gave it, because
+// The session's workspace is found by the label bivouac gave it, because
 // workspace ids are assigned by herdr and differ per instance -- w2 here is
 // w5 somewhere else.
-func TestFindWorkspace_MatchesTheLabelCloudlabSet(t *testing.T) {
+func TestFindWorkspace_MatchesTheLabelBivouacSet(t *testing.T) {
 	ws, err := parseWorkspaceList(workspaceListJSON)
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func TestRemoteHerdrCmds_NameTheSession(t *testing.T) {
 // The point of creating it: the workspace is rooted in the session's
 // checkout, so attaching lands in the code rather than in $HOME.
 func TestWorkspaceCreateCmd_RootsTheWorkspaceInTheCheckout(t *testing.T) {
-	repo := "/home/devuser/sessions/auth/cloudlab"
+	repo := "/home/devuser/sessions/auth/bivouac"
 	got := workspaceCreateCmd("auth", repo, "auth")
 	if !strings.Contains(got, "--cwd") || !strings.Contains(got, repo) {
 		t.Errorf("workspaceCreateCmd() = %q, want --cwd naming the session checkout", got)
@@ -289,7 +289,7 @@ func TestEnsureMachine_AddsWithTheBareSessionNameAndReturnsItsID(t *testing.T) {
 	}
 }
 
-// Running cloudlab herdr twice must not leave two profiles for one session:
+// Running bivouac herdr twice must not leave two profiles for one session:
 // machine add does not deduplicate, and nothing else would.
 func TestEnsureMachine_IsIdempotentAndStillReportsTheID(t *testing.T) {
 	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"auth",` +
@@ -355,13 +355,13 @@ func TestEnsureMachine_QualifiesBothSidesOfANameClash(t *testing.T) {
 		}
 	}
 	if !renamed {
-		t.Error("want the existing cloudlab profile renamed too -- otherwise a bare " +
+		t.Error("want the existing bivouac profile renamed too -- otherwise a bare " +
 			"\"auth\" silently means whichever was registered first")
 	}
 }
 
-// A profile the user added by hand is not cloudlab's to rename, even when it
-// takes the name cloudlab wanted. Ours is qualified; theirs is left alone.
+// A profile the user added by hand is not bivouac's to rename, even when it
+// takes the name bivouac wanted. Ours is qualified; theirs is left alone.
 func TestEnsureMachine_NeverRenamesAProfileItDidNotRegister(t *testing.T) {
 	h := &fakeHerdr{
 		listJSON: `[{"id":"theirs","label":"auth","target":"ssh://u@9.9.9.9",` +
@@ -380,7 +380,7 @@ func TestEnsureMachine_NeverRenamesAProfileItDidNotRegister(t *testing.T) {
 		t.Errorf("our label = %q, want it qualified", label)
 	}
 	if h.ran("rename") {
-		t.Error("renamed a profile cloudlab never registered")
+		t.Error("renamed a profile bivouac never registered")
 	}
 }
 
@@ -394,7 +394,7 @@ func TestEnsureMachine_ReportsAFailedAdd(t *testing.T) {
 }
 
 // RemoveMachine is what stops profiles outliving the sessions they point
-// at. It removes by recorded id, so it can only ever touch what cloudlab
+// at. It removes by recorded id, so it can only ever touch what bivouac
 // registered.
 func TestRemoveMachine_RemovesTheRecordedProfileOnly(t *testing.T) {
 	h := &fakeHerdr{}
@@ -413,9 +413,9 @@ func TestRemoveMachine_RemovesTheRecordedProfileOnly(t *testing.T) {
 	}
 }
 
-// A session cloudlab never attached has no recorded id, and teardown must
+// A session bivouac never attached has no recorded id, and teardown must
 // then do nothing at all -- not list, not guess, not match. That is what
-// keeps a profile the user added by hand safe from a cloudlab delete.
+// keeps a profile the user added by hand safe from a bivouac delete.
 func TestRemoveMachine_DoesNothingWithoutARecordedID(t *testing.T) {
 	h := &fakeHerdr{}
 
@@ -532,7 +532,7 @@ func TestMachineTarget_IsStableAndSSHShaped(t *testing.T) {
 }
 
 // A named herdr session starts with its own default "~" workspace, and
-// cloudlab then adds the checkout-rooted one -- so the sidebar showed two
+// bivouac then adds the checkout-rooted one -- so the sidebar showed two
 // entries per session, one of them useless.
 //
 // The empty default is closed, and only in the run that created ours: a
@@ -585,15 +585,15 @@ func TestEnsureWorkspace_ReconnectDoesNotTidy(t *testing.T) {
 	}
 }
 
-// A session cloudlab never attached has no herdr session either: starting a
-// cloudlab session does not create one, only attaching does. Without this,
+// A session bivouac never attached has no herdr session either: starting a
+// bivouac session does not create one, only attaching does. Without this,
 // teardown tried to stop a server that never existed and told the user to
 // go and remove it by hand.
-func TestCleanupHerdr_TouchesNothingWhenCloudlabNeverAttached(t *testing.T) {
+func TestCleanupHerdr_TouchesNothingWhenBivouacNeverAttached(t *testing.T) {
 	r := &fakeRemote{}
 	CleanupHerdr(context.Background(), "", "unattached", r)
 	if len(r.cmds) != 0 {
-		t.Errorf("ran %v against the instance for a session cloudlab never attached", r.cmds)
+		t.Errorf("ran %v against the instance for a session bivouac never attached", r.cmds)
 	}
 }
 

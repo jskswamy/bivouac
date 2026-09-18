@@ -7,8 +7,13 @@ import (
 
 // defaultTemplatesRef is this repo's own templates/ flake, floated on
 // the default branch (not a version tag) — see the Provisioning
-// design spec for why template fixes shouldn't need a cloudlab
+// design spec for why template fixes shouldn't need a bivouac
 // release.
+//
+// Still jskswamy/cloudlab: this is a live flake ref GitHub has to
+// resolve, so it flips with the repo rename rather than with the source
+// rename -- see the rename design spec,
+// docs/superpowers/specs/2026-09-15-cloudlab-to-bivouac-rename-design.md.
 const defaultTemplatesRef = "github:jskswamy/cloudlab?dir=templates"
 
 // builtinTemplates is the set of template names ResolveTemplateRef
@@ -32,10 +37,10 @@ func ResolveTemplateRef(template, arch string) string {
 	return defaultTemplatesRef + "#" + template + "-" + NixSystem(arch)
 }
 
-// NixSystem maps a cloudlab.pkl arch value to the Nix system string
-// used for per-system flake outputs. Every cloudlab instance is
+// NixSystem maps a bivouac.pkl arch value to the Nix system string
+// used for per-system flake outputs. Every bivouac instance is
 // Linux; only the CPU part varies. Empty or unrecognized values
-// default to x86_64-linux, matching cloudlab.pkl's own arch default.
+// default to x86_64-linux, matching bivouac.pkl's own arch default.
 func NixSystem(arch string) string {
 	if arch == "arm64" {
 		return "aarch64-linux"

@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // errDiscoveryNoPort, errNoListeners and errAskUser are sentinels
@@ -33,17 +33,17 @@ var (
 // sends a serve user chasing a flag cobra will reject.
 type portVocabulary struct {
 	pick     string // e.g. "pass --port" or "name a port"
-	recovery string // e.g. "run `cloudlab connect` with no --port to see what is"
+	recovery string // e.g. "run `bivouac connect` with no --port to see what is"
 }
 
 var connectPortVocabulary = portVocabulary{
 	pick:     "pass --port",
-	recovery: "run `cloudlab connect` with no --port to see what is",
+	recovery: "run `bivouac connect` with no --port to see what is",
 }
 
 var servePortVocabulary = portVocabulary{
 	pick:     "name a port",
-	recovery: "run `cloudlab serve` with no port to see what is",
+	recovery: "run `bivouac serve` with no port to see what is",
 }
 
 // chooseListener decides which listener runConnect (or runServe) targets,
@@ -101,7 +101,7 @@ func chooseServeEntry(entries []lifecycle.ServeEntry, port int, interactive bool
 				return e, nil
 			}
 		}
-		return lifecycle.ServeEntry{}, fmt.Errorf("port %d is not being served — run `cloudlab unserve` with no port to see what is", port)
+		return lifecycle.ServeEntry{}, fmt.Errorf("port %d is not being served — run `bivouac unserve` with no port to see what is", port)
 	case len(entries) == 1:
 		return entries[0], nil
 	case !interactive:
@@ -128,7 +128,7 @@ func chooseServeEntry(entries []lifecycle.ServeEntry, port int, interactive bool
 // command's syntax.
 func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, port int, all, tolerateDiscoveryFailure bool, vocab portVocabulary) (chosen lifecycle.Listener, offered, listeners []lifecycle.Listener, err error) {
 	// Discovery is best-effort when tolerated. `ss` comes from iproute2 and
-	// is present on every image cloudlab boots, but an unusual base image
+	// is present on every image bivouac boots, but an unusual base image
 	// or a locked-down PATH should not make connect unusable when the
 	// caller already knows the port. serve cannot make the same trade --
 	// the bind address is exactly what decides whether an entry is needed
@@ -246,11 +246,11 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 	localPort, err := lifecycle.FreeLocalPort(wanted, mustUse)
 	if err != nil {
 		if errors.Is(err, lifecycle.ErrLocalPortBusy) {
-			return fmt.Errorf("%w — something already holds it locally; pass a different --local-port, or omit the flag to let cloudlab pick a free one", err)
+			return fmt.Errorf("%w — something already holds it locally; pass a different --local-port, or omit the flag to let bivouac pick a free one", err)
 		}
 		return err
 	}
-	// Only when cloudlab picked the number. Saying "is taken, forwarding
+	// Only when bivouac picked the number. Saying "is taken, forwarding
 	// through N instead" to someone who asked for N reads as though the
 	// request was overridden.
 	if !mustUse && localPort != chosen.Port {
@@ -294,7 +294,7 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 	// Checked before any SSH work: serving is meaningless without a
 	// tailnet, and this says so instead of surfacing a tailscale error.
 	if !record.TailscaleJoined {
-		return fmt.Errorf("%s is not on a tailnet — serving publishes there, so run `cloudlab tailscale` first", name)
+		return fmt.Errorf("%s is not on a tailnet — serving publishes there, so run `bivouac tailscale` first", name)
 	}
 
 	port := 0
@@ -344,7 +344,7 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 	}
 	cmd.Printf("Serving %s:%d on your tailnet\n", chosen.Addr, chosen.Port)
 	cmd.Printf("  %s\n", url)
-	cmd.Printf("Stop with: cloudlab unserve %d\n", chosen.Port)
+	cmd.Printf("Stop with: bivouac unserve %d\n", chosen.Port)
 	return nil
 }
 
@@ -380,7 +380,7 @@ func runUnserve(cmd *cobra.Command, name string, args []string) error {
 	chosen, err := chooseServeEntry(entries, port, isInteractive())
 	switch {
 	case errors.Is(err, errNoServed):
-		return fmt.Errorf("nothing is being served on %s — a running `cloudlab connect` forward stops with Ctrl-C in its own terminal", name)
+		return fmt.Errorf("nothing is being served on %s — a running `bivouac connect` forward stops with Ctrl-C in its own terminal", name)
 	case errors.Is(err, errAskUser):
 		if chosen, err = pickServeEntry(cmd, entries); err != nil {
 			return err

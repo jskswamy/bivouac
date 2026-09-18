@@ -11,10 +11,10 @@ import (
 
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/jskswamy/cloudlab/internal/agentcontext"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/agentcontext"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func writeFixture(t *testing.T, path, body string) {
@@ -60,14 +60,14 @@ func TestReconcile_NoPackages_SwitchesBareTemplateRef_NoFileShipped(t *testing.T
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
 	}, "\n")+"\n")
 
-	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
@@ -111,28 +111,28 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
 		`packages { "ripgrep" }`,
 	}, "\n")+"\n")
 
-	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
 	if gotWriteCmd == "" {
 		t.Fatal("packages set, but no file was shipped")
 	}
-	if !strings.Contains(gotWriteCmd, "/home/devuser/.cache/cloudlab/flake.nix") {
+	if !strings.Contains(gotWriteCmd, "/home/devuser/.cache/bivouac/flake.nix") {
 		t.Errorf("write command = %q, want it to target the instance user's remote flake path", gotWriteCmd)
 	}
 	if !strings.Contains(gotWriteStdin, `pkgs."ripgrep"`) {
 		t.Errorf("shipped content = %q, want it to reference the configured package", gotWriteStdin)
 	}
-	if !strings.Contains(gotSwitchCmd, "path:/home/devuser/.cache/cloudlab#default") {
+	if !strings.Contains(gotSwitchCmd, "path:/home/devuser/.cache/bivouac#default") {
 		t.Errorf("switch command = %q, want it to target the shipped flake's default output", gotSwitchCmd)
 	}
 	if !strings.Contains(gotSwitchCmd, "bash -lc") {
@@ -156,8 +156,8 @@ func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
@@ -166,7 +166,7 @@ func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
 	var out, errOut bytes.Buffer
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
 
-	if err := Reconcile(ctx, "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(ctx, "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
 func TestReconcile_InstanceNotFound_ReturnsClearError(t *testing.T) {
 	testenv.Isolate(t)
 
-	err := Reconcile(context.Background(), "nosuchinstance", "/unused/cloudlab.pkl")
+	err := Reconcile(context.Background(), "nosuchinstance", "/unused/bivouac.pkl")
 	if err == nil {
 		t.Fatal("Reconcile() error = nil, want error for an instance not in state")
 	}
@@ -197,14 +197,14 @@ func TestReconcile_HomeManagerSwitchFails_ErrorIncludesOutput(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
 	}, "\n")+"\n")
 
-	err := Reconcile(context.Background(), "myinstance", cloudlabPath)
+	err := Reconcile(context.Background(), "myinstance", bivouacPath)
 	if err == nil {
 		t.Fatal("Reconcile() error = nil, want error for a failed home-manager switch")
 	}
@@ -228,8 +228,8 @@ func TestReconcile_ValidatesOnTheInstanceBeforeSwitching(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
@@ -238,7 +238,7 @@ func TestReconcile_ValidatesOnTheInstanceBeforeSwitching(t *testing.T) {
 		`}`,
 	}, "\n")+"\n")
 
-	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
@@ -287,8 +287,8 @@ func TestReconcile_BadPackageStopsBeforeAnythingIsShipped(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
@@ -297,7 +297,7 @@ func TestReconcile_BadPackageStopsBeforeAnythingIsShipped(t *testing.T) {
 		`}`,
 	}, "\n")+"\n")
 
-	err := Reconcile(context.Background(), "myinstance", cloudlabPath)
+	err := Reconcile(context.Background(), "myinstance", bivouacPath)
 	if err == nil {
 		t.Fatal("Reconcile() error = nil, want the bad package reported")
 	}
@@ -330,8 +330,8 @@ func TestReconcile_DeliversInstructionsToEachConfiguredHarness(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFixture(t, filepath.Join(dir, "workflow.md"), "my own workflow\n")
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
@@ -339,7 +339,7 @@ func TestReconcile_DeliversInstructionsToEachConfiguredHarness(t *testing.T) {
 		`instructions { "workflow.md" }`,
 	}, "\n")+"\n")
 
-	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
@@ -380,14 +380,14 @@ func TestReconcile_ForwardsAgentDuringSwitch(t *testing.T) {
 	seedInstance(t, "myinstance", addr)
 
 	dir := t.TempDir()
-	cloudlabPath := filepath.Join(dir, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
 	}, "\n")+"\n")
 
-	if err := Reconcile(context.Background(), "myinstance", cloudlabPath); err != nil {
+	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 

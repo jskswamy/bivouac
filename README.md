@@ -1,14 +1,18 @@
-# cloudlab
+# bivouac
 
 [![CI](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml)
 
-Ephemeral, declarative dev instances in the cloud — named instances,
-provisioned from a template, worked in by coding agents, torn down when you
-don't need them. The backend is a cloud VM, not a process running on your
-Mac, so Docker Desktop or minikube isn't what's burning your battery.
-DigitalOcean is the first (and for now, only) supported provider; the
-provider boundary is designed to add others without touching the rest of the
-tool — see [ADR-0008](docs/adr/0008-provider-abstraction.md).
+A bivouac is a shelter improvised for one stay: no built infrastructure,
+struck completely afterward. This is that, for coding agents — a
+disposable remote workspace, declared from scratch by Nix and
+home-manager rather than hand-configured, where nothing survives `down`
+except what you deliberately carried out as a signed git commit.
+
+The backend is a cloud VM, not a process on your Mac, so Docker Desktop
+or minikube isn't what's burning your battery. DigitalOcean is the first
+(and for now, only) supported provider; the provider boundary is designed
+to add others without touching the rest of the tool — see
+[ADR-0008](docs/adr/0008-provider-abstraction.md).
 
 > **Status:** `up`, `provision`, `down`, `list`, `status`, `ssh`, `tmux`,
 > `herdr`, `pair`, `tailscale`, `secrets`, `connect`, `serve`/`unserve`,
@@ -21,25 +25,25 @@ tool — see [ADR-0008](docs/adr/0008-provider-abstraction.md).
 ## What it does
 
 ```bash
-cd myproject                   # any git repo
-cloudlab init                  # answer a few questions; writes cloudlab.pkl
-cloudlab up                    # boots a VM (per cloudlab.pkl) and reconciles
-                               # its Nix/home-manager environment
-cloudlab session start agent   # seeds the repo onto the instance via git and
-                               # checks it out on branch cloudlab/agent
-cloudlab ssh                   # interactive shell on the instance
-cloudlab connect --port 8888   # reach a service on the instance
-cloudlab serve 8888            # publish it on your tailnet; outlives the command
-cloudlab unserve 8888          # stop publishing it
-cloudlab session list          # every session on every instance, at a glance
-cloudlab session pull          # fetch the session's commits without merging
-cloudlab session merge         # replay, sign, verify, then retire the session
-cloudlab provision             # re-apply cloudlab.pkl after editing it
-cloudlab sync --dir ./dataset  # one-shot rsync push of anything outside git
-cloudlab download ~/results    # one-shot rsync pull back
-cloudlab status                # what this instance is, and what it has cost so far
-cloudlab list --cost           # every instance, with what each is running up
-cloudlab down                  # rescues every session's work, then destroys the VM
+cd myproject                  # any git repo
+bivouac init                  # answer a few questions; writes bivouac.pkl
+bivouac up                    # boots a VM (per bivouac.pkl) and reconciles
+                              # its Nix/home-manager environment
+bivouac session start agent   # seeds the repo onto the instance via git and
+                              # checks it out on branch bivouac/agent
+bivouac ssh                   # interactive shell on the instance
+bivouac connect --port 8888   # reach a service on the instance
+bivouac serve 8888            # publish it on your tailnet; outlives the command
+bivouac unserve 8888          # stop publishing it
+bivouac session list          # every session on every instance, at a glance
+bivouac session pull          # fetch the session's commits without merging
+bivouac session merge         # replay, sign, verify, then retire the session
+bivouac provision             # re-apply bivouac.pkl after editing it
+bivouac sync --dir ./dataset  # one-shot rsync push of anything outside git
+bivouac download ~/results    # one-shot rsync pull back
+bivouac status                # what this instance is, and what it has cost so far
+bivouac list --cost           # every instance, with what each is running up
+bivouac down                  # rescues every session's work, then destroys the VM
 ```
 
 `session pull`/`merge`/`delete` all take the session name as an optional
@@ -59,7 +63,7 @@ start a session:
 
 - `session start <name>` pushes your current commit into a fresh git
   repository at `~/sessions/<name>/<repo>` on the instance, checks it out on
-  branch `cloudlab/<name>`, and creates a matching local worktree at
+  branch `bivouac/<name>`, and creates a matching local worktree at
   `<repo>/.worktrees/<name>` tracking it. An instance can run several named
   sessions at once.
 - `session pull [name]` checkpoints whatever the agent left uncommitted,
@@ -87,7 +91,7 @@ the token is exactly what you asked it to use. Plain `list` stays offline.
 The instance never pushes anywhere and never talks to a shared remote — no
 GitHub credentials, host keys or signing keys ever reach the VM.
 
-The one carve-out is opt-in: `beads = "dolthub"` in `cloudlab.pkl` places your
+The one carve-out is opt-in: `beads = "dolthub"` in `bivouac.pkl` places your
 DoltHub credential on the instance, in tmpfs, so the agent's issue database can
 sync against DoltHub directly. That credential is account-wide — it grants write
 access to every Dolt repository on your account for the life of the instance.
@@ -119,12 +123,12 @@ complete flake reference, so you can point at your own.
 
 ## Configuring an instance
 
-Run `cloudlab init` and answer the questions — it writes the files for
+Run `bivouac init` and answer the questions — it writes the files for
 you, and `up` runs the same thing by itself in a repo that has no config
-yet. `cloudlab preset list/show/edit/delete` manage the shapes it offers
+yet. `bivouac preset list/show/edit/delete` manage the shapes it offers
 to save.
 
-Or drop a `cloudlab.pkl` in your repo root by hand:
+Or drop a `bivouac.pkl` in your repo root by hand:
 
 ```pkl
 region = "nyc3"
@@ -158,7 +162,7 @@ one permits exactly that package, nothing else.
 
 Settings you'd otherwise repeat in every repo (SSH key, usual droplet size,
 packages you always want) go once in a personal base config at
-`~/.config/cloudlab/base.pkl` and merge with each project's file.
+`~/.config/bivouac/base.pkl` and merge with each project's file.
 
 [`docs/config.md`](docs/config.md) documents every field, the merge rules,
 and the errors you might see. Worked examples live in
@@ -166,19 +170,19 @@ and the errors you might see. Worked examples live in
 
 ## Secrets
 
-`cloudlab secrets init/edit/keys` manage a personal,
+`bivouac secrets init/edit/keys` manage a personal,
 [sops](https://github.com/getsops/sops)-encrypted file at
-`~/.config/cloudlab/secrets.yaml`. It holds `tailscale_authkey`,
+`~/.config/bivouac/secrets.yaml`. It holds `tailscale_authkey`,
 `digitalocean_token`, an optional `github_token` for `gh` on the instance,
 and — for `beads = "dolthub"` — a DoltHub credential (`dolthub_creds` and
 `dolthub_creds_id`).
 
-`up`/`cloudlab tailscale` and `beads = "dolthub"` decrypt the Tailscale and
+`up`/`bivouac tailscale` and `beads = "dolthub"` decrypt the Tailscale and
 DoltHub secrets just-in-time, stream them to the instance's tmpfs over SSH
 stdin, and zero immediately after — never a command-line argument, never
 plaintext on disk on either machine.
 
-`digitalocean_token` is the exception: it authenticates cloudlab's own API
+`digitalocean_token` is the exception: it authenticates bivouac's own API
 calls from your machine and never reaches an instance. `DIGITALOCEAN_TOKEN`
 in the environment takes precedence over it, so unattended agents never need
 a hardware key — see [the token section in
@@ -188,7 +192,7 @@ runs that way.
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — components, data flow, instance lifecycle
-- [`docs/config.md`](docs/config.md) — every `cloudlab.pkl` field, base-config merging, errors
+- [`docs/config.md`](docs/config.md) — every `bivouac.pkl` field, base-config merging, errors
 - [`docs/examples/`](docs/examples/) — a minimal config, and the base-merge pattern
 - [`docs/adr/`](docs/adr/) — why things are shaped the way they are, one decision per file
 - [`docs/superpowers/`](docs/superpowers/) — dated design specs and delivery plans

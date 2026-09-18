@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/xdg"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
-// The property the whole package exists for: inside Run, every path cloudlab
+// The property the whole package exists for: inside Run, every path bivouac
 // derives from the user's home lands in the sandbox.
 func TestRun_EveryHomeDerivedPathLandsInTheSandbox(t *testing.T) {
 	realHome, _ := os.UserHomeDir()

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func repoRoot(t *testing.T) string {
@@ -19,11 +19,11 @@ func repoRoot(t *testing.T) string {
 }
 
 func TestExamples_Minimal_LoadsCleanly(t *testing.T) {
-	path := filepath.Join(repoRoot(t), "docs", "examples", "minimal", "cloudlab.pkl")
+	path := filepath.Join(repoRoot(t), "docs", "examples", "minimal", "bivouac.pkl")
 
 	// Isolate from any real user's machine-local base config — this
 	// example must load cleanly on its own, not merged with whatever
-	// happens to live at $XDG_CONFIG_HOME/cloudlab/base.pkl.
+	// happens to live at $XDG_CONFIG_HOME/bivouac/base.pkl.
 	testenv.Isolate(t)
 
 	cfg, err := Resolve(context.Background(), path)
@@ -39,7 +39,7 @@ func TestExamples_Minimal_LoadsCleanly(t *testing.T) {
 }
 
 func TestExamples_WithBase_MergesCleanly(t *testing.T) {
-	path := filepath.Join(repoRoot(t), "docs", "examples", "with-base", "cloudlab.pkl")
+	path := filepath.Join(repoRoot(t), "docs", "examples", "with-base", "bivouac.pkl")
 
 	cfg, err := Resolve(context.Background(), path)
 	if err != nil {

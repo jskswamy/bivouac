@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // The headline data-loss regression. The local session branch only moves when
@@ -106,16 +106,16 @@ func TestDeleteSession_ForceDiscardsUnmergedWork(t *testing.T) {
 // repository at all now fails in RescueSession and never reaches the cherry
 // check this test is named for. To reach it, rescue must succeed -- the
 // fixture's remote stays intact -- while only the second measurement, the
-// local branch cloudlab/<session>, is made to fail: delete it (after
+// local branch bivouac/<session>, is made to fail: delete it (after
 // removing the worktree that holds it checked out) and `git cherry HEAD
-// cloudlab/<session>` has nothing to compare against.
+// bivouac/<session>` has nothing to compare against.
 func TestDeleteSession_RefusesWhenUnmergedStatusCannotBeDetermined(t *testing.T) {
 	f := newSessionFixture(t, 0)
 
 	mustGit(t, f.repo, "worktree", "remove", "--force", f.local)
 	mustGit(t, f.repo, "branch", "-D", SessionBranch(f.session))
 	if _, err := runLocalGit(context.Background(), f.repo, "rev-parse", "--verify", SessionBranch(f.session)); err == nil {
-		t.Fatal("local branch cloudlab/auth survived deletion; fixture setup is broken")
+		t.Fatal("local branch bivouac/auth survived deletion; fixture setup is broken")
 	}
 
 	sess := state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base}
@@ -125,7 +125,7 @@ func TestDeleteSession_RefusesWhenUnmergedStatusCannotBeDetermined(t *testing.T)
 		t.Fatal("DeleteSession() = nil when git could not determine unmerged status, want a refusal")
 	}
 	if !strings.Contains(err.Error(), "cannot tell") {
-		t.Errorf("error = %q, want it to say cloudlab could not tell whether work is unmerged", err.Error())
+		t.Errorf("error = %q, want it to say bivouac could not tell whether work is unmerged", err.Error())
 	}
 	if !strings.Contains(err.Error(), "--force") {
 		t.Errorf("error = %q, want it to mention --force", err.Error())

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // ServeEntry is one port published on the tailnet by `tailscale serve`.
@@ -19,7 +19,7 @@ type ServeEntry struct {
 }
 
 // serveStatusJSON is the shape `tailscale serve status --json` returns.
-// Only the TCP section is read: cloudlab publishes with --tcp, and the
+// Only the TCP section is read: bivouac publishes with --tcp, and the
 // HTTP/HTTPS sections describe a different kind of entry it does not
 // create. An empty config is "{}", so every field must tolerate absence.
 type serveStatusJSON struct {
@@ -74,7 +74,7 @@ func serveArgs(bin string, port int) string {
 //
 // Per-entry rather than `serve reset`: reset clears every entry on the
 // instance, including any the user set up by hand, and `serve status`
-// does not record which ones cloudlab added.
+// does not record which ones bivouac added.
 func unserveArgs(bin string, port int) string {
 	return fmt.Sprintf("sudo %s serve --tcp %d off", shellcmd.Quote(bin), port)
 }
@@ -121,7 +121,7 @@ func Unserve(ctx context.Context, ip, user string, port int) error {
 }
 
 // ServeStatus reports every port published on the instance, including
-// entries cloudlab did not create -- tailscale does not record who added
+// entries bivouac did not create -- tailscale does not record who added
 // one, and showing only a subset would make `unserve` look broken.
 func ServeStatus(ctx context.Context, ip, user string) ([]ServeEntry, error) {
 	var entries []ServeEntry

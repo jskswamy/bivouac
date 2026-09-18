@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 func TestNeedsRender_EmptyPackagesAndFlakes_False(t *testing.T) {
@@ -233,14 +233,33 @@ func TestTemplates_AllBuildCleanly(t *testing.T) {
 	}
 }
 
-// cloudlab.tailscale is set only by the rendered wrapper flake, and the
+// bivouac.tailscale is set only by the rendered wrapper flake, and the
 // shared template defaults it to false. A config that asks for Tailscale
 // but has no packages and no flakes must therefore still render, or the
 // flag silently does nothing and the tailscaled unit is never installed.
 func TestNeedsRender_TrueForTailscaleAlone(t *testing.T) {
 	cfg := config.Config{Tailscale: true}
 	if !NeedsRender(cfg) {
-		t.Error("NeedsRender(tailscale-only config) = false, want true — otherwise cloudlab.tailscale is never set")
+		t.Error("NeedsRender(tailscale-only config) = false, want true — otherwise bivouac.tailscale is never set")
+	}
+}
+
+// The rendered wrapper flake is the only place this option is ever set
+// (see render.go's renderTmpl and NeedsRender doc comment) -- a
+// half-renamed option here would either fail to evaluate on the instance
+// or, worse, silently do nothing because the shared module's own default
+// stands. This pins the rendered output to the new namespace.
+func TestRender_SetsTailscaleOptionUnderBivouacNamespace(t *testing.T) {
+	cfg := config.Config{Tailscale: true}
+	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(out, "bivouac.tailscale = true;") {
+		t.Errorf("rendered flake does not set bivouac.tailscale:\n%s", out)
+	}
+	if strings.Contains(out, "cloudlab.tailscale") {
+		t.Errorf("rendered flake still sets cloudlab.tailscale:\n%s", out)
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 func tempXDG(t *testing.T) string {
@@ -24,7 +24,7 @@ func TestDir_SitsBesideTheBaseConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dir() error = %v", err)
 	}
-	want := filepath.Join(xdg, "cloudlab", "presets")
+	want := filepath.Join(xdg, "bivouac", "presets")
 	if got != want {
 		t.Errorf("Dir() = %q, want %q", got, want)
 	}

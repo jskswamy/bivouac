@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/preset"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/preset"
 )
 
 func presetFixture(t *testing.T) string {
@@ -140,7 +140,7 @@ func TestPresetDelete_BreaksNoProject(t *testing.T) {
 	if err := preset.Save("shape", config.Values{"template": "python"}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	project := filepath.Join(t.TempDir(), "cloudlab.pkl")
+	project := filepath.Join(t.TempDir(), "bivouac.pkl")
 	if err := os.WriteFile(project, []byte("template = \"python\"\nregion = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\n"), 0o644); err != nil {
 		t.Fatalf("writing project: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestPresetEdit_RefusesWithoutATerminal(t *testing.T) {
 	if err == nil {
 		t.Fatal("preset edit error = nil without a terminal, want a refusal")
 	}
-	if !strings.Contains(err.Error(), "cloudlab init") {
-		t.Errorf("error = %q, want it to name `cloudlab init`", err)
+	if !strings.Contains(err.Error(), "bivouac init") {
+		t.Errorf("error = %q, want it to name `bivouac init`", err)
 	}
 }

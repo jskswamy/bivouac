@@ -67,9 +67,9 @@ func pushArgs(url, src, sessionBranch string) []string {
 // sessionRemote is the git remote pointing at a session's repository on the
 // instance. A real remote rather than a URL rebuilt per call, so the user
 // can run ordinary git against the agent's work -- fetch, log, diff -- with
-// no cloudlab-specific ref namespace to learn.
+// no bivouac-specific ref namespace to learn.
 func sessionRemote(session string) string {
-	return "cloudlab-" + session
+	return "bivouac-" + session
 }
 
 func remoteAddArgs(name, url string) []string {

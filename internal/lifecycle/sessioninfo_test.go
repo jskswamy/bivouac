@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // With no session remote configured there is nobody to ask, so this is the
@@ -21,7 +21,7 @@ func TestDescribeSession_CountsUnmergedByPatchIdentity(t *testing.T) {
 	root := gitOut(t, repo, "rev-parse", "HEAD")
 
 	wt := LocalWorktreePath(repo, "auth")
-	mustGit(t, repo, "worktree", "add", "--quiet", wt, "-b", "cloudlab/auth")
+	mustGit(t, repo, "worktree", "add", "--quiet", wt, "-b", "bivouac/auth")
 	writeAndCommit(t, wt, "work.txt", "x", "agent work")
 
 	info := DescribeSession(context.Background(), "inst", state.Session{
@@ -33,8 +33,8 @@ func TestDescribeSession_CountsUnmergedByPatchIdentity(t *testing.T) {
 	if !info.WorktreeExists {
 		t.Error("WorktreeExists = false, want true")
 	}
-	if info.Branch != "cloudlab/auth" {
-		t.Errorf("Branch = %q, want cloudlab/auth", info.Branch)
+	if info.Branch != "bivouac/auth" {
+		t.Errorf("Branch = %q, want bivouac/auth", info.Branch)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestDescribeSession_UnmergedIsZeroOnceTheWorkHasLanded(t *testing.T) {
 	root := gitOut(t, repo, "rev-parse", "HEAD")
 
 	wt := LocalWorktreePath(repo, "auth")
-	mustGit(t, repo, "worktree", "add", "--quiet", wt, "-b", "cloudlab/auth")
+	mustGit(t, repo, "worktree", "add", "--quiet", wt, "-b", "bivouac/auth")
 	writeAndCommit(t, wt, "work.txt", "x", "agent work")
 
 	// Land it on the user's branch as merge would: a new commit, new SHA.
@@ -195,7 +195,7 @@ func TestDescribeSession_MissingWorktreeIsNotAnError(t *testing.T) {
 // connect timeout on a host that is not there, is a listing nobody can use.
 // Three unreachable sessions cost 2m30s before this was bounded.
 func TestLsRemoteArgs_BoundsTheWaitAndNeverPrompts(t *testing.T) {
-	got := strings.Join(lsRemoteArgs("cloudlab-auth", "cloudlab/auth"), " ")
+	got := strings.Join(lsRemoteArgs("bivouac-auth", "bivouac/auth"), " ")
 
 	for _, want := range []string{"ConnectTimeout=", "BatchMode=yes", "ls-remote", "--heads"} {
 		if !strings.Contains(got, want) {

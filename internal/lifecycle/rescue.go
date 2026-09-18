@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // RescueSession makes every scrap of a session's work durable on this
@@ -82,5 +82,5 @@ func RescueSession(ctx context.Context, ip, user, localRepo, repoName, session s
 // under. Shared so MergeSession's pre-delete re-checkpoint is
 // indistinguishable from the rescue's own.
 func checkpointMessage(session string) string {
-	return "cloudlab: checkpoint " + session
+	return "bivouac: checkpoint " + session
 }

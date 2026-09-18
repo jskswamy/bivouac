@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // PullSession brings a session's work to this machine and refreshes the

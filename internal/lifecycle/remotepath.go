@@ -9,8 +9,8 @@ import (
 // RemotePath computes where localPath lands on the instance as user:
 // if localPath is under the local user's home directory, it's mirrored
 // under the remote user's home (e.g. local
-// /Users/subramk/source/cloudlab with remote user "subramk" becomes
-// /home/subramk/source/cloudlab). A localPath outside the local home is
+// /Users/subramk/source/bivouac with remote user "subramk" becomes
+// /home/subramk/source/bivouac). A localPath outside the local home is
 // mirrored too, at /home/<remoteUser><localPath> (e.g. /opt/work/repo
 // becomes /home/subramk/opt/work/repo) -- every repo location gets a
 // predictable, always-writable remote destination under the remote

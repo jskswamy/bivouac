@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // Exercising Run's actual bubbletea-Program path needs a real TTY,

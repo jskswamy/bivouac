@@ -1,10 +1,10 @@
 // Package preset stores reusable sets of wizard answers on disk.
 //
 // A preset is an ordinary partial pkl file — the same shape as the
-// personal base config and as cloudlab.pkl — so there is no new format
+// personal base config and as bivouac.pkl — so there is no new format
 // here, only a place to keep them and a name to find them by.
 //
-// Presets are stamped into a project's cloudlab.pkl when used, never
+// Presets are stamped into a project's bivouac.pkl when used, never
 // referenced from it. Nothing therefore depends on a preset once it has
 // been used, which is why Delete needs no dependency check.
 package preset
@@ -19,7 +19,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 // ErrNotFound reports that no preset of that name is saved.

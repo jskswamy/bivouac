@@ -1,22 +1,22 @@
-# Configuring cloudlab: `cloudlab.pkl`
+# Configuring bivouac: `bivouac.pkl`
 
-cloudlab reads a declarative config file, `cloudlab.pkl`, written in
+bivouac reads a declarative config file, `bivouac.pkl`, written in
 [Pkl](https://pkl-lang.org) — a typed, validated alternative to YAML.
 This doc explains every field, how personal defaults are reused across
 projects, and what happens when something's missing or wrong.
 
 If you've never used Pkl before: it looks like a typed config file
 (`key = value`), not a programming language. You don't need to learn
-Pkl deeply to write a `cloudlab.pkl` — the two worked examples in
+Pkl deeply to write a `bivouac.pkl` — the two worked examples in
 `docs/examples/` cover the common cases.
 
 You'll need the `pkl` CLI installed to evaluate these files (or just use
 this repo's `nix develop`, which provides it). The very first time `pkl`
-evaluates anything using cloudlab's schema on a given machine, it needs
+evaluates anything using bivouac's schema on a given machine, it needs
 network access once to fetch and cache the `pkl.golang` package the
 schema depends on; every evaluation after that is fully offline.
 
-Note also that a `cloudlab.pkl` file is *executed*, not just parsed —
+Note also that a `bivouac.pkl` file is *executed*, not just parsed —
 see "A note on trust" near the end of this doc.
 
 ## Fields
@@ -30,15 +30,15 @@ see "A note on trust" near the end of this doc.
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
-| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `cloudlab init` finds and fills these in — see [below](#ssh-keys). |
+| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `bivouac init` finds and fills these in — see [below](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
-| `basePath` | `String?` | No | none | Overrides where cloudlab looks for your personal base config (see below). |
+| `basePath` | `String?` | No | none | Overrides where bivouac looks for your personal base config (see below). |
 
 "Required, after merge" means: `region`/`size`/`template` don't have to
-be set in your project's `cloudlab.pkl` itself, as long as your
+be set in your project's `bivouac.pkl` itself, as long as your
 personal base config supplies them (or vice versa) — see below. If
 neither file sets one, `Resolve` fails with an error naming exactly which
 field is still missing.
@@ -86,17 +86,17 @@ Anything not on this list still goes in `packages` as usual.
 Setting `tailscale = true` does two things: it installs and enables the
 `tailscaled` daemon on the instance, and it makes `up` join the tailnet
 automatically once the instance is reachable. You can also join an
-already-running instance by hand with `cloudlab tailscale`.
+already-running instance by hand with `bivouac tailscale`.
 
 It needs `tailscale_authkey` in your personal secrets file — create it with
-`cloudlab secrets init`, then `cloudlab secrets edit`. cloudlab decrypts the
+`bivouac secrets init`, then `bivouac secrets edit`. bivouac decrypts the
 key just-in-time, streams it to the instance over SSH stdin, and zeroes its
 in-memory copy immediately; the key is never a command-line argument and
 never lands in plaintext on disk on either machine.
 
 When generating that auth key in the Tailscale admin console, mark it
 **Ephemeral**. Ephemeral keys make their devices self-remove from your
-tailnet once they disconnect, so a destroyed instance (cloudlab's VMs are
+tailnet once they disconnect, so a destroyed instance (bivouac's VMs are
 destroy-and-recreate, not long-lived) doesn't linger as a dead device
 counting against your plan's device limit.
 
@@ -119,9 +119,9 @@ credential reaches the VM.
 the external remote your `.beads/` already names. The credential is account-wide and
 lives in tmpfs on the VM for its lifetime; the session remote is still wired, so issues
 come home over SSH even when DoltHub is unreachable. Requires `dolthub_creds` and
-`dolthub_creds_id` in `cloudlab secrets`.
+`dolthub_creds_id` in `bivouac secrets`.
 
-`"dolthub"` mode reads two keys from `cloudlab secrets`:
+`"dolthub"` mode reads two keys from `bivouac secrets`:
 
 ```yaml
 dolthub_creds: |            # contents of ~/.dolt/creds/<id>.jwk
@@ -131,10 +131,10 @@ dolthub_creds_id: us8isf…   # the jwk's filename stem, written to user.creds
 
 The id is stored beside the key rather than derived from your local
 `~/.dolt/config_global.json`, so the instance's configuration does not depend on hidden
-local state. If either is missing, cloudlab warns and falls back to session mode.
+local state. If either is missing, bivouac warns and falls back to session mode.
 
 A reboot clears tmpfs and leaves `~/.dolt` dangling; external sync then fails and session
-mode is unaffected. `cloudlab provision` restores it.
+mode is unaffected. `bivouac provision` restores it.
 
 `bd dolt push` creates a real `refs/heads/__dolt_remote_info__` branch in the session
 repository alongside `refs/dolt/data`. It is harmless but visible in `git branch`.
@@ -145,12 +145,12 @@ The setting is inert in a repository with no `.beads/`.
 
 ### GitHub
 
-There is no `cloudlab.pkl` field for this one. `gh` is installed on every
+There is no `bivouac.pkl` field for this one. `gh` is installed on every
 instance and works unauthenticated out of the box — fine for public repos,
 subject to GitHub's anonymous rate limit of 60 requests an hour, which an
 agent making a few lookups a session can reach.
 
-To raise that ceiling, add `github_token` to `cloudlab secrets`:
+To raise that ceiling, add `github_token` to `bivouac secrets`:
 
 ```yaml
 github_token: ghp_…         # a PAT; public_repo scope is enough to read
@@ -165,15 +165,15 @@ unauthenticated — not a warning, not a failure.
 
 The token is checked against GitHub before it is placed, because `gh` needs
 to be told which account it belongs to. If GitHub rejects it — expired,
-revoked, mistyped — cloudlab says so and leaves the instance untouched
+revoked, mistyped — bivouac says so and leaves the instance untouched
 rather than installing a credential that would only fail there.
 
 Nothing is overwritten: if `~/.config/gh` on the instance is already
-something other than cloudlab's own symlink — a real `gh auth login`, say —
-cloudlab warns and leaves it alone.
+something other than bivouac's own symlink — a real `gh auth login`, say —
+bivouac warns and leaves it alone.
 
 A reboot clears tmpfs, as with the other secrets placed this way.
-`cloudlab provision` restores it.
+`bivouac provision` restores it.
 
 ### Templates
 
@@ -195,12 +195,12 @@ and `status`. Everything else — `ssh`, `herdr`, `tmux`, `session start`,
 `sync`, `connect`, `serve` and the rest — works from local state and SSH,
 and needs no token at all.
 
-cloudlab looks in two places, in this order:
+bivouac looks in two places, in this order:
 
 1. **`DIGITALOCEAN_TOKEN` in the environment**, if it is set and non-empty.
 2. **`digitalocean_token` in your secrets file**, decrypted just-in-time.
 
-Put the token in the secrets file with `cloudlab secrets edit`:
+Put the token in the secrets file with `bivouac secrets edit`:
 
 ```yaml
 digitalocean_token: dop_v1_…
@@ -212,7 +212,7 @@ The order is deliberate, and it is the opposite of the usual instinct that a
 file should beat an environment variable.
 
 Decryption goes through age, and commonly through an `age-plugin-yubikey`
-identity whose touch policy can require physical presence. cloudlab exists so
+identity whose touch policy can require physical presence. bivouac exists so
 that agents can work unattended; an agent cannot touch a key. Reading the
 secrets file first would make every `up` and `down` block on a key that is not
 plugged in, which is precisely the situation this ordering avoids.
@@ -232,11 +232,11 @@ most two decryptions — one when you bring an instance up and one when you take
 it down. If your identity's touch policy makes even that unwelcome, note that
 the policy is chosen when the age identity is generated
 (`age-plugin-yubikey --touch-policy always|cached|never`), and that is the
-right place to change it. cloudlab deliberately does not cache the decrypted
+right place to change it. bivouac deliberately does not cache the decrypted
 token: doing so would quietly undo a policy you set in hardware.
 
 `digitalocean_token` differs from every other key in the secrets file in one
-way worth knowing: it authenticates cloudlab's own API calls from your machine
+way worth knowing: it authenticates bivouac's own API calls from your machine
 and is **never** sent to an instance. `tailscale_authkey` and the DoltHub
 credentials are streamed to the VM; this one never leaves your laptop.
 
@@ -250,7 +250,7 @@ from local state, so it reports what it knows and marks the one unavailable
 field:
 
 ```
-$ cloudlab status myinstance
+$ bivouac status myinstance
 Name:     myinstance
 ...
 IP:       203.0.113.7
@@ -261,17 +261,17 @@ This is the same way `status` already renders an instance it cannot reach.
 
 ## Personal base config and reuse across projects
 
-Most of your `cloudlab.pkl` settings — your SSH key, your usual droplet
+Most of your `bivouac.pkl` settings — your SSH key, your usual droplet
 size, packages you always want — don't change per-project. Instead of
 repeating them in every repo, put them once in a personal base config:
 
-- Default location: `$XDG_CONFIG_HOME/cloudlab/base.pkl`, or
-  `~/.config/cloudlab/base.pkl` if `XDG_CONFIG_HOME` isn't set.
+- Default location: `$XDG_CONFIG_HOME/bivouac/base.pkl`, or
+  `~/.config/bivouac/base.pkl` if `XDG_CONFIG_HOME` isn't set.
 - Not committed anywhere — it's yours, local to your machine.
-- Written exactly like a project `cloudlab.pkl` — same schema, same
+- Written exactly like a project `bivouac.pkl` — same schema, same
   rule that it never declares its own `amends` (see below).
 
-When cloudlab loads a project's `cloudlab.pkl`, it also checks for your
+When bivouac loads a project's `bivouac.pkl`, it also checks for your
 base config. If one exists, the two are merged:
 
 - **Scalars** (`region`, `size`, `template`): the project's value wins
@@ -285,7 +285,7 @@ base config. If one exists, the two are merged:
   dropped from either side.
 
 If your base config doesn't exist yet, this isn't an error — your
-project's `cloudlab.pkl` is used on its own, and any field it doesn't
+project's `bivouac.pkl` is used on its own, and any field it doesn't
 set is simply missing (which fails validation if it's one of the three
 required ones).
 
@@ -295,30 +295,30 @@ resolution beyond the project-plus-one-base merge described above.
 
 ### Pointing at a different base file
 
-Set `basePath` in your project's `cloudlab.pkl` to use something other
+Set `basePath` in your project's `bivouac.pkl` to use something other
 than the default location:
 
 ```pkl
-basePath = "~/.config/cloudlab/work-base.pkl"  // a different personal file
-basePath = "./team-base.pkl"                    // a file checked into this repo, next to cloudlab.pkl
+basePath = "~/.config/bivouac/work-base.pkl"    // a different personal file
+basePath = "./team-base.pkl"                    // a file checked into this repo, next to bivouac.pkl
 ```
 
 A `~`-prefixed path expands to your home directory. An absolute path is
 used as-is. Anything else is resolved relative to the project file's
-own directory — not wherever you happen to run `cloudlab` from — so a
+own directory — not wherever you happen to run `bivouac` from — so a
 relative `basePath` always means "the file next to this one."
 
-## Answering questions instead: `cloudlab init`
+## Answering questions instead: `bivouac init`
 
-Writing the file by hand is one way to configure cloudlab. The other is
+Writing the file by hand is one way to configure bivouac. The other is
 to be asked:
 
 ```bash
-cloudlab init      # create or edit this project's config, interactively
+bivouac init      # create or edit this project's config, interactively
 ```
 
 `up` does the same thing on its own when a repository has no
-`cloudlab.pkl` yet — it asks the questions, writes the files, and then
+`bivouac.pkl` yet — it asks the questions, writes the files, and then
 brings the instance up, in one command. Both need a terminal: with
 stdin redirected or in CI, they refuse rather than opening a form that
 nothing will ever answer.
@@ -328,11 +328,11 @@ nothing will ever answer.
 Answers are split between the two files by what they are, rather than by
 asking you which file to put them in:
 
-| Personal → `base.pkl` | This project → `cloudlab.pkl` |
+| Personal → `base.pkl` | This project → `bivouac.pkl` |
 |---|---|
 | `region`, `size`, `sshKeys` | `template`, `agents`, `packages`, `beads`, `tailscale` |
 
-`cloudlab.pkl` is committed. Putting your SSH key fingerprint or your own
+`bivouac.pkl` is committed. Putting your SSH key fingerprint or your own
 preferred droplet size in it would hand both to everyone who clones the
 repo, and they'd provision with your key rather than theirs.
 
@@ -341,7 +341,7 @@ they're set to and offers to change them.
 
 ### SSH keys
 
-`cloudlab init` does not ask you to remember a fingerprint. It lists the
+`bivouac init` does not ask you to remember a fingerprint. It lists the
 keys this machine holds and writes the fingerprint for whichever you
 pick:
 
@@ -408,7 +408,7 @@ refuses elsewhere.
 
 ### Files that predate the split
 
-A `cloudlab.pkl` written by hand usually holds personal and project
+A `bivouac.pkl` written by hand usually holds personal and project
 settings together. `init` notices, says what it found, and offers to lift
 the personal fields into your `base.pkl`. Declining leaves the file
 exactly as it is — restructuring a committed file as a side effect of
@@ -426,13 +426,13 @@ name. The next project with no config is offered those presets as a
 starting point.
 
 ```bash
-cloudlab preset list           # name, what it sets, when it changed
-cloudlab preset show <name>    # print the pkl
-cloudlab preset edit <name>    # the same questions, on that preset
-cloudlab preset delete <name>  # confirms
+bivouac preset list           # name, what it sets, when it changed
+bivouac preset show <name>    # print the pkl
+bivouac preset edit <name>    # the same questions, on that preset
+bivouac preset delete <name>  # confirms
 ```
 
-A preset's settings are **copied into** the new `cloudlab.pkl`, never
+A preset's settings are **copied into** the new `bivouac.pkl`, never
 referenced from it. A committed file reading its settings out of a preset
 only you have would be incomplete for everyone else — and silently so,
 since a base config that isn't there is skipped rather than reported. The
@@ -445,10 +445,10 @@ run overrode your personal defaults — the case where a toolchain genuinely
 needs particular sizing, such as one that wants more headroom than your
 usual box. It never keeps `sshKeys`.
 
-## Writing your `cloudlab.pkl`
+## Writing your `bivouac.pkl`
 
-Your `cloudlab.pkl` is just field values — no `amends` line, no path to
-cloudlab's schema, nothing to reference at all:
+Your `bivouac.pkl` is just field values — no `amends` line, no path to
+bivouac's schema, nothing to reference at all:
 
 ```pkl
 region = "nyc3"
@@ -456,22 +456,22 @@ size = "s-1vcpu-1gb"
 template = "python"
 ```
 
-cloudlab carries its own copy of the schema (embedded in the `cloudlab`
+bivouac carries its own copy of the schema (embedded in the `bivouac`
 binary itself) and points your file at it automatically before
 evaluating it — you never need to know where that schema lives, and
 there's no version of it to keep in sync with, since it's always
-exactly the one built into whichever `cloudlab` you're running.
+exactly the one built into whichever `bivouac` you're running.
 
 If your file *does* start with its own `amends` line (for example,
 copied from an older doc or another Pkl project), `Resolve` rejects it
 with a clear error rather than silently ignoring or honoring it —
-there's no supported case where a `cloudlab.pkl` should reference a
-different schema than the one its own `cloudlab` binary carries.
+there's no supported case where a `bivouac.pkl` should reference a
+different schema than the one its own `bivouac` binary carries.
 
-See `docs/examples/minimal/cloudlab.pkl` for the simplest possible
+See `docs/examples/minimal/bivouac.pkl` for the simplest possible
 file, and `docs/examples/with-base/` for the base-merge pattern (a
-`base.pkl` and a `cloudlab.pkl` that merges with it). Or run
-`cloudlab init` and let it write one.
+`base.pkl` and a `bivouac.pkl` that merges with it). Or run
+`bivouac init` and let it write one.
 
 ## Packages are checked before anything is built
 
@@ -492,7 +492,7 @@ round of fixing.
 The check runs **on the instance**, not on your machine. That is where
 every build happens, so it is the only Nix whose answer is the one that
 will count — the same nixpkgs, the same system, the same result. It also
-means cloudlab needs no Nix installed locally; `pkl` is the only tool it
+means bivouac needs no Nix installed locally; `pkl` is the only tool it
 requires that you might not already have.
 
 The trade-off is that the instance has to exist first, so a typo on the
@@ -501,21 +501,21 @@ is caught in seconds, though, instead of part-way through a build.
 
 ## A note on trust
 
-`cloudlab.pkl` and any base config it merges with are evaluated by the
+`bivouac.pkl` and any base config it merges with are evaluated by the
 `pkl` CLI, not just parsed as inert data — Pkl is a real language, and
 evaluating a file can read other files, make HTTP requests, and read
 environment variables as part of producing its result, the same way
-running a build script can. Treat a `cloudlab.pkl` from a source you
+running a build script can. Treat a `bivouac.pkl` from a source you
 don't trust the same way you'd treat an untrusted script, not the same
 way you'd treat a YAML file. For future work that wires this into a
 live `up` command that might run against arbitrary repos, configuring a
-more restrictive Pkl evaluator (limiting what a `cloudlab.pkl` file is
+more restrictive Pkl evaluator (limiting what a `bivouac.pkl` file is
 allowed to read or fetch) is a natural hardening step.
 
 ## Errors you might see
 
-- **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other, or run `cloudlab init`.
-- **"this needs a terminal to ask its questions"** — `cloudlab init`, or `up` with no `cloudlab.pkl`, was run with stdin redirected or in CI. Run it from a terminal, or write the file by hand.
-- **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on cloudlab itself.
-- **"must not declare its own `amends` — cloudlab manages the schema reference automatically; remove that line"** — your `cloudlab.pkl` or base config starts with its own `amends`. Delete that line; cloudlab points your file at its own embedded schema automatically.
+- **"missing required field(s) after merging project and base config: size, template"** — `region`/`size`/`template` weren't set in either your project file or your base config. Set them in one or the other, or run `bivouac init`.
+- **"this needs a terminal to ask its questions"** — `bivouac init`, or `up` with no `bivouac.pkl`, was run with stdin redirected or in CI. Run it from a terminal, or write the file by hand.
+- **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on bivouac itself.
+- **"must not declare its own `amends` — bivouac manages the schema reference automatically; remove that line"** — your `bivouac.pkl` or base config starts with its own `amends`. Delete that line; bivouac points your file at its own embedded schema automatically.
 - A Pkl evaluation error (malformed file, wrong type for a field) is passed through with the file path it came from — Pkl's own error message names the exact line and problem.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // closeTo compares accrued money without demanding bit-exact float

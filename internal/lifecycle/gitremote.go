@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // remoteGitCmd builds a git invocation to run on the instance. See
@@ -127,13 +127,13 @@ const beadsDirPattern = "/.beads/"
 // pull commits a multi-megabyte database and merge cherry-picks it onto the
 // user's branch under their signature.
 //
-// Written by cloudlab before `bd init` runs, rather than relying on bd to
+// Written by bivouac before `bd init` runs, rather than relying on bd to
 // write it: setup is fail-safe, so a `bd init` that fails partway is
 // tolerated -- but it can still leave .beads/ behind, and by then the guard
 // has to already be in place.
 //
 // .git/info/exclude rather than .gitignore, matching excludeWorktreeDir: it
-// is cloudlab's own bookkeeping, not something to add to a file the user
+// is bivouac's own bookkeeping, not something to add to a file the user
 // commits and reviews. grep -qxF makes it idempotent, which session start's
 // retry-safety requires.
 func excludeBeadsCmd(repo string) string {
@@ -148,6 +148,6 @@ func excludeBeadsCmd(repo string) string {
 		"; mkdir -p \"$(dirname \"$e\")\"" +
 		"; touch \"$e\"" +
 		"; grep -qxF " + q(beadsDirPattern) + " \"$e\"" +
-		" || printf '\\n# cloudlab session issue database\\n%s\\n' " + q(beadsDirPattern) + " >> \"$e\""
+		" || printf '\\n# bivouac session issue database\\n%s\\n' " + q(beadsDirPattern) + " >> \"$e\""
 	return shellcmd.LoginShell(inner)
 }

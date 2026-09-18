@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // setupDownTest isolates state so each Down test gets its own store
@@ -405,7 +405,7 @@ func TestDown_SkipsBeadsCheckForASessionWhoseRescueFailed(t *testing.T) {
 // dolt remote for session, without any of the git session-remote plumbing
 // sessionFixture sets up: RescueSession's checkpoint and rev-parse succeed
 // against the fake SSH server regardless, so the local `git fetch
-// cloudlab-<session>` that follows -- with no such remote ever
+// bivouac-<session>` that follows -- with no such remote ever
 // registered -- is what makes the rescue fail. That is deliberately the
 // cheapest way to fail a rescue while still making beads.Wired true.
 func wireBeadsOnlyRepo(t *testing.T, dir, session string) {

@@ -1,4 +1,4 @@
-// Package tool runs the external binaries cloudlab shells out to.
+// Package tool runs the external binaries bivouac shells out to.
 //
 // Shelling out rather than linking libraries is a deliberate, codebase-wide
 // choice; this is where the mechanics of doing so live. A leaf package with
@@ -18,7 +18,7 @@ import (
 	"os/exec"
 )
 
-// install describes a binary cloudlab depends on: how to name it in an error
+// install describes a binary bivouac depends on: how to name it in an error
 // and what to tell the user who does not have it.
 //
 // A table rather than a sentence at each call site, because the hints had
@@ -80,7 +80,7 @@ func Run(ctx context.Context, dir, bin string, args ...string) (string, error) {
 // RunCombined runs bin in dir and returns stdout and stderr together.
 //
 // For output that is going into an error or a warning rather than being
-// parsed: the tools cloudlab runs report the interesting part of a failure
+// parsed: the tools bivouac runs report the interesting part of a failure
 // on stderr, and dropping it leaves the user with an exit status and
 // nothing else.
 func RunCombined(ctx context.Context, dir, bin string, args ...string) (string, error) {
@@ -90,7 +90,7 @@ func RunCombined(ctx context.Context, dir, bin string, args ...string) (string, 
 
 // Passthrough runs bin with this process's own stdin, stdout and stderr, for
 // the commands that hand the terminal over to another program -- ssh, tmux,
-// herdr. No PTY or raw-mode handling of cloudlab's own; the child talks to
+// herdr. No PTY or raw-mode handling of bivouac's own; the child talks to
 // the real terminal.
 func Passthrough(ctx context.Context, bin string, args ...string) error {
 	cmd := command(ctx, "", bin, args...)

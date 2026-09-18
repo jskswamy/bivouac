@@ -14,7 +14,7 @@ import (
 // Read per file rather than off a merged Config, because merging is what
 // destroys the information this needs. pkl concatenates the two listings
 // into one, and a relative path in the result cannot say whether it meant
-// ~/.config/cloudlab or the repository root.
+// ~/.config/bivouac or the repository root.
 //
 // A missing file is an error rather than a warning. A workflow that
 // silently fails to arrive is the failure the whole feature exists to

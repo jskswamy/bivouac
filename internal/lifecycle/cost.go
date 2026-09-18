@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // Cost is what an instance has cost so far and the rate it is costing it
@@ -22,7 +22,7 @@ type Cost struct {
 // ComputeCost works out what vm has accrued by now.
 //
 // The anchor is the provider's creation timestamp rather than anything
-// cloudlab records locally, because that is what the instance is actually
+// bivouac records locally, because that is what the instance is actually
 // billed from -- a droplet adopted or rebuilt outside `up` still bills
 // from when it was created.
 func ComputeCost(vm provider.VM, now time.Time) Cost {

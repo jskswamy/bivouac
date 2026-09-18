@@ -13,7 +13,7 @@ func TestPklCacheDir_UsesXDGCacheHome(t *testing.T) {
 		t.Fatalf("pklCacheDir() error = %v", err)
 	}
 
-	want := filepath.Join("/xdg/cache", "cloudlab", "pkl")
+	want := filepath.Join("/xdg/cache", "bivouac", "pkl")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -28,7 +28,7 @@ func TestPklCacheDir_NoXDG_FallsBackToHomeCache(t *testing.T) {
 		t.Fatalf("pklCacheDir() error = %v", err)
 	}
 
-	want := filepath.Join("/home/alice", ".cache", "cloudlab", "pkl")
+	want := filepath.Join("/home/alice", ".cache", "bivouac", "pkl")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

@@ -42,7 +42,7 @@ func ValidRemoteUser(name string) bool {
 // valid Linux username: any DOMAIN\ prefix stripped, lowercased,
 // invalid characters replaced with "-", prefixed with "u" if it
 // doesn't start with a letter, and capped at 32 characters. Falls back
-// to "cloudlab" if nothing usable remains.
+// to "bivouac" if nothing usable remains.
 //
 // The result is meant to be stored once (in state.Record.User) at
 // instance-creation time, not re-derived on every command -- a later
@@ -65,7 +65,7 @@ func sanitizeUsername(raw string) string {
 	name = invalidUsernameChar.ReplaceAllString(name, "-")
 	name = strings.Trim(name, "-")
 	if name == "" {
-		return "cloudlab"
+		return "bivouac"
 	}
 	if name[0] < 'a' || name[0] > 'z' {
 		name = "u" + name
@@ -79,7 +79,7 @@ func sanitizeUsername(raw string) string {
 	// ever slips through them, the fallback is a working instance with a
 	// dull username instead of a render error at provision time.
 	if !ValidRemoteUser(name) {
-		return "cloudlab"
+		return "bivouac"
 	}
 	return name
 }

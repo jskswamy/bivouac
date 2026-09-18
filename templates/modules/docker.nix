@@ -21,7 +21,7 @@
   # template is actually in use. Runs via sudo since a home-manager
   # activation script runs as this user, not root; cloud-init.sh grants
   # passwordless sudo. Group membership only takes effect for a new
-  # login session, which any later `cloudlab ssh`/reconcile already is.
+  # login session, which any later `bivouac ssh`/reconcile already is.
   home.activation.dockerGroup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     $DRY_RUN_CMD /usr/bin/sudo /usr/sbin/groupadd -f docker
     $DRY_RUN_CMD /usr/bin/sudo /usr/sbin/usermod -aG docker ${config.home.username}

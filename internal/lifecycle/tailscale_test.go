@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // writeTailscaleSecretsFixture generates a fresh age identity, points
@@ -97,13 +97,13 @@ func TestJoinTailscale_WritesKeyAndRunsTailscaleUp(t *testing.T) {
 	if !strings.HasPrefix(commands[0], "bash -lc ") {
 		t.Errorf("commands[0] = %q, want it wrapped in a login shell so tailscale's PATH is set", commands[0])
 	}
-	if !strings.Contains(commands[2], "install -m 600") || !strings.Contains(commands[2], "/run/user/1000/cloudlab-ts-authkey") {
+	if !strings.Contains(commands[2], "install -m 600") || !strings.Contains(commands[2], "/run/user/1000/bivouac-ts-authkey") {
 		t.Errorf("commands[2] = %q, want an install -m 600 into the resolved runtime dir", commands[2])
 	}
 	if string(stdins[2]) != "tskey-abc123-example" {
 		t.Errorf("stdin to the write step = %q, want the decrypted auth key", stdins[2])
 	}
-	if !strings.Contains(commands[3], "up --auth-key=file:") || !strings.Contains(commands[3], "/run/user/1000/cloudlab-ts-authkey") {
+	if !strings.Contains(commands[3], "up --auth-key=file:") || !strings.Contains(commands[3], "/run/user/1000/bivouac-ts-authkey") {
 		t.Errorf("commands[3] = %q, want <tailscale> up --auth-key=file:<path>", commands[3])
 	}
 	// sudo resets PATH to its own secure_path, so the bare name would

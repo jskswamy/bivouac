@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// A named herdr session per cloudlab session, same idea as tmux: reconnecting
+// A named herdr session per bivouac session, same idea as tmux: reconnecting
 // to "auth" should land back in the same herdr session rather than
 // everything sharing one anonymous session. Empty session must emit exactly
 // today's args -- an instance with no session resolved behaves unchanged.
@@ -44,7 +44,7 @@ func TestHerdr_InsideExistingHerdrSession_ReturnsClearErrorWithoutExecing(t *tes
 	if !strings.Contains(err.Error(), "nested") && !strings.Contains(err.Error(), "already inside a herdr session") {
 		t.Errorf("error = %q, want it to explain nesting is the problem", err.Error())
 	}
-	if !strings.Contains(err.Error(), "cloudlab ssh") {
+	if !strings.Contains(err.Error(), "bivouac ssh") {
 		t.Errorf("error = %q, want it to suggest an alternative", err.Error())
 	}
 }

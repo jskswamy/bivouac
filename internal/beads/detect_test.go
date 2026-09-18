@@ -15,27 +15,27 @@ func TestParseRemoteList(t *testing.T) {
 		},
 		{
 			name: "a dolthub remote",
-			out:  "origin https://doltremoteapi.dolthub.com/jskswamy/cloudlab\n",
-			want: []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab"}},
+			out:  "origin https://doltremoteapi.dolthub.com/jskswamy/bivouac\n",
+			want: []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac"}},
 		},
 		{
 			name: "a session git remote",
-			out:  "cloudlab-fix-auth git+ssh://subramk@100.1.2.3/home/subramk/sessions/fix-auth/cloudlab\n",
-			want: []Remote{{Name: "cloudlab-fix-auth", URL: "git+ssh://subramk@100.1.2.3/home/subramk/sessions/fix-auth/cloudlab"}},
+			out:  "bivouac-fix-auth git+ssh://subramk@100.1.2.3/home/subramk/sessions/fix-auth/bivouac\n",
+			want: []Remote{{Name: "bivouac-fix-auth", URL: "git+ssh://subramk@100.1.2.3/home/subramk/sessions/fix-auth/bivouac"}},
 		},
 		{
 			name: "several remotes, ragged column alignment",
-			out: "origin              https://doltremoteapi.dolthub.com/jskswamy/cloudlab\n" +
-				"cloudlab-fix-auth   git+file:///home/subramk/sessions/fix-auth/cloudlab\n",
+			out: "origin              https://doltremoteapi.dolthub.com/jskswamy/bivouac\n" +
+				"bivouac-fix-auth   git+file:///home/subramk/sessions/fix-auth/bivouac\n",
 			want: []Remote{
-				{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab"},
-				{Name: "cloudlab-fix-auth", URL: "git+file:///home/subramk/sessions/fix-auth/cloudlab"},
+				{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac"},
+				{Name: "bivouac-fix-auth", URL: "git+file:///home/subramk/sessions/fix-auth/bivouac"},
 			},
 		},
 		{
 			name: "blank lines and a header are ignored",
-			out:  "NAME URL\n\norigin https://doltremoteapi.dolthub.com/jskswamy/cloudlab\n",
-			want: []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab"}},
+			out:  "NAME URL\n\norigin https://doltremoteapi.dolthub.com/jskswamy/bivouac\n",
+			want: []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac"}},
 		},
 	}
 	for _, tt := range tests {
@@ -67,19 +67,19 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name:     "a git+ssh remote is git mode",
-			remotes:  []Remote{{Name: "cloudlab-x", URL: "git+ssh://u@h/p"}},
+			remotes:  []Remote{{Name: "bivouac-x", URL: "git+ssh://u@h/p"}},
 			wantMode: ModeGit,
 		},
 		{
 			name:     "a git+file remote is git mode",
-			remotes:  []Remote{{Name: "cloudlab-x", URL: "git+file:///p"}},
+			remotes:  []Remote{{Name: "bivouac-x", URL: "git+file:///p"}},
 			wantMode: ModeGit,
 		},
 		{
 			name:       "an https remote is external",
-			remotes:    []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab"}},
+			remotes:    []Remote{{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac"}},
 			wantMode:   ModeExternal,
-			wantExtURL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab",
+			wantExtURL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac",
 		},
 		{
 			name:       "an aws remote is external",
@@ -93,11 +93,11 @@ func TestClassify(t *testing.T) {
 			// URL is the one thing the caller cannot reconstruct itself.
 			name: "external wins when both are present",
 			remotes: []Remote{
-				{Name: "cloudlab-x", URL: "git+ssh://u@h/p"},
-				{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab"},
+				{Name: "bivouac-x", URL: "git+ssh://u@h/p"},
+				{Name: "origin", URL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac"},
 			},
 			wantMode:   ModeExternal,
-			wantExtURL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab",
+			wantExtURL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac",
 		},
 	}
 	for _, tt := range tests {

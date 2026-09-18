@@ -23,7 +23,7 @@ type instanceRunner interface {
 // Wired reports whether beads was set up for this session on this machine.
 //
 // The presence of the session's dolt remote is the whole answer, and it is a
-// better one than cloudlab.pkl could give: pull, merge, delete and down never
+// better one than bivouac.pkl could give: pull, merge, delete and down never
 // resolve a config -- down runs from any directory -- and a session started
 // while beads was off must stay off for the rest of its life regardless of
 // what the file says now. Same principle the spec applies to mode detection,
@@ -102,7 +102,7 @@ var ErrBdMissing = errors.New("no bd installed on the instance")
 //
 // Two phrasings cover the shells an instance might log in with: bash and zsh
 // both say "command not found", dash and sh say "<name>: not found". The
-// instance's login shell is not cloudlab's to choose, and a shell that
+// instance's login shell is not bivouac's to choose, and a shell that
 // phrases it a third way simply falls through to the generic message.
 func bdMissing(out string) bool {
 	return strings.Contains(out, "command not found") || strings.Contains(out, "bd: not found")

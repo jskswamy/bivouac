@@ -29,7 +29,7 @@ let
   moshiHook = pkgs.callPackage ./moshi-hook-pkg.nix { };
 
   # The agent's issue tracker. Installed unconditionally rather than gated on
-  # cloudlab.pkl's `beads` field: it is a single small binary, and gating it
+  # bivouac.pkl's `beads` field: it is a single small binary, and gating it
   # would mean an instance provisioned before someone enabled beads could not
   # sync until it was reprovisioned.
   beads = pkgs.callPackage ./beads-pkg.nix { };
@@ -41,7 +41,7 @@ let
   herdr = pkgs.callPackage ./herdr-pkg.nix { };
 in
 {
-  options.cloudlab.tailscale = lib.mkOption {
+  options.bivouac.tailscale = lib.mkOption {
     type = lib.types.bool;
     default = false;
     description = "Enable Tailscale daemon on this instance";
@@ -89,12 +89,12 @@ in
   # mkDefault so a personal base.pkl-declared flake module can set
   # its own home.file.".tmux.conf.local".source later and win -- the
   # same personal-customization path packages/flakes already use (see
-  # docs/config.md), no new cloudlab.pkl field needed for this.
+  # docs/config.md), no new bivouac.pkl field needed for this.
   config.home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
   config.home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
 
   # The Moshi mobile client supports herdr out of the box, so a phone
-  # paired via `cloudlab pair` expects a herdr server to be listening
+  # paired via `bivouac pair` expects a herdr server to be listening
   # here. herdr does launch one on demand at first attach (per `herdr
   # --help`), and that server outlives whichever session spawned it --
   # one was measured still running 59 minutes later with PPID 1 -- so
@@ -111,7 +111,7 @@ in
   # `herdr server` refuses to share its socket and exits 1 when one is
   # already being served. At boot nothing has attached yet, so the unit
   # wins that race and starts the server it is here to start. Re-running
-  # `cloudlab provision` against a live instance someone has already
+  # `bivouac provision` against a live instance someone has already
   # attached to is the case where it does not: a server is up, systemd
   # simply is not the thing that started it. Treating that exit as
   # success keeps provision idempotent -- without it the collision fails
@@ -138,10 +138,10 @@ in
   # either directly. cloud-init.sh grants it passwordless sudo, so this
   # still starts non-interactively.
   #
-  # Only enabled when cloudlab.tailscale is true (set by provisioning
-  # when user sets tailscale: true in cloudlab.pkl) -- otherwise
+  # Only enabled when bivouac.tailscale is true (set by provisioning
+  # when user sets tailscale: true in bivouac.pkl) -- otherwise
   # tailscaled starting during provisioning would block SSH.
-  config.systemd.user.services.tailscaled = lib.mkIf config.cloudlab.tailscale {
+  config.systemd.user.services.tailscaled = lib.mkIf config.bivouac.tailscale {
     Unit.Description = "Tailscale daemon";
     Service = {
       ExecStart = "/usr/bin/sudo ${pkgs.tailscale}/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state";

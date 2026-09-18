@@ -9,8 +9,8 @@ import (
 )
 
 func TestSSHGitURL_IsAnSSHURLNotAScpPath(t *testing.T) {
-	got := sshGitURL("devuser", "203.0.113.5", "/home/devuser/sessions/auth/cloudlab")
-	want := "ssh://devuser@203.0.113.5/home/devuser/sessions/auth/cloudlab"
+	got := sshGitURL("devuser", "203.0.113.5", "/home/devuser/sessions/auth/bivouac")
+	want := "ssh://devuser@203.0.113.5/home/devuser/sessions/auth/bivouac"
 	if got != want {
 		t.Errorf("sshGitURL() = %q, want %q", got, want)
 	}
@@ -19,11 +19,11 @@ func TestSSHGitURL_IsAnSSHURLNotAScpPath(t *testing.T) {
 // The Mac's branch can be called anything; on the instance it is always the
 // session branch, so the refspec has to map one to the other.
 func TestPushArgs_MapsTheLocalCommitOntoTheSessionBranch(t *testing.T) {
-	got := pushArgs("ssh://devuser@203.0.113.5/sessions/auth/repo", "HEAD", "cloudlab/auth")
+	got := pushArgs("ssh://devuser@203.0.113.5/sessions/auth/repo", "HEAD", "bivouac/auth")
 	if got[0] != "push" {
 		t.Errorf("pushArgs()[0] = %q, want push", got[0])
 	}
-	if !slices.Contains(got, "HEAD:refs/heads/cloudlab/auth") {
+	if !slices.Contains(got, "HEAD:refs/heads/bivouac/auth") {
 		t.Errorf("pushArgs() = %v, want HEAD mapped onto the session branch", got)
 	}
 	// Never force: a non-fast-forward here means the instance has work we
@@ -35,15 +35,15 @@ func TestPushArgs_MapsTheLocalCommitOntoTheSessionBranch(t *testing.T) {
 }
 
 func TestSessionRemote_IsNamespacedPerSession(t *testing.T) {
-	if got := sessionRemote("auth"); got != "cloudlab-auth" {
-		t.Errorf("sessionRemote() = %q, want cloudlab-auth", got)
+	if got := sessionRemote("auth"); got != "bivouac-auth" {
+		t.Errorf("sessionRemote() = %q, want bivouac-auth", got)
 	}
 }
 
 // The whole point of a named remote is that plain git works against it.
 func TestFetchRemoteArgs_IsAnOrdinaryFetch(t *testing.T) {
-	got := fetchRemoteArgs("cloudlab-auth")
-	if got[0] != "fetch" || !slices.Contains(got, "cloudlab-auth") {
+	got := fetchRemoteArgs("bivouac-auth")
+	if got[0] != "fetch" || !slices.Contains(got, "bivouac-auth") {
 		t.Errorf("fetchRemoteArgs() = %v, want a plain fetch of the named remote", got)
 	}
 }
@@ -52,14 +52,14 @@ func TestFetchRemoteArgs_IsAnOrdinaryFetch(t *testing.T) {
 // non-branch ref does not: it reports "up to date", re-signs nothing, and
 // leaves HEAD detached while the user's branch never moves.
 func TestCherryPickSignArgs_SignsAndTakesARange(t *testing.T) {
-	got := cherryPickSignArgs("HEAD..cloudlab-auth/cloudlab/auth")
+	got := cherryPickSignArgs("HEAD..bivouac-auth/bivouac/auth")
 	if got[0] != "cherry-pick" {
 		t.Errorf("cherryPickSignArgs()[0] = %q, want cherry-pick", got[0])
 	}
 	if !slices.Contains(got, "-S") {
 		t.Errorf("cherryPickSignArgs() = %v, want -S so each replayed commit is signed", got)
 	}
-	if !slices.Contains(got, "HEAD..cloudlab-auth/cloudlab/auth") {
+	if !slices.Contains(got, "HEAD..bivouac-auth/bivouac/auth") {
 		t.Errorf("cherryPickSignArgs() = %v, want the range preserved", got)
 	}
 }

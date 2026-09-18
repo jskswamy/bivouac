@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/jskswamy/cloudlab/internal/wizard"
+	"github.com/jskswamy/bivouac/internal/wizard"
 )
 
 // formPrompter asks the init flow's questions with huh forms.
@@ -97,7 +97,7 @@ func (formPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
 	}
 	options = append(options, huh.NewOption("Type a fingerprint or key ID…", manualKeyEntry))
 
-	description := "Keys on this machine. cloudlab cannot check these against your account without a token, and an unregistered key makes `up` fail before anything is created."
+	description := "Keys on this machine. bivouac cannot check these against your account without a token, and an unregistered key makes `up` fail before anything is created."
 	if offer.AccountKnown {
 		description = "Keys on this machine and on your provider account."
 	}

@@ -1,6 +1,6 @@
 // A personal base config — not committed to any individual project's
-// repo. Lives at $XDG_CONFIG_HOME/cloudlab/base.pkl (or
-// ~/.config/cloudlab/base.pkl) on a real machine; this copy exists
+// repo. Lives at $XDG_CONFIG_HOME/bivouac/base.pkl (or
+// ~/.config/bivouac/base.pkl) on a real machine; this copy exists
 // only to demonstrate the merge pattern.
 size = "s-1vcpu-1gb"
 sshKeys {
@@ -12,7 +12,7 @@ packages {
 }
 // Delivered to every coding agent on the instance, for every project.
 // Paths are relative to this file: on a real machine this would be
-// "workflow.md", naming ~/.config/cloudlab/workflow.md. This copy
+// "workflow.md", naming ~/.config/bivouac/workflow.md. This copy
 // reaches sideways so the example resolves from inside the repo.
 instructions {
   "../instructions/workflow.md"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestParseListeners_RealSSOutput(t *testing.T) {

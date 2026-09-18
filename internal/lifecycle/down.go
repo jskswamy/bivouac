@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // deregisterTailscale best-effort logs the instance out of its
@@ -17,10 +17,10 @@ import (
 // failed logout must never block VM teardown. Skipped entirely if
 // this instance never actually joined, checked
 // via record.TailscaleJoined rather than a freshly-resolved
-// cloudlab.pkl -- Down never receives a config.Config, and the
+// bivouac.pkl -- Down never receives a config.Config, and the
 // config's current value could differ from what actually happened
 // (the toggle could've changed, or the instance could've been joined
-// manually via `cloudlab tailscale` with the config still false).
+// manually via `bivouac tailscale` with the config still false).
 func deregisterTailscale(ctx context.Context, record state.Record) {
 	if !record.TailscaleJoined {
 		return
@@ -46,8 +46,8 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 
 // Down tears an instance down: rescues any session's work (unless
 // force), destroys the VM, and clears its state record. A VM that's
-// already gone (destroyed outside cloudlab) is treated as success,
-// not an error -- state is cleared either way so cloudlab's view
+// already gone (destroyed outside bivouac) is treated as success,
+// not an error -- state is cleared either way so bivouac's view
 // converges with reality. If Destroy fails for any other reason,
 // state is still cleared (so a stuck record can't block a retry), but
 // the error is still returned so the user knows to check the
@@ -103,7 +103,7 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 			// a second, doomed round trip on it. Only which error gets
 			// reported is limited to the first.
 			if firstErr == nil {
-				firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: cloudlab down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
+				firstErr = fmt.Errorf("could not rescue session %s from %s: %w\n\nthe instance still exists and is still being billed.\n%d of %d sessions were checked; none were removed.\nfix and retry, or destroy anyway with: bivouac down --force", s.Name, record.Name, err, len(record.Sessions), len(record.Sessions))
 			}
 			continue
 		}

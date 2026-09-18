@@ -81,7 +81,7 @@ func TestDeclaredFields(t *testing.T) {
 
 func TestReadValues_OnlyWhatTheFileDeclares(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, path, strings.Join([]string{
 		`region = "nyc3"`,
 		`template = "python"`,
@@ -162,7 +162,7 @@ func TestReadValues_RoundTripsRender(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
 		t.Fatalf("writing rendered config: %v", err)
 	}
@@ -180,9 +180,9 @@ func TestReadValues_RoundTripsRender(t *testing.T) {
 // declare must survive a read and a re-render.
 func TestReadValues_ExampleReRendersToTheSameFields(t *testing.T) {
 	for _, rel := range []string{
-		filepath.Join("docs", "examples", "minimal", "cloudlab.pkl"),
+		filepath.Join("docs", "examples", "minimal", "bivouac.pkl"),
 		filepath.Join("docs", "examples", "with-base", "base.pkl"),
-		filepath.Join("docs", "examples", "with-base", "cloudlab.pkl"),
+		filepath.Join("docs", "examples", "with-base", "bivouac.pkl"),
 	} {
 		t.Run(rel, func(t *testing.T) {
 			path := filepath.Join(repoRoot(t), rel)

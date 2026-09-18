@@ -29,7 +29,7 @@ func TestRender_WithNoFilesIsFactsOnly(t *testing.T) {
 }
 
 // User content is transported, never interpreted: it arrives byte for
-// byte, in order, after cloudlab's own block.
+// byte, in order, after bivouac's own block.
 func TestRender_AppendsFilesVerbatimInOrder(t *testing.T) {
 	dir := t.TempDir()
 	first := filepath.Join(dir, "a.md")
@@ -48,7 +48,7 @@ func TestRender_AppendsFilesVerbatimInOrder(t *testing.T) {
 		t.Error("files delivered out of order")
 	}
 	if strings.Index(got, "Commits are what survive") > strings.Index(got, "# Mine") {
-		t.Error("user content came before cloudlab's block")
+		t.Error("user content came before bivouac's block")
 	}
 	if !strings.HasSuffix(strings.TrimSpace(got), EndMarker) {
 		t.Errorf("block not closed by the end marker:\n%s", got)
@@ -116,7 +116,7 @@ func TestSplice_ConvergesOnRepeatedApplication(t *testing.T) {
 }
 
 // A begin marker with nothing to close it is the mark of an interrupted
-// write -- nothing but cloudlab ever writes a begin marker, and cloudlab
+// write -- nothing but bivouac ever writes a begin marker, and bivouac
 // always writes both together. Everything from that begin marker to EOF
 // is our own truncated block, not the user's, so it is safe to discard,
 // but content before the marker is the user's and must survive.
@@ -157,7 +157,7 @@ func countOnOwnLines(s, marker string) int {
 	return n
 }
 
-// cloudlab's own documentation quotes both markers in order, so a user's
+// bivouac's own documentation quotes both markers in order, so a user's
 // instructions file can hold the pair as prose while holding no managed
 // block at all. A substring search finds the quoted end marker, cuts the
 // file there and re-appends the tail alongside a fresh block -- on every
@@ -166,7 +166,7 @@ func countOnOwnLines(s, marker string) int {
 func TestSplice_IgnoresMarkersQuotedInUserProse(t *testing.T) {
 	existing := "# Notes\n\n" +
 		"The block is delimited by `" + BeginMarker + "` and `" + EndMarker + "`.\n" +
-		"Everything between them belongs to cloudlab.\n"
+		"Everything between them belongs to bivouac.\n"
 	block := BeginMarker + "\nnew content\n" + EndMarker
 
 	got := Splice(existing, block)
@@ -185,11 +185,11 @@ func TestSplice_IgnoresMarkersQuotedInUserProse(t *testing.T) {
 	}
 }
 
-// A file cloudlab has already written, whose user half quotes both
+// A file bivouac has already written, whose user half quotes both
 // markers above the managed block, must still converge on exactly one
 // pair. A substring search cuts at the quoted markers instead, burying
 // the new block inside the user's sentence and leaving the real block
-// below it untouched -- so the user's prose is destroyed and cloudlab's
+// below it untouched -- so the user's prose is destroyed and bivouac's
 // own facts silently stop updating on every later write.
 func TestSplice_ConvergesWhenUserProseQuotesTheMarkers(t *testing.T) {
 	prose := "# Notes\n\nSee `" + BeginMarker + "` and `" + EndMarker + "` in the docs.\n"
@@ -253,7 +253,7 @@ func TestRender_FactsContainBacktickedCodeSpans(t *testing.T) {
 		"`pwd`",
 		"`git branch --show-current`",
 		"`git add -A`",
-		"`cloudlab down`",
+		"`bivouac down`",
 		"`../TASK.md`",
 		"`bd list --status in_progress`",
 		"`bd ready`",

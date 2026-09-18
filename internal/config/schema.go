@@ -13,16 +13,16 @@ var embeddedSchema []byte
 
 // injectSchema copies raw (a project or personal-base file's content,
 // which must not declare its own amends) into a fresh temp file that
-// amends cloudlab's own embedded schema, so callers never need to know
+// amends bivouac's own embedded schema, so callers never need to know
 // or reference the schema's location themselves. Returns the temp
 // file's path and a cleanup func that removes its containing directory
 // (including the embedded schema copy written alongside it).
 func injectSchema(path string, raw []byte) (tmpPath string, cleanup func(), err error) {
 	if hasAmends(raw) {
-		return "", nil, fmt.Errorf("%s: must not declare its own `amends` — cloudlab manages the schema reference automatically; remove that line", path)
+		return "", nil, fmt.Errorf("%s: must not declare its own `amends` — bivouac manages the schema reference automatically; remove that line", path)
 	}
 
-	dir, err := os.MkdirTemp("", "cloudlab-config-*")
+	dir, err := os.MkdirTemp("", "bivouac-config-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("preparing schema for %s: %w", path, err)
 	}

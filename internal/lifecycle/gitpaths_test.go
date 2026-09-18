@@ -7,8 +7,8 @@ import (
 )
 
 func TestSessionBranch_IsNamespaced(t *testing.T) {
-	if got := SessionBranch("auth-refactor"); got != "cloudlab/auth-refactor" {
-		t.Errorf("SessionBranch() = %q, want cloudlab/auth-refactor", got)
+	if got := SessionBranch("auth-refactor"); got != "bivouac/auth-refactor" {
+		t.Errorf("SessionBranch() = %q, want bivouac/auth-refactor", got)
 	}
 }
 
@@ -18,14 +18,14 @@ func TestSessionDir_IsTheRepoPathsParent(t *testing.T) {
 	if got != want {
 		t.Errorf("SessionDir() = %q, want %q", got, want)
 	}
-	if RemoteRepoPath("devuser", "auth-refactor", "cloudlab") != got+"/cloudlab" {
+	if RemoteRepoPath("devuser", "auth-refactor", "bivouac") != got+"/bivouac" {
 		t.Errorf("RemoteRepoPath() and SessionDir() disagree; they must derive from the same path")
 	}
 }
 
 func TestRemoteRepoPath_IsPerSession(t *testing.T) {
-	got := RemoteRepoPath("devuser", "auth-refactor", "cloudlab")
-	want := "/home/devuser/sessions/auth-refactor/cloudlab"
+	got := RemoteRepoPath("devuser", "auth-refactor", "bivouac")
+	want := "/home/devuser/sessions/auth-refactor/bivouac"
 	if got != want {
 		t.Errorf("RemoteRepoPath() = %q, want %q", got, want)
 	}
@@ -35,7 +35,7 @@ func TestRemoteRepoPath_IsPerSession(t *testing.T) {
 // tools scope themselves to the project directory and cannot reach a
 // worktree created anywhere else, the home directory included.
 func TestLocalWorktreePath_IsInsideTheProject(t *testing.T) {
-	repo := filepath.Join("Users", "dev", "src", "cloudlab")
+	repo := filepath.Join("Users", "dev", "src", "bivouac")
 	got := LocalWorktreePath(repo, "auth-refactor")
 	want := filepath.Join(repo, ".worktrees", "auth-refactor")
 	if got != want {
@@ -44,7 +44,7 @@ func TestLocalWorktreePath_IsInsideTheProject(t *testing.T) {
 }
 
 func TestLocalWorktreePath_StaysUnderTheRepoForEverySession(t *testing.T) {
-	repo := filepath.Join("Users", "dev", "src", "cloudlab")
+	repo := filepath.Join("Users", "dev", "src", "bivouac")
 	for _, session := range []string{"auth", "docs", "a-b-c"} {
 		got := LocalWorktreePath(repo, session)
 		rel, err := filepath.Rel(repo, got)

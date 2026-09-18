@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // TaskText builds what ~/sessions/<name>/TASK.md should say, or "" when the

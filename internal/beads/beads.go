@@ -1,4 +1,4 @@
-// Package beads wires a repository's beads issue database into a cloudlab
+// Package beads wires a repository's beads issue database into a bivouac
 // session, so the agent on the instance can read the issue it was given,
 // close it, and file the follow-ups it finds.
 //
@@ -8,7 +8,7 @@
 //
 // The transport is the session's own git repository. A dolt remote whose URL
 // carries the git+ scheme stores the database as refs/dolt/data inside an
-// ordinary git repository, and cloudlab already maintains exactly such a
+// ordinary git repository, and bivouac already maintains exactly such a
 // repository per session, reachable over the SSH channel the session's code
 // already uses. No credential ever reaches the instance for this to work.
 package beads
@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // Available reports whether bd is on this machine's PATH. Callers use it to

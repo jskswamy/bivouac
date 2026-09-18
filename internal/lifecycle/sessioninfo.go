@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // SessionInfo is what `session list` and `status` display.

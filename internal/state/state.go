@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/jskswamy/cloudlab/internal/xdg"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
 // Record is one instance's state: which provider created it and its VM
@@ -42,20 +42,20 @@ type Session struct {
 	// travel with the session rather than be assumed equal to the record's
 	// name at every later lookup.
 	//
-	// Empty means cloudlab never recorded one, which is every session that
+	// Empty means bivouac never recorded one, which is every session that
 	// predates this field; callers fall back to the record's name, which
 	// is correct for exactly the case that fallback was the only behavior.
 	RepoName string `json:"repo_name,omitempty"`
-	// HerdrMachineID is the saved-machine profile `cloudlab herdr`
+	// HerdrMachineID is the saved-machine profile `bivouac herdr`
 	// registered for this session, if any.
 	//
 	// Recorded rather than inferred. A herdr profile carries no owner
 	// field, so matching on label or target could be defeated by a rename
 	// or by a profile the user added themselves -- and teardown would then
-	// delete something that was never cloudlab's. Holding the id makes
+	// delete something that was never bivouac's. Holding the id makes
 	// cleanup exact: it removes this profile and can see no other.
 	//
-	// Empty means cloudlab never registered one, which is also every
+	// Empty means bivouac never registered one, which is also every
 	// session that predates this field.
 	HerdrMachineID string `json:"herdr_machine_id,omitempty"`
 }

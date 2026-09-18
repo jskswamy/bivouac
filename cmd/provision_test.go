@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestProvisionCommand_NotInRepoErrors(t *testing.T) {
@@ -65,7 +65,7 @@ func TestProvisionCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 }
 
 // The same divergence as TestUpCommand_NotInRepoErrorsEvenWithAnExplicitName:
-// provision resolves cloudlab.pkl from the repository root, so an explicitly
+// provision resolves bivouac.pkl from the repository root, so an explicitly
 // named instance does not excuse it from finding one.
 func TestProvisionCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
 	for _, args := range [][]string{
@@ -83,7 +83,7 @@ func TestProvisionCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
 
 			err := root.Execute()
 			if err == nil {
-				t.Fatal("expected an error: cloudlab.pkl cannot be found without a repository root")
+				t.Fatal("expected an error: bivouac.pkl cannot be found without a repository root")
 			}
 			if !strings.Contains(err.Error(), "use --repo") {
 				t.Errorf("error = %q, want mention of --repo", err.Error())

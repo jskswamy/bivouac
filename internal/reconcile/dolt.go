@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // validDoltCredsID matches a DoltHub creds id -- the JWK's filename stem --
@@ -50,7 +50,7 @@ func sanitizeDoltCredsID(id string) error {
 // symlinkPrepareScript builds the remote shell script that points
 // linkName (a dotfile path relative to $HOME, e.g. ".dolt" or
 // ".config/gh") at targetDir, without disturbing anything already there
-// that isn't cloudlab's own symlink. It is a plain string builder,
+// that isn't bivouac's own symlink. It is a plain string builder,
 // deliberately factored out of its callers so it can be run directly
 // against a scratch $HOME in tests -- the real target of this logic is the
 // shell, not the Go wrapper around it.
@@ -61,7 +61,7 @@ func sanitizeDoltCredsID(id string) error {
 // pointing at targetDir is left alone (and re-linked, harmlessly, since
 // ln -sfn is idempotent); a symlink pointing anywhere else, live or
 // dangling, is foreign and reported via NOTASYMLINK exactly like a real
-// directory or a regular file -- none of those are cloudlab's to touch.
+// directory or a regular file -- none of those are bivouac's to touch.
 func symlinkPrepareScript(linkName, targetDir string) string {
 	link := "\"$HOME/" + linkName + "\""
 	target := shellcmd.Quote(targetDir)
@@ -101,10 +101,10 @@ func doltPrepareScript(doltDir string) string {
 // account, not a session, so it is placed once by the path both `up` and
 // `provision` run, and every session on the instance uses it. That is what
 // lets N sessions share one instance with no per-session credential juggling,
-// and it makes recovery after a reboot `cloudlab provision`, which is already
+// and it makes recovery after a reboot `bivouac provision`, which is already
 // idempotent.
 //
-// ~/.dolt is a symlink to $XDG_RUNTIME_DIR/cloudlab/dolt, which is tmpfs. bd
+// ~/.dolt is a symlink to $XDG_RUNTIME_DIR/bivouac/dolt, which is tmpfs. bd
 // and dolt find the credential where they always look, so nothing has to
 // remember an environment variable, and the plaintext still only ever exists
 // in tmpfs. DOLT_ROOT_PATH was rejected precisely because it would have to be
@@ -117,7 +117,7 @@ func doltPrepareScript(doltDir string) string {
 // get is a broken instance; beads sharing has a working fallback that needs
 // no credential at all.
 //
-// repoRoot is the local repository cloudlab.pkl lives beside. Skipped unless
+// repoRoot is the local repository bivouac.pkl lives beside. Skipped unless
 // that repository is itself in ModeExternal: seedBeads only ever wires the
 // instance-side "dolthub" remote from a repository already in that mode, so
 // one with no beads database at all -- or a git-mode one -- gets nothing that
@@ -198,8 +198,8 @@ func placeDoltCredentialFor(ctx context.Context, client *Client, detected beads.
 		return
 	}
 
-	doltDir := runtimeDir + "/cloudlab/dolt"
-	// Anything already at ~/.dolt that is not cloudlab's own symlink to
+	doltDir := runtimeDir + "/bivouac/dolt"
+	// Anything already at ~/.dolt that is not bivouac's own symlink to
 	// doltDir -- a real directory, a regular file, or a symlink pointing
 	// anywhere else (live or dangling) -- is left completely alone: this
 	// neither clobbers something the user set up themselves nor writes an
@@ -211,7 +211,7 @@ func placeDoltCredentialFor(ctx context.Context, client *Client, detected beads.
 		return
 	}
 	if strings.Contains(out, "NOTASYMLINK") {
-		provider.ReportWarning(ctx, "beads: ~/.dolt on the instance already exists and is not cloudlab's symlink — leaving it alone and not placing a credential; issues will sync over the session remote only")
+		provider.ReportWarning(ctx, "beads: ~/.dolt on the instance already exists and is not bivouac's symlink — leaving it alone and not placing a credential; issues will sync over the session remote only")
 		return
 	}
 

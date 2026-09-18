@@ -6,13 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/tui"
+	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/tui"
 )
 
 // instanceIdentity resolves the repository root and the instance name for a
-// command that needs both -- the `cloudlab <verb> [name]` prologue that up
+// command that needs both -- the `bivouac <verb> [name]` prologue that up
 // and provision each had their own copy of.
 func instanceIdentity(cmd *cobra.Command, args []string) (root, name string, err error) {
 	repoFlag, _ := cmd.Flags().GetString("repo")

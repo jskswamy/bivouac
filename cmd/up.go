@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
 )
 
 func newUpCmd() *cobra.Command {
@@ -24,12 +24,12 @@ func newUpCmd() *cobra.Command {
 				return err
 			}
 
-			cloudlabPath := filepath.Join(root, "cloudlab.pkl")
-			cfg, err := resolveOrInit(cmd, cloudlabPath, root)
+			bivouacPath := filepath.Join(root, "bivouac.pkl")
+			cfg, err := resolveOrInit(cmd, bivouacPath, root)
 			if err != nil {
 				return err
 			}
-			cfg, err = ensureSSHKeys(cmd, cfg, cloudlabPath)
+			cfg, err = ensureSSHKeys(cmd, cfg, bivouacPath)
 			if err != nil {
 				return err
 			}
@@ -55,7 +55,7 @@ func newUpCmd() *cobra.Command {
 				return nil
 			}
 
-			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, cloudlabPath, root); err != nil {
+			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, bivouacPath, root); err != nil {
 				return err
 			}
 			cmd.Printf("Instance %s is up\n", name)
@@ -69,29 +69,29 @@ func newUpCmd() *cobra.Command {
 // interactive flow when the repository has none yet and then loading
 // what that wrote.
 //
-// This does not contradict the earlier decision that cloudlab.pkl must
+// This does not contradict the earlier decision that bivouac.pkl must
 // exist with no implicit fallback: the file still exists before
 // Reconcile runs. Creating it by asking is only friendlier than
 // refusing -- and refusing is still what happens with no terminal to
 // ask on, because a form blocked on stdin that never arrives looks
 // exactly like a hang.
-func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Resolved, error) {
-	cfg, err := config.Resolve(cmd.Context(), cloudlabPath)
+func resolveOrInit(cmd *cobra.Command, bivouacPath, root string) (config.Resolved, error) {
+	cfg, err := config.Resolve(cmd.Context(), bivouacPath)
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		return cfg, err
 	}
 	if terr := requireTerminal(isInteractive()); terr != nil {
-		return config.Resolved{}, fmt.Errorf("no cloudlab.pkl in %s: %w", root, terr)
+		return config.Resolved{}, fmt.Errorf("no bivouac.pkl in %s: %w", root, terr)
 	}
-	cmd.Printf("No cloudlab.pkl in %s yet — let's create one.\n", root)
+	cmd.Printf("No bivouac.pkl in %s yet — let's create one.\n", root)
 	if err := runInitFlow(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root); err != nil {
 		return config.Resolved{}, err
 	}
-	return config.Resolve(cmd.Context(), cloudlabPath)
+	return config.Resolve(cmd.Context(), bivouacPath)
 }
 
 // ensureSSHKeys asks for and records at least one SSH key when cfg has
-// none, reusing the exact discovery/upload flow `cloudlab init` offers
+// none, reusing the exact discovery/upload flow `bivouac init` offers
 // for the same question -- scoped to just this one field, since up has
 // no business re-litigating region, size or template just because a key
 // is missing.
@@ -107,23 +107,23 @@ func resolveOrInit(cmd *cobra.Command, cloudlabPath, root string) (config.Resolv
 // up is the one place that spends money on the strength of the answer,
 // so here it refuses rather than repeating the mistake it exists to
 // prevent.
-func ensureSSHKeys(cmd *cobra.Command, cfg config.Resolved, cloudlabPath string) (config.Resolved, error) {
+func ensureSSHKeys(cmd *cobra.Command, cfg config.Resolved, bivouacPath string) (config.Resolved, error) {
 	if cfg.SshKeys != nil && len(*cfg.SshKeys) > 0 {
 		return cfg, nil
 	}
 	if err := requireTerminal(isInteractive()); err != nil {
 		return config.Resolved{}, fmt.Errorf("no SSH keys configured, and up refuses to create an instance nothing can log into: %w", err)
 	}
-	return ensureSSHKeysWith(cmd, cloudlabPath, newFormPrompter(), defaultKeySources())
+	return ensureSSHKeysWith(cmd, bivouacPath, newFormPrompter(), defaultKeySources())
 }
 
 // ensureSSHKeysWith asks for and records at least one SSH key, reusing
-// the same discovery/upload flow `cloudlab init` offers for the same
+// the same discovery/upload flow `bivouac init` offers for the same
 // question. Split from ensureSSHKeys, which owns the "already has keys"
 // and "no terminal" checks, so this half -- the asking, writing and
 // refuse-on-empty logic -- is testable without a terminal, an ssh-agent
 // or a network, the same split runInitFlow/runInitFlowWith uses.
-func ensureSSHKeysWith(cmd *cobra.Command, cloudlabPath string, p prompter, keys keySources) (config.Resolved, error) {
+func ensureSSHKeysWith(cmd *cobra.Command, bivouacPath string, p prompter, keys keySources) (config.Resolved, error) {
 	basePath, err := config.DefaultBasePath()
 	if err != nil {
 		return config.Resolved{}, err
@@ -133,7 +133,7 @@ func ensureSSHKeysWith(cmd *cobra.Command, cloudlabPath string, p prompter, keys
 		return config.Resolved{}, err
 	}
 
-	cmd.Printf("%s has no sshKeys configured — up will create an instance nothing can log into without one.\n", cloudlabPath)
+	cmd.Printf("%s has no sshKeys configured — up will create an instance nothing can log into without one.\n", bivouacPath)
 	chosen, err := askSSHKeys(cmd.Context(), cmd.OutOrStdout(), p, keys, currentKeys(existing))
 	if err != nil {
 		return config.Resolved{}, err
@@ -149,7 +149,7 @@ func ensureSSHKeysWith(cmd *cobra.Command, cloudlabPath string, p prompter, keys
 	}
 	cmd.Printf("Wrote %s\n", basePath)
 
-	return config.Resolve(cmd.Context(), cloudlabPath)
+	return config.Resolve(cmd.Context(), bivouacPath)
 }
 
 // upSummary describes the instance up is about to create, for

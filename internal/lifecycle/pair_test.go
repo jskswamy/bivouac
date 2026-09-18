@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 func TestPairArgs_BuildsExpectedCommand(t *testing.T) {
@@ -21,7 +21,7 @@ func TestPairArgs_BuildsExpectedCommand(t *testing.T) {
 	}
 }
 
-// The QR may advertise the tailnet address while cloudlab itself still
+// The QR may advertise the tailnet address while bivouac itself still
 // reaches the instance over the public one -- otherwise pairing would
 // break whenever this machine happens to be off the tailnet.
 func TestPairArgs_SSHesOverPublicWhileAdvertisingTailnet(t *testing.T) {

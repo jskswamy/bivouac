@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/digitalocean/godo"
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // ListKeys returns every SSH key on the account.

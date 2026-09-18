@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/xdg"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
-// Dir returns cloudlab's own configuration directory:
-// $XDG_CONFIG_HOME/cloudlab if set, else ~/.config/cloudlab; see
+// Dir returns bivouac's own configuration directory:
+// $XDG_CONFIG_HOME/bivouac if set, else ~/.config/bivouac; see
 // internal/xdg for that rule.
 //
 // Exported because the personal base config is no longer the only thing

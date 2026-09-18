@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // Provider implements provider.Provider against the DigitalOcean API.

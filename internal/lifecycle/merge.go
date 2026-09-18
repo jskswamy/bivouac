@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // MergeSession accepts a session's work: it rescues anything outstanding,
@@ -35,8 +35,8 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 	// replayed commit adds that same path -- which git refuses on its own,
 	// with a better message than this one could give. Counting all untracked
 	// content made merge unusable in any repository holding a stray file:
-	// cloudlab's own cloudlab.pkl is untracked and not gitignored, so cloudlab
-	// shipped a file that broke cloudlab merge.
+	// bivouac's own bivouac.pkl is untracked and not gitignored, so bivouac
+	// shipped a file that broke bivouac merge.
 	status, err := runLocalGit(ctx, localRepo, "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return nil, fmt.Errorf("checking working tree: %w\n%s", err, status)
@@ -70,7 +70,7 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 		synced := pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
 		_ = client.Close()
 		if !synced {
-			provider.ReportWarning(ctx, fmt.Sprintf("beads: merge removes the session repository, and its issue database with it — any issue edits that did not sync are about to be lost; fix the problem and `cloudlab session pull %s` first to keep them", session))
+			provider.ReportWarning(ctx, fmt.Sprintf("beads: merge removes the session repository, and its issue database with it — any issue edits that did not sync are about to be lost; fix the problem and `bivouac session pull %s` first to keep them", session))
 		}
 	}
 
@@ -122,7 +122,7 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 			if err != nil {
 				// Undo the replay. Leaving unverified commits on the branch
 				// is the exact outcome the gate exists to prevent, and it is
-				// worse than failing: the next `cloudlab merge` would find
+				// worse than failing: the next `bivouac merge` would find
 				// them already applied, drop them all as empty, see an
 				// unmoved HEAD, skip verification and retire the session --
 				// turning a refusal into a silent pass. The work is not at
@@ -156,7 +156,7 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 		return nil, fmt.Errorf("re-reading session tip on instance: %w\n%s", err, now)
 	}
 	if trimLine(now) != tip {
-		return nil, fmt.Errorf("session %s moved on the instance while merging (%s → %s) — nothing was deleted and the new work is safe; run `cloudlab session merge %s` again to take it too", session, tip, trimLine(now), session)
+		return nil, fmt.Errorf("session %s moved on the instance while merging (%s → %s) — nothing was deleted and the new work is safe; run `bivouac session merge %s` again to take it too", session, tip, trimLine(now), session)
 	}
 
 	if out, err := client.Run(removeRepoCmd(repo)); err != nil {
@@ -188,7 +188,7 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 	CleanupHerdr(ctx, sess.HerdrMachineID, session, onInstance)
 
 	// Once the cherry-pick has landed, a cleanup failure below must say the
-	// merge succeeded -- retrying `cloudlab merge` against an already-deleted
+	// merge succeeded -- retrying `bivouac merge` against an already-deleted
 	// session would otherwise fail confusingly inside RescueSession.
 	if out, err := runLocalGit(ctx, localRepo, remoteRemoveArgs(sessionRemote(session))...); err != nil {
 		return nil, fmt.Errorf("merge succeeded and the work is on %s, but removing remote %s failed: %w\n%s", onto, sessionRemote(session), err, out)
@@ -277,10 +277,10 @@ func requireBaseStillReachable(ctx context.Context, localRepo, sessionBase, sess
 	// cat-file first: after a rewrite plus gc the base can be gone entirely,
 	// and merge-base would then fail with git's own opaque message.
 	if _, err := runLocalGit(ctx, localRepo, "cat-file", "-e", sessionBase+"^{commit}"); err != nil {
-		return fmt.Errorf("session %s started from %s, which no longer exists in this repository — the branch was rewritten and then garbage collected\nthe session's own commits are still on the instance; `cloudlab session pull %s` fetches them so you can replay them by hand", session, sessionBase, session)
+		return fmt.Errorf("session %s started from %s, which no longer exists in this repository — the branch was rewritten and then garbage collected\nthe session's own commits are still on the instance; `bivouac session pull %s` fetches them so you can replay them by hand", session, sessionBase, session)
 	}
 	if _, err := runLocalGit(ctx, localRepo, "merge-base", "--is-ancestor", sessionBase, "HEAD"); err != nil {
-		return fmt.Errorf("session %s started from %s, which is no longer an ancestor of HEAD — this branch was rewritten (rebase, amend, squash or re-sign) while the session was open\nreplaying now would re-apply the pre-rewrite history as well as the session's own work\n`cloudlab session pull %s` fetches the session safely; cherry-pick its commits onto the rewritten branch by hand, then `cloudlab down` to retire the instance", session, sessionBase, session)
+		return fmt.Errorf("session %s started from %s, which is no longer an ancestor of HEAD — this branch was rewritten (rebase, amend, squash or re-sign) while the session was open\nreplaying now would re-apply the pre-rewrite history as well as the session's own work\n`bivouac session pull %s` fetches the session safely; cherry-pick its commits onto the rewritten branch by hand, then `bivouac down` to retire the instance", session, sessionBase, session)
 	}
 	return nil
 }

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestPlaceDoltCredential_DoesNothingOutsideDolthubMode(t *testing.T) {
@@ -116,7 +116,7 @@ func TestPlaceDoltCredentialFor_ProceedsForAnExternalRepository(t *testing.T) {
 
 	placeDoltCredentialFor(ctx, nil, beads.Detection{
 		Mode:        beads.ModeExternal,
-		ExternalURL: "https://doltremoteapi.dolthub.com/jskswamy/cloudlab",
+		ExternalURL: "https://doltremoteapi.dolthub.com/jskswamy/bivouac",
 	}, beadsRepoRoot(t))
 
 	got := errOut.String()
@@ -144,7 +144,7 @@ func runDoltPrepareScript(t *testing.T, home, doltDir string) string {
 }
 
 func TestDoltPrepareScript_LeavesAnythingThatIsNotOurOwnSymlinkAlone(t *testing.T) {
-	doltDir := filepath.Join(t.TempDir(), "cloudlab", "dolt")
+	doltDir := filepath.Join(t.TempDir(), "bivouac", "dolt")
 	dotDoltOf := func(home string) string { return filepath.Join(home, ".dolt") }
 
 	t.Run("absent: creates the symlink", func(t *testing.T) {
@@ -238,7 +238,7 @@ func TestDoltPrepareScript_LeavesAnythingThatIsNotOurOwnSymlinkAlone(t *testing.
 
 	t.Run("regular file: left alone", func(t *testing.T) {
 		home := t.TempDir()
-		if err := os.WriteFile(dotDoltOf(home), []byte("not cloudlab's"), 0o600); err != nil {
+		if err := os.WriteFile(dotDoltOf(home), []byte("not bivouac's"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		out := runDoltPrepareScript(t, home, doltDir)
@@ -249,7 +249,7 @@ func TestDoltPrepareScript_LeavesAnythingThatIsNotOurOwnSymlinkAlone(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(content) != "not cloudlab's" {
+		if string(content) != "not bivouac's" {
 			t.Errorf("~/.dolt content = %q, want it untouched", content)
 		}
 	})
@@ -301,7 +301,7 @@ func runSymlinkPrepareScript(t *testing.T, home, linkName, targetDir string) str
 // always does, so dolt never had to care.
 func TestSymlinkPrepareScript_CreatesANestedLinksParentDirectory(t *testing.T) {
 	home := t.TempDir()
-	ghDir := filepath.Join(t.TempDir(), "cloudlab", "gh")
+	ghDir := filepath.Join(t.TempDir(), "bivouac", "gh")
 
 	out := runSymlinkPrepareScript(t, home, ".config/gh", ghDir)
 	if strings.Contains(out, "NOTASYMLINK") {

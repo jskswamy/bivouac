@@ -127,7 +127,7 @@ func TestSeeding_GivesTheSessionRepoTheUsersGitIdentity(t *testing.T) {
 	mustGit(t, repo, "config", "user.email", "real@example.com")
 
 	sessionRepo := filepath.Join(base, "session")
-	seedLikeSessionStart(t, repo, sessionRepo, "cloudlab/auth")
+	seedLikeSessionStart(t, repo, sessionRepo, "bivouac/auth")
 
 	// The agent commits without configuring anything itself -- exactly what
 	// checkpointCmd does on a fresh instance.
@@ -168,10 +168,10 @@ func TestSeeding_WorksFromAnyLocalBranchName(t *testing.T) {
 	writeAndCommit(t, repo, "f.txt", "x", "on the feature branch")
 
 	sessionRepo := filepath.Join(base, "session")
-	seedLikeSessionStart(t, repo, sessionRepo, "cloudlab/auth")
+	seedLikeSessionStart(t, repo, sessionRepo, "bivouac/auth")
 
-	if got := gitOut(t, sessionRepo, "rev-parse", "--abbrev-ref", "HEAD"); got != "cloudlab/auth" {
-		t.Errorf("session repo is on %q, want cloudlab/auth", got)
+	if got := gitOut(t, sessionRepo, "rev-parse", "--abbrev-ref", "HEAD"); got != "bivouac/auth" {
+		t.Errorf("session repo is on %q, want bivouac/auth", got)
 	}
 	if got, want := gitOut(t, sessionRepo, "rev-parse", "HEAD"), gitOut(t, repo, "rev-parse", "HEAD"); got != want {
 		t.Errorf("session branch starts at %s, want the Mac's commit %s", got, want)
@@ -197,13 +197,13 @@ func TestSeeding_CheckoutBeforePushIsWhatWeAvoid(t *testing.T) {
 	}
 	// Seed once so the branch exists, then check it out -- the state a retry
 	// of session start finds.
-	mustGit(t, repo, pushArgs(sessionRepo, "HEAD", "cloudlab/auth")...)
-	if out, err := runShell(t, checkoutSessionCmd(sessionRepo, "cloudlab/auth")); err != nil {
+	mustGit(t, repo, pushArgs(sessionRepo, "HEAD", "bivouac/auth")...)
+	if out, err := runShell(t, checkoutSessionCmd(sessionRepo, "bivouac/auth")); err != nil {
 		t.Fatalf("checkoutSessionCmd: %v\n%s", err, out)
 	}
 
 	writeAndCommit(t, repo, "second.txt", "more", "second")
-	out, err := runLocalGit(context.Background(), repo, pushArgs(sessionRepo, "HEAD", "cloudlab/auth")...)
+	out, err := runLocalGit(context.Background(), repo, pushArgs(sessionRepo, "HEAD", "bivouac/auth")...)
 	if err == nil {
 		t.Fatal("push to the checked-out session branch succeeded; the init-push-checkout ordering is load-bearing and this documents why")
 	}
@@ -221,7 +221,7 @@ func TestSeeding_RetryLeavesExistingWorkAlone(t *testing.T) {
 	initRepo(t, repo)
 
 	sessionRepo := filepath.Join(base, "session")
-	seedLikeSessionStart(t, repo, sessionRepo, "cloudlab/auth")
+	seedLikeSessionStart(t, repo, sessionRepo, "bivouac/auth")
 
 	mustGit(t, sessionRepo, "config", "user.email", "agent@example.com")
 	mustGit(t, sessionRepo, "config", "user.name", "agent")
@@ -237,7 +237,7 @@ func TestSeeding_RetryLeavesExistingWorkAlone(t *testing.T) {
 	if out, err := runShell(t, ensureRepoCmd(sessionRepo)); err != nil {
 		t.Fatalf("retried ensureRepoCmd: %v\n%s", err, out)
 	}
-	if out, err := runShell(t, checkoutSessionCmd(sessionRepo, "cloudlab/auth")); err != nil {
+	if out, err := runShell(t, checkoutSessionCmd(sessionRepo, "bivouac/auth")); err != nil {
 		t.Fatalf("retried checkoutSessionCmd: %v\n%s", err, out)
 	}
 
