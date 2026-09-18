@@ -606,3 +606,45 @@ beads = "dolthubb"
 		t.Fatal("Resolve() error = nil, want a type error naming the allowed modes")
 	}
 }
+
+func TestMergeConfig_SettingsBaseOnly(t *testing.T) {
+	base := Config{Settings: map[string]any{"a.b": "base-value"}}
+	project := Config{}
+	got := mergeConfig(base, project)
+	if got.Settings["a.b"] != "base-value" {
+		t.Errorf("Settings[a.b] = %v, want base-value", got.Settings["a.b"])
+	}
+}
+
+func TestMergeConfig_SettingsProjectOnly(t *testing.T) {
+	base := Config{}
+	project := Config{Settings: map[string]any{"a.b": "project-value"}}
+	got := mergeConfig(base, project)
+	if got.Settings["a.b"] != "project-value" {
+		t.Errorf("Settings[a.b] = %v, want project-value", got.Settings["a.b"])
+	}
+}
+
+func TestMergeConfig_SettingsProjectOverridesBaseKey(t *testing.T) {
+	base := Config{Settings: map[string]any{"a": "base-value"}}
+	project := Config{Settings: map[string]any{"a": "project-value"}}
+	got := mergeConfig(base, project)
+	if got.Settings["a"] != "project-value" {
+		t.Errorf("Settings[a] = %v, want project-value (project wins)", got.Settings["a"])
+	}
+}
+
+func TestMergeConfig_SettingsProjectAddsNewKey(t *testing.T) {
+	base := Config{Settings: map[string]any{"a": "base-value"}}
+	project := Config{Settings: map[string]any{"b": "project-value"}}
+	got := mergeConfig(base, project)
+	if got.Settings["a"] != "base-value" {
+		t.Errorf("Settings[a] = %v, want base-value (untouched)", got.Settings["a"])
+	}
+	if got.Settings["b"] != "project-value" {
+		t.Errorf("Settings[b] = %v, want project-value (added)", got.Settings["b"])
+	}
+	if len(got.Settings) != 2 {
+		t.Errorf("Settings = %v, want exactly 2 keys", got.Settings)
+	}
+}

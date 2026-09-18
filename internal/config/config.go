@@ -126,6 +126,7 @@ func mergeConfig(base, project Config) Config {
 		Agents:    append(append([]string{}, base.Agents...), project.Agents...),
 		Flakes:    append(append([]Flake{}, base.Flakes...), project.Flakes...),
 		HerdrTabs: append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
+		Settings:  mergeSettings(base.Settings, project.Settings),
 	}
 }
 
@@ -148,6 +149,23 @@ func mergeStringSlicePtrs(base, project *[]string) *[]string {
 		merged = append(merged, *project...)
 	}
 	return &merged
+}
+
+// mergeSettings layers project over base by key: the project's value
+// replaces any matching base key and adds any new one. Unlike every
+// Listing field above, this is not additive -- a settings value is a
+// single override, not an accumulating list, so keeping both a base and
+// a project value for the same key would mean picking one arbitrarily
+// at render time instead of deciding it here, once.
+func mergeSettings(base, project map[string]any) map[string]any {
+	merged := make(map[string]any, len(base)+len(project))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range project {
+		merged[k] = v
+	}
+	return merged
 }
 
 func validate(c Config) error {
