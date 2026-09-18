@@ -9,12 +9,7 @@ import (
 // the default branch (not a version tag) — see the Provisioning
 // design spec for why template fixes shouldn't need a bivouac
 // release.
-//
-// Still jskswamy/cloudlab: this is a live flake ref GitHub has to
-// resolve, so it flips with the repo rename rather than with the source
-// rename -- see the rename design spec,
-// docs/superpowers/specs/2026-09-15-cloudlab-to-bivouac-rename-design.md.
-const defaultTemplatesRef = "github:jskswamy/cloudlab?dir=templates"
+const defaultTemplatesRef = "github:jskswamy/bivouac?dir=templates"
 
 // builtinTemplates is the set of template names ResolveTemplateRef
 // expands against defaultTemplatesRef. Anything else is assumed to

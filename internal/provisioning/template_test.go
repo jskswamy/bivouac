@@ -4,7 +4,7 @@ import "testing"
 
 func TestResolveTemplateRef_BuiltinExpandsWithArchSuffix(t *testing.T) {
 	got := ResolveTemplateRef("python", "x86_64")
-	want := "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux"
+	want := defaultTemplatesRef + "#python-x86_64-linux"
 	if got != want {
 		t.Errorf("ResolveTemplateRef(python, x86_64) = %q, want %q", got, want)
 	}
@@ -12,7 +12,7 @@ func TestResolveTemplateRef_BuiltinExpandsWithArchSuffix(t *testing.T) {
 
 func TestResolveTemplateRef_BuiltinArm64(t *testing.T) {
 	got := ResolveTemplateRef("docker", "arm64")
-	want := "github:jskswamy/cloudlab?dir=templates#docker-aarch64-linux"
+	want := defaultTemplatesRef + "#docker-aarch64-linux"
 	if got != want {
 		t.Errorf("ResolveTemplateRef(docker, arm64) = %q, want %q", got, want)
 	}
