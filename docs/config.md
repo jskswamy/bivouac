@@ -35,6 +35,7 @@ see "A note on trust" near the end of this doc.
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
+| `herdrTabs` | `Listing<HerdrTab>` (`{label, panes}`; each pane `{label, command?, cwd?}`) | No | empty | Tabs and panes `bivouac herdr` lays out in the session's workspace when run inside herdr. Merges additively like `packages`, base's tabs first. See [herdr tabs](#herdr-tabs). |
 | `basePath` | `String?` | No | none | Overrides where bivouac looks for your personal base config (see below). |
 
 "Required, after merge" means: `region`/`size`/`template` don't have to
@@ -188,6 +189,80 @@ reference, so you can point `template` at your own flake's
 `homeConfigurations` output. Note that `arch` is ignored in that case: the
 `-<system>` suffix is only appended for the two built-in names.
 
+## herdr tabs
+
+`herdrTabs` tells `bivouac herdr` how to lay out a session's workspace
+when it attaches from inside herdr. Nothing is declared by default —
+what a useful tab looks like depends on the project's own workflow.
+
+Sample project `bivouac.pkl`:
+
+```pkl
+herdrTabs {
+  new HerdrTab {
+    label = "editor"
+    panes {
+      new HerdrPane {
+        label = "code"
+        command = "nvim ."
+      }
+    }
+  }
+  new HerdrTab {
+    label = "run"
+    panes {
+      new HerdrPane {
+        label = "server"
+        command = "npm run dev"
+      }
+      new HerdrPane {
+        label = "logs"
+        command = "tail -f server.log"
+        cwd = "logs"
+      }
+    }
+  }
+}
+```
+
+Panes within a tab chain in declaration order: the first pane is the
+tab's own pane, and each later one splits off the pane before it.
+
+Tabs and panes are matched by label, so re-attaching a session adds
+only whatever is still missing rather than duplicating what is already
+there. If the merged config declares two tabs with the same label —
+say both `base.pkl` and the project's `bivouac.pkl` declare a `logs`
+tab — the first declaration wins and the later one is skipped; the
+same rule applies to two panes with the same label inside one tab.
+
+A pane's `command` runs only when that pane is first created. The pane
+is labelled before its command is sent, so if starting the command
+fails, a later attach finds the pane by its label and does not retry
+it — bivouac reports a warning naming the pane instead of running the
+command again.
+
+`cwd` is relative to the session's checkout on the instance, unless it
+is one of the two forms herdr resolves on the instance itself: an
+absolute path, or one starting `~`. Either of those passes through
+unchanged; anything else starts a pane in the checkout itself. herdr's
+own default tab is left alone, and configured tabs follow it. Laying
+out tabs needs `bivouac herdr` to be run from inside herdr, and the
+repository to have a `bivouac.pkl` — a repository without one gets no
+layout, including any tabs a personal `base.pkl` declares.
+
+Reaching the instance this way — for the workspace — needs herdr 0.9.1
+or newer on *both* ends: this machine's herdr and the instance's. An
+older herdr on either side, the instance's session server not running
+(for example after a reboot — forwarding never starts one), or the
+instance simply being unreachable will each fail with an error naming
+the likely causes, including `bivouac provision` where that is the fix.
+
+Tabs are the exception: they are laid out over one SSH connection
+straight to the instance's herdr, not through `--machine`, which costs
+about five seconds a call — too slow for a layout that makes a call per
+tab and per extra pane. They need only the instance's herdr, and a tab
+that cannot be laid out is a warning, not a failed attach.
+
 ## The DigitalOcean token
 
 Three commands talk to the DigitalOcean API and need a token: `up`, `down`
@@ -280,9 +355,12 @@ base config. If one exists, the two are merged:
   resolved value (each has its own schema-level default) -- unlike the
   scalars above, a personal base config's value for any of these four
   is never consulted, even if the project doesn't set one explicitly.
-- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`):
-  additive — your base's entries first, then the project's. Nothing is
-  dropped from either side.
+- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`,
+  `herdrTabs`): additive — your base's entries first, then the
+  project's. Nothing is dropped from either side of the merge itself.
+  `herdrTabs` has one further rule of its own after merging: a later
+  tab or pane whose label an earlier one already used is skipped
+  rather than laid out twice — see [herdr tabs](#herdr-tabs).
 
 If your base config doesn't exist yet, this isn't an error — your
 project's `bivouac.pkl` is used on its own, and any field it doesn't
