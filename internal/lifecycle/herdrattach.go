@@ -7,7 +7,6 @@ import (
 	"os/exec"
 
 	"github.com/jskswamy/bivouac/internal/provider"
-	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
 	"github.com/jskswamy/bivouac/internal/tool"
 )
@@ -51,9 +50,10 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // looking at, and returns the profile id and the sidebar entry to pick.
 //
 // Three steps, in this order. The machine has to exist and be enabled before
-// its server can be addressed; the workspace has to exist before it can be
-// focused; and focusing is last because it is the only step that moves
-// anyone.
+// `--machine` can route to it -- that is how the workspace steps reach the
+// instance's herdr, with no SSH connection of bivouac's own; the workspace
+// has to exist before it can be focused; and focusing is last because it is
+// the only step that moves anyone.
 //
 // The id comes back so the caller can record it. Teardown removes exactly
 // that profile and nothing else, which is the only way to tell bivouac's
@@ -76,22 +76,17 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 	}
 	target := MachineTarget(user, ip)
 
-	id, label, err := EnsureMachine(localHerdr{ctx: ctx}, instance, target, session, owned)
+	h := localHerdr{ctx: ctx}
+	id, label, err := EnsureMachine(h, instance, target, session, owned)
 	if err != nil {
 		return "", "", err
 	}
 
-	client, err := reconcile.Connect(ctx, ip, user)
-	if err != nil {
-		return id, label, fmt.Errorf("machine %s is saved, but the instance could not be reached to prepare its workspace: %w", label, err)
-	}
-	defer func() { _ = client.Close() }()
-
-	wsID, err := EnsureWorkspace(client, session, RemoteRepoPath(user, session, repoName), session)
+	wsID, err := EnsureWorkspace(h, id, RemoteRepoPath(user, session, repoName), session)
 	if err != nil {
 		return id, label, err
 	}
-	if err := FocusWorkspace(client, session, wsID); err != nil {
+	if err := FocusWorkspace(h, id, wsID); err != nil {
 		return id, label, err
 	}
 	return id, label, nil
@@ -107,6 +102,13 @@ func herdrSessionStopCmd(session string) string {
 
 func herdrSessionDeleteCmd(session string) string {
 	return shellcmd.LoginShell("herdr session delete " + shellcmd.Quote(session))
+}
+
+// remoteRunner runs a command on the instance. *reconcile.Client satisfies
+// it structurally; the interface exists so the flow below can be driven by a
+// fake instead of a live SSH connection.
+type remoteRunner interface {
+	Run(cmd string) (output string, err error)
 }
 
 // CleanupHerdr removes what `bivouac herdr` left behind for a session: the

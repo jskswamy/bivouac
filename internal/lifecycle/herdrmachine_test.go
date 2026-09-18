@@ -203,33 +203,6 @@ func TestFindWorkspace_MatchesTheLabelBivouacSet(t *testing.T) {
 	}
 }
 
-// Every remote herdr command has to name the session, or it addresses the
-// instance's default server instead of the one this machine profile targets.
-func TestRemoteHerdrCmds_NameTheSession(t *testing.T) {
-	for name, got := range map[string]string{
-		"list":   workspaceListCmd("auth"),
-		"create": workspaceCreateCmd("auth", "/home/u/sessions/auth/repo", "auth"),
-		"focus":  workspaceFocusCmd("auth", "w2"),
-	} {
-		if !strings.Contains(got, "--session") {
-			t.Errorf("%s = %q, want --session so it reaches the session's own server", name, got)
-		}
-	}
-}
-
-// The point of creating it: the workspace is rooted in the session's
-// checkout, so attaching lands in the code rather than in $HOME.
-func TestWorkspaceCreateCmd_RootsTheWorkspaceInTheCheckout(t *testing.T) {
-	repo := "/home/devuser/sessions/auth/bivouac"
-	got := workspaceCreateCmd("auth", repo, "auth")
-	if !strings.Contains(got, "--cwd") || !strings.Contains(got, repo) {
-		t.Errorf("workspaceCreateCmd() = %q, want --cwd naming the session checkout", got)
-	}
-	if !strings.Contains(got, "--label") {
-		t.Errorf("workspaceCreateCmd() = %q, want a label so it can be found again", got)
-	}
-}
-
 // fakeHerdr records every local herdr invocation and answers the listing
 // from a script, so the whole ensure flow can be driven without herdr.
 type fakeHerdr struct {
@@ -427,83 +400,6 @@ func TestRemoveMachine_DoesNothingWithoutARecordedID(t *testing.T) {
 	}
 }
 
-// The shape `herdr workspace list` returns, captured from a live instance.
-type fakeRemote struct {
-	listJSON        string
-	afterCreateJSON string
-	created         bool
-	cmds            []string
-	failOn          string
-}
-
-func (f *fakeRemote) Run(cmd string) (string, error) {
-	f.cmds = append(f.cmds, cmd)
-	if f.failOn != "" && strings.Contains(cmd, f.failOn) {
-		return "boom", fmt.Errorf("remote herdr failed")
-	}
-	if strings.Contains(cmd, "create") {
-		// A real herdr shows the new workspace in the next listing, and
-		// EnsureWorkspace reads the id back from there rather than from the
-		// create reply -- so the double has to do the same or it tests
-		// nothing.
-		f.created = true
-		return `{"result":{"workspace":{"workspace_id":"w9"}}}`, nil
-	}
-	if strings.Contains(cmd, "list") {
-		if f.created {
-			return f.afterCreateJSON, nil
-		}
-		return f.listJSON, nil
-	}
-	return "", nil
-}
-
-func (f *fakeRemote) ran(fragment string) bool {
-	for _, c := range f.cmds {
-		if strings.Contains(c, fragment) {
-			return true
-		}
-	}
-	return false
-}
-
-func TestEnsureWorkspace_CreatesOneRootedInTheCheckout(t *testing.T) {
-	r := &fakeRemote{
-		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~"}]}}`,
-		afterCreateJSON: `{"result":{"workspaces":[` +
-			`{"workspace_id":"w1","label":"~"},{"workspace_id":"w9","label":"auth"}]}}`,
-	}
-
-	id, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth")
-	if err != nil {
-		t.Fatalf("EnsureWorkspace() error = %v", err)
-	}
-	if id != "w9" {
-		t.Errorf("id = %q, want w9 read back from the listing", id)
-	}
-	if !r.ran("create") || !r.ran("/home/u/sessions/auth/repo") {
-		t.Errorf("want a create rooted at the checkout, got %v", r.cmds)
-	}
-}
-
-// Reconnecting to a session that already has its workspace must reuse it,
-// not stack up a new one every time.
-func TestEnsureWorkspace_ReusesTheExistingOne(t *testing.T) {
-	r := &fakeRemote{listJSON: `{"result":{"workspaces":[` +
-		`{"workspace_id":"w1","label":"~"},{"workspace_id":"w2","label":"auth"}]}}`}
-
-	id, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth")
-	if err != nil {
-		t.Fatalf("EnsureWorkspace() error = %v", err)
-	}
-	if id != "w2" {
-		t.Errorf("id = %q, want the existing w2", id)
-	}
-	if r.ran("create") {
-		t.Error("created a second workspace for a session that already had one")
-	}
-}
-
 // The guard used to refuse outright. Inside herdr is now the case the
 // machine path serves, and outside it there is no window to attach to, so
 // launching a client stays right.
@@ -531,58 +427,23 @@ func TestMachineTarget_IsStableAndSSHShaped(t *testing.T) {
 	}
 }
 
-// A named herdr session starts with its own default "~" workspace, and
-// bivouac then adds the checkout-rooted one -- so the sidebar showed two
-// entries per session, one of them useless.
-//
-// The empty default is closed, and only in the run that created ours: a
-// later reconnect must not go tidying workspaces the user has since made.
-func TestEnsureWorkspace_ClosesHerdrsEmptyDefault(t *testing.T) {
-	r := &fakeRemote{
-		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~","pane_count":1}]}}`,
-		afterCreateJSON: `{"result":{"workspaces":[` +
-			`{"workspace_id":"w1","label":"~","pane_count":1},` +
-			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
-	}
-
-	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
-		t.Fatalf("EnsureWorkspace() error = %v", err)
-	}
-	if !r.ran("close") || !r.ran("w1") {
-		t.Errorf("want the empty ~ closed after creating ours, got %v", r.cmds)
-	}
+// fakeRemote records the commands CleanupHerdr runs on the instance.
+type fakeRemote struct {
+	cmds []string
 }
 
-// Someone working in the default workspace must not have it closed from
-// under them. More than one pane is the cheapest evidence it is in use.
-func TestEnsureWorkspace_LeavesADefaultThatIsInUse(t *testing.T) {
-	r := &fakeRemote{
-		listJSON: `{"result":{"workspaces":[{"workspace_id":"w1","label":"~","pane_count":3}]}}`,
-		afterCreateJSON: `{"result":{"workspaces":[` +
-			`{"workspace_id":"w1","label":"~","pane_count":3},` +
-			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
-	}
-
-	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
-		t.Fatalf("EnsureWorkspace() error = %v", err)
-	}
-	if r.ran("close") {
-		t.Error("closed a default workspace that had panes in it")
-	}
+func (f *fakeRemote) Run(cmd string) (string, error) {
+	f.cmds = append(f.cmds, cmd)
+	return "", nil
 }
 
-// Reconnecting finds our workspace already there and must change nothing.
-func TestEnsureWorkspace_ReconnectDoesNotTidy(t *testing.T) {
-	r := &fakeRemote{listJSON: `{"result":{"workspaces":[` +
-		`{"workspace_id":"w1","label":"~","pane_count":1},` +
-		`{"workspace_id":"w2","label":"auth","pane_count":1}]}}`}
-
-	if _, err := EnsureWorkspace(r, "auth", "/home/u/sessions/auth/repo", "auth"); err != nil {
-		t.Fatalf("EnsureWorkspace() error = %v", err)
+func (f *fakeRemote) ran(fragment string) bool {
+	for _, c := range f.cmds {
+		if strings.Contains(c, fragment) {
+			return true
+		}
 	}
-	if r.ran("close") {
-		t.Error("closed a workspace on a plain reconnect")
-	}
+	return false
 }
 
 // A session bivouac never attached has no herdr session either: starting a

@@ -3,8 +3,6 @@ package lifecycle
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // herdrWorkspace is one entry from `herdr workspace list` on an instance.
@@ -45,70 +43,62 @@ func findWorkspace(workspaces []herdrWorkspace, label string) (herdrWorkspace, b
 	return herdrWorkspace{}, false
 }
 
-// remoteHerdrCmd builds a herdr command to run on the instance.
-//
-// --session always, because a machine profile targets one named session and
-// these commands must reach that server rather than the instance's default
-// one. Wrapped in `bash -lc` for the same reason the tailscale commands are:
-// herdr comes from the user's nix profile, and a bare non-login shell is not
-// guaranteed to have it on PATH.
-func remoteHerdrCmd(session string, args ...string) string {
-	inner := "herdr"
-	if session != "" {
-		inner += " --session " + shellcmd.Quote(session)
-	}
-	for _, a := range args {
-		inner += " " + shellcmd.Quote(a)
-	}
-	return shellcmd.LoginShell(inner)
-}
-
-func workspaceListCmd(session string) string {
-	return remoteHerdrCmd(session, "workspace", "list")
-}
-
-// workspaceCreateCmd roots a workspace in the session's checkout, which is
-// the whole point: attaching then lands in the code rather than in $HOME.
-//
-// --no-focus because focusing is a separate, later step -- creating a
-// workspace should not move anyone who happens to be attached already.
-func workspaceCreateCmd(session, cwd, label string) string {
-	return remoteHerdrCmd(session, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
-}
-
-func workspaceFocusCmd(session, id string) string {
-	return remoteHerdrCmd(session, "workspace", "focus", id)
-}
-
-func workspaceCloseCmd(session, id string) string {
-	return remoteHerdrCmd(session, "workspace", "close", id)
-}
-
 // herdrDefaultWorkspaceLabel is what herdr calls the workspace it opens for
 // a session it has just started: the user's home directory, shown as "~".
 const herdrDefaultWorkspaceLabel = "~"
 
-// remoteRunner runs a command on the instance. *reconcile.Client satisfies
-// it structurally; the interface exists so the flow below can be driven by a
-// fake instead of a live SSH connection.
-type remoteRunner interface {
-	Run(cmd string) (output string, err error)
+// machineArgs routes a herdr command to a saved machine's server.
+//
+// herdr 0.9.1's --machine reaches the instance through the profile
+// EnsureMachine already saved, so these commands need no SSH connection of
+// bivouac's own. The selector is the profile id: herdr also accepts a
+// label, but only a unique one, and the user may rename it from the
+// sidebar.
+//
+// Never alongside --session. The profile already carries its session, and
+// herdr's docs rule the combination out.
+func machineArgs(machine string, args ...string) []string {
+	return append([]string{"--machine", machine}, args...)
+}
+
+func workspaceListArgs(machine string) []string {
+	return machineArgs(machine, "workspace", "list")
+}
+
+// workspaceCreateArgs roots a workspace in the session's checkout, which is
+// the whole point: attaching then lands in the code rather than in $HOME.
+//
+// --no-focus because focusing is a separate, later step -- creating a
+// workspace should not move anyone who happens to be attached already.
+func workspaceCreateArgs(machine, cwd, label string) []string {
+	return machineArgs(machine, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+}
+
+func workspaceFocusArgs(machine, id string) []string {
+	return machineArgs(machine, "workspace", "focus", id)
+}
+
+func workspaceCloseArgs(machine, id string) []string {
+	return machineArgs(machine, "workspace", "close", id)
 }
 
 // EnsureWorkspace makes sure the session has a workspace on the instance
 // rooted in its checkout, and returns that workspace's id.
 //
-// Addressed over SSH against the instance's own herdr server, because the
-// local CLI cannot reach it: herdr commands always talk to the socket their
-// pane inherited, so a workspace list run here describes this machine no
-// matter which machine is selected.
+// The listing is also the capability probe. `herdr --machine` refuses
+// `status`, so there is no cheaper question to ask first -- and forwarding
+// never installs, restarts or falls back to a local server, so asking with
+// a real command is safe. A failure here means the instance's herdr cannot
+// be driven this way, which provisioning fixes.
 //
 // Reused when it already exists. Reconnecting to a session is the common
 // case, and creating unconditionally would stack up a workspace per attach.
-func EnsureWorkspace(r remoteRunner, session, repo, label string) (string, error) {
-	out, err := r.Run(workspaceListCmd(session))
+func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (string, error) {
+	out, err := h.Run(workspaceListArgs(machine)...)
 	if err != nil {
-		return "", fmt.Errorf("listing workspaces on the instance: %w\n%s", err, out)
+		return "", fmt.Errorf("reaching the instance's herdr through saved machine %s: %w\n%s\n"+
+			"its herdr may predate machine forwarding (0.9.1) -- run `bivouac provision`, then try again",
+			machine, err, out)
 	}
 	workspaces, err := parseWorkspaceList(out)
 	if err != nil {
@@ -118,12 +108,12 @@ func EnsureWorkspace(r remoteRunner, session, repo, label string) (string, error
 		return existing.ID, nil
 	}
 
-	if out, err := r.Run(workspaceCreateCmd(session, repo, label)); err != nil {
+	if out, err := h.Run(workspaceCreateArgs(machine, cwd, label)...); err != nil {
 		return "", fmt.Errorf("creating the %s workspace on the instance: %w\n%s", label, err, out)
 	}
 	// Read the id back rather than parsing the create reply: one shape to
 	// know instead of two, and the listing is authoritative either way.
-	out, err = r.Run(workspaceListCmd(session))
+	out, err = h.Run(workspaceListArgs(machine)...)
 	if err != nil {
 		return "", fmt.Errorf("listing workspaces after creating %s: %w\n%s", label, err, out)
 	}
@@ -151,7 +141,7 @@ func EnsureWorkspace(r remoteRunner, session, repo, label string) (string, error
 	// the guards above are what keep it narrow: the default label, a single
 	// pane, and only on the run that gave them somewhere better to be.
 	if def, ok := findWorkspace(workspaces, herdrDefaultWorkspaceLabel); ok && def.Panes <= 1 {
-		_, _ = r.Run(workspaceCloseCmd(session, def.ID))
+		_, _ = h.Run(workspaceCloseArgs(machine, def.ID)...)
 	}
 	return created.ID, nil
 }
@@ -161,8 +151,8 @@ func EnsureWorkspace(r remoteRunner, session, repo, label string) (string, error
 // This is the only part of "switch to my session" bivouac can perform.
 // Selecting the machine itself is client state with no API, so the caller
 // still has to name the sidebar entry for the user to pick.
-func FocusWorkspace(r remoteRunner, session, id string) error {
-	if out, err := r.Run(workspaceFocusCmd(session, id)); err != nil {
+func FocusWorkspace(h herdrRunner, machine, id string) error {
+	if out, err := h.Run(workspaceFocusArgs(machine, id)...); err != nil {
 		return fmt.Errorf("focusing workspace %s on the instance: %w\n%s", id, err, out)
 	}
 	return nil
