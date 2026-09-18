@@ -34,8 +34,9 @@ see "A note on trust" near the end of this doc.
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
-| `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and an optional `modules` flag to also pull that flake's `homeManagerModules.default`. |
+| `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and a `modules` listing naming dotted paths into that flake's `homeManagerModules` to pull (e.g. `"tools.git"` for one tool, `"git-tools"` for a top-level group). |
 | `herdrTabs` | `Listing<HerdrTab>` (`{label, panes}`; each pane `{label, command?, cwd?}`) | No | empty | Tabs and panes `bivouac herdr` lays out in the session's workspace when run inside herdr. Merges additively like `packages`, base's tabs first. See [herdr tabs](#herdr-tabs). |
+| `settings` | `Mapping<String, String\|Boolean\|Int\|Listing<String>>` | No | empty | Overrides layered onto the final merged home-manager configuration, keyed by a dot-separated path (e.g. `"programs.git.userEmail"`, `"tools.tig.enable"`) — not scoped to any one flake or module. Merges by key: the project's value replaces the base's for a matching key, unlike every other list field's pure concatenation. |
 | `basePath` | `String?` | No | none | Overrides where bivouac looks for your personal base config (see below). |
 
 "Required, after merge" means: `region`/`size`/`template` don't have to
@@ -361,6 +362,10 @@ base config. If one exists, the two are merged:
   `herdrTabs` has one further rule of its own after merging: a later
   tab or pane whose label an earlier one already used is skipped
   rather than laid out twice — see [herdr tabs](#herdr-tabs).
+- **`settings`**: merged by key, not additively. Your base's key/value
+  pairs apply first; the project's then replace any matching key and add
+  any new one — the project always wins a collision, the same way it
+  wins for the scalars above.
 
 If your base config doesn't exist yet, this isn't an error — your
 project's `bivouac.pkl` is used on its own, and any field it doesn't

@@ -235,8 +235,12 @@ flakes {
   new {
     url = "github:someorg/custom-tool"
     packages { "cli" }
-    modules = true
+    modules { "tools.git" }
   }
+}
+
+settings {
+  ["programs.git.userEmail"] = "work@example.com"
 }
 ```
 
@@ -244,14 +248,18 @@ Reconciliation builds a **list of home-manager modules** and lets
 home-manager merge them — it does not append to a single `home.packages`
 list. The template's own profile is one module; `packages` becomes a
 synthetic module; `agents` becomes another; each `flakes[]` entry
-contributes its packages, and its own `homeManagerModules.default` when
-`modules = true`.
+contributes its packages, and one home-manager module per dotted path named
+in `modules` (a flat name like `git-tools` for a top-level group, a dotted
+one like `tools.git` for an individual tool) — and `settings` contributes
+one more synthetic module layering option overrides onto everything else,
+keyed by a dotted path into the final merged configuration rather than into
+any one flake's output.
 
 This is more machinery than a package list strictly requires — see
 [ADR-0005](adr/0005-module-based-package-composition.md) for why: it's the
 seam that lets a flake's own home-manager module (arbitrary config, not just
 a package list) slot into the same pipeline with no restructuring. That seam
-is now used: `flakes[].modules` is implemented.
+is now used: `flakes[].modules` and `settings` are both implemented.
 
 ### Why `agents` is its own field
 
