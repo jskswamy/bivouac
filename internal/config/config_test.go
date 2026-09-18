@@ -462,6 +462,136 @@ beads = "` + want + `"
 	}
 }
 
+func TestMergeConfig_HerdrTabsAreAdditiveBaseFirst(t *testing.T) {
+	base := Config{HerdrTabs: []HerdrTab{{Label: "agent"}}}
+	project := Config{HerdrTabs: []HerdrTab{{Label: "run"}}}
+
+	got := mergeConfig(base, project).HerdrTabs
+	if len(got) != 2 || got[0].Label != "agent" || got[1].Label != "run" {
+		t.Errorf("HerdrTabs = %+v, want [agent run] -- base's tabs are created first", got)
+	}
+}
+
+// Through pkl, not just mergeConfig: the classes have to be reachable from
+// an amending file by their bare names, and the optional pane fields have
+// to come back as nil rather than "".
+func TestResolve_HerdrTabsMergeAcrossBaseAndProject(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.pkl")
+	writeFixture(t, base, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`herdrTabs {`,
+		`  new HerdrTab {`,
+		`    label = "agent"`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+	project := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`basePath = "./base.pkl"`,
+		`template = "python"`,
+		`herdrTabs {`,
+		`  new HerdrTab {`,
+		`    label = "run"`,
+		`    panes {`,
+		`      new HerdrPane {`,
+		`        label = "server"`,
+		`        command = "npm run dev"`,
+		`      }`,
+		`      new HerdrPane {`,
+		`        label = "logs"`,
+		`        cwd = "logs"`,
+		`      }`,
+		`    }`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(cfg.HerdrTabs) != 2 || cfg.HerdrTabs[0].Label != "agent" || cfg.HerdrTabs[1].Label != "run" {
+		t.Fatalf("HerdrTabs = %+v, want [agent run]", cfg.HerdrTabs)
+	}
+	panes := cfg.HerdrTabs[1].Panes
+	if len(panes) != 2 {
+		t.Fatalf("run panes = %+v, want 2", panes)
+	}
+	if panes[0].Command == nil || *panes[0].Command != "npm run dev" || panes[0].Cwd != nil {
+		t.Errorf("server pane = %+v, want command set and cwd nil", panes[0])
+	}
+	if panes[1].Cwd == nil || *panes[1].Cwd != "logs" || panes[1].Command != nil {
+		t.Errorf("logs pane = %+v, want cwd set and command nil", panes[1])
+	}
+}
+
+func TestResolve_HerdrTabsDefaultToEmpty(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s"`,
+		`template = "python"`,
+		`basePath = "./does-not-exist.pkl"`,
+	}, "\n")+"\n")
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(cfg.HerdrTabs) != 0 {
+		t.Errorf("HerdrTabs = %+v, want none -- layout is opt-in", cfg.HerdrTabs)
+	}
+}
+
+// An empty label matches herdr's unlabelled root pane (a pane nobody has
+// named has no label key at all, which decodes to ""), so its command would
+// never run -- reject it at config time instead of silently no-op'ing.
+func TestResolve_HerdrTabLabelMustNotBeEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`herdrTabs {`,
+		`  new HerdrTab {`,
+		`    label = ""`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	if _, err := Resolve(t.Context(), path); err == nil {
+		t.Fatal("Resolve() error = nil, want an empty herdrTabs tab label rejected")
+	}
+}
+
+func TestResolve_HerdrPaneLabelMustNotBeEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+		`herdrTabs {`,
+		`  new HerdrTab {`,
+		`    label = "run"`,
+		`    panes {`,
+		`      new HerdrPane {`,
+		`        label = ""`,
+		`      }`,
+		`    }`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	if _, err := Resolve(t.Context(), path); err == nil {
+		t.Fatal("Resolve() error = nil, want an empty herdrTabs pane label rejected")
+	}
+}
+
 func TestResolve_BeadsRejectsAnUnknownMode(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bivouac.pkl")

@@ -64,6 +64,17 @@ type Config struct {
 	Instructions []string `pkl:"instructions"`
 
 	Flakes []Flake `pkl:"flakes"`
+
+	// Tabs, and the panes inside them, that `bivouac herdr` lays out in a
+	// session's workspace when it attaches from inside herdr.
+	//
+	// Opt-in and additive like `packages`: base's tabs are created before
+	// this file's. bivouac declares no layout of its own, because what a
+	// useful tab looks like depends on the project's workflow.
+	//
+	// Matched by label on every attach, so re-attaching adds only what is
+	// missing and never runs a pane's command twice.
+	HerdrTabs []HerdrTab `pkl:"herdrTabs"`
 }
 
 // LoadFromPath loads the pkl module at the given path and evaluates it into a Config
