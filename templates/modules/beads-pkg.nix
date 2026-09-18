@@ -1,31 +1,39 @@
 # beads ships prebuilt release tarballs, so this is a fetch and an install
 # rather than a Go build.
 #
-# Pinned to the same upstream release the maintainer's own machine runs
-# (overlays/60-beads-latest.nix). nixpkgs ships 1.0.3 against 1.1.2 locally,
-# and both machines write one shared Dolt database -- schema skew there is the
+# Pinned to the same upstream release the maintainer's own machine runs.
+# nixpkgs tracks a much older release under a different version scheme, and
+# both machines write one shared Dolt database -- schema skew there is the
 # one place a version gap does real damage, so the version is pinned rather
-# than tracked. Bumping means editing this file AND that overlay together.
+# than tracked.
 #
-# Only the two Linux systems the template flake builds; the overlay's darwin
-# entries are irrelevant here.
+# Moved from github.com/steveyegge/beads to github.com/gastownhall/beads
+# upstream; both the org and the version need updating together.
+#
+# fetchzip's hash is of the *unpacked* tree, not the downloaded tarball --
+# `nix-prefetch-url --unpack` (or `nix store prefetch-file --unpack`), never
+# a plain checksum from the release's checksums.txt. A prior bump here used
+# the raw-tarball hash, which cross-checked fine against checksums.txt but
+# still failed the actual build, since fetchzip never hashes that value.
+#
+# Only the two Linux systems the template flake builds.
 {
   stdenv,
   fetchzip,
   lib,
 }:
 let
-  version = "1.1.2";
+  version = "1.3.0";
   sources = {
     x86_64-linux = fetchzip {
-      url = "https://github.com/steveyegge/beads/releases/download/v${version}/beads_${version}_linux_amd64.tar.gz";
+      url = "https://github.com/gastownhall/beads/releases/download/v${version}/beads_${version}_linux_amd64.tar.gz";
       stripRoot = false;
-      hash = "sha256-QUxIc1BRnBGIZ9sLsP5Dobx49x4krV+tLmed3G9h+7Q=";
+      hash = "sha256-Ie9TD27mGQd3ctj5FsyDpUC0x2X5eaeNjffXqppQ19U=";
     };
     aarch64-linux = fetchzip {
-      url = "https://github.com/steveyegge/beads/releases/download/v${version}/beads_${version}_linux_arm64.tar.gz";
+      url = "https://github.com/gastownhall/beads/releases/download/v${version}/beads_${version}_linux_arm64.tar.gz";
       stripRoot = false;
-      hash = "sha256-JGyantVQRvFNF3ygP7KA+GXYDYTT3CoH8e+fKi2qlzg=";
+      hash = "sha256-WCHyEIS+aHr52ItjH88EACMYnFIkxqBt/J+1OC7VWyE=";
     };
   };
   src =
@@ -46,8 +54,8 @@ stdenv.mkDerivation {
   '';
 
   meta = {
-    description = "Dolt-backed issue tracker for coding agents";
-    homepage = "https://github.com/steveyegge/beads";
+    description = "Lightweight memory system for AI coding agents with graph-based issue tracking";
+    homepage = "https://github.com/gastownhall/beads";
     mainProgram = "bd";
     platforms = builtins.attrNames sources;
     license = lib.licenses.mit;
