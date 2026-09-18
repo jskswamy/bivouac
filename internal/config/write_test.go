@@ -61,7 +61,7 @@ func TestRender_NoFieldsIsEmpty(t *testing.T) {
 
 func TestRender_Flakes(t *testing.T) {
 	got, err := Render(Values{"flakes": []Flake{
-		{Url: "github:nix-community/fenix", Packages: []string{"default"}, Modules: true},
+		{Url: "github:nix-community/fenix", Packages: []string{"default"}, Modules: []string{"tools.git"}},
 		{Url: "github:foo/bar", Packages: []string{}},
 	}})
 	if err != nil {
@@ -75,12 +75,14 @@ func TestRender_Flakes(t *testing.T) {
 		`    packages {`,
 		`      "default"`,
 		`    }`,
-		`    modules = true`,
+		`    modules {`,
+		`      "tools.git"`,
+		`    }`,
 		`  }`,
 		`  new Flake {`,
 		`    url = "github:foo/bar"`,
 		`    packages {}`,
-		`    modules = false`,
+		`    modules {}`,
 		`  }`,
 		`}`,
 		``,
@@ -135,7 +137,7 @@ func TestRender_RoundTripsThroughResolve(t *testing.T) {
 		"sshKeys":   []string{"AAAA...fingerprint"},
 		"packages":  []string{"ripgrep", "jq"},
 		"agents":    []string{"claude", "codex"},
-		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: true}},
+		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: []string{"default"}}},
 	}
 
 	rendered, err := Render(values)
@@ -163,7 +165,7 @@ func TestRender_RoundTripsThroughResolve(t *testing.T) {
 	if !equalStrings(cfg.Agents, []string{"claude", "codex"}) {
 		t.Errorf("Agents = %v, want [claude codex]", cfg.Agents)
 	}
-	if len(cfg.Flakes) != 1 || cfg.Flakes[0].Url != "github:foo/bar" || !cfg.Flakes[0].Modules {
+	if len(cfg.Flakes) != 1 || cfg.Flakes[0].Url != "github:foo/bar" || len(cfg.Flakes[0].Modules) != 1 || cfg.Flakes[0].Modules[0] != "default" {
 		t.Errorf("Flakes = %+v", cfg.Flakes)
 	}
 }

@@ -434,7 +434,9 @@ func TestInitFlow_EditsAnExistingProjectFile(t *testing.T) {
 		`    packages {`,
 		`      "default"`,
 		`    }`,
-		`    modules = true`,
+		`    modules {`,
+		`      "default"`,
+		`    }`,
 		`  }`,
 		`}`,
 	}, "\n")+"\n")

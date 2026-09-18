@@ -155,7 +155,7 @@ func TestReadValues_RoundTripsRender(t *testing.T) {
 		"sshKeys":   []string{"AAAA...fingerprint"},
 		"packages":  []string{"ripgrep", "jq"},
 		"agents":    []string{"claude"},
-		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: true}},
+		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: []string{"default"}}},
 	}
 
 	rendered, err := Render(want)

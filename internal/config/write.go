@@ -177,11 +177,6 @@ func renderStringListing(b *strings.Builder, indent, name string, items []string
 // The class is named explicitly because these files amend the schema
 // rather than declare it: inside an amended `flakes { ... }` block a bare
 // `new {}` builds a Dynamic, which pkl then refuses to coerce to Flake.
-//
-// modules is written even when false, unlike the other defaults: a Flake
-// is an inline object rather than a field of the module, so there is no
-// file to inherit the default from and reading one back without it is
-// only correct by accident.
 func renderFlakes(b *strings.Builder, name string, flakes []Flake) {
 	if len(flakes) == 0 {
 		fmt.Fprintf(b, "%s {}\n", name)
@@ -192,7 +187,7 @@ func renderFlakes(b *strings.Builder, name string, flakes []Flake) {
 		b.WriteString("  new Flake {\n")
 		fmt.Fprintf(b, "    url = %s\n", quote(f.Url))
 		renderStringListing(b, "    ", "packages", f.Packages)
-		fmt.Fprintf(b, "    modules = %t\n", f.Modules)
+		renderStringListing(b, "    ", "modules", f.Modules)
 		b.WriteString("  }\n")
 	}
 	b.WriteString("}\n")

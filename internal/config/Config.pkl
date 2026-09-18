@@ -55,7 +55,7 @@ flakes: Listing<Flake> = new Listing {}
 class Flake {
   url: String
   packages: Listing<String>
-  modules: Boolean = false
+  modules: Listing<String> = new Listing {}
 }
 
 /// Tabs, and the panes inside them, that `bivouac herdr` lays out in a

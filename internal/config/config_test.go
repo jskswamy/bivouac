@@ -333,7 +333,7 @@ func TestLoad_ImageSurvivesBaseMerge(t *testing.T) {
 	}
 }
 
-func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
+func TestLoad_FlakeModulesEmpty(t *testing.T) {
 	dir := t.TempDir()
 	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
@@ -357,12 +357,12 @@ func TestLoad_FlakeModulesDefaultsFalse(t *testing.T) {
 	if len(cfg.Flakes) != 1 {
 		t.Fatalf("Flakes = %v, want 1 entry", cfg.Flakes)
 	}
-	if cfg.Flakes[0].Modules != false {
-		t.Errorf("Flakes[0].Modules = %v, want false", cfg.Flakes[0].Modules)
+	if len(cfg.Flakes[0].Modules) != 0 {
+		t.Errorf("Flakes[0].Modules = %v, want empty", cfg.Flakes[0].Modules)
 	}
 }
 
-func TestLoad_FlakeModulesTrue(t *testing.T) {
+func TestLoad_FlakeModulesList(t *testing.T) {
 	dir := t.TempDir()
 	project := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, project, strings.Join([]string{
@@ -373,7 +373,7 @@ func TestLoad_FlakeModulesTrue(t *testing.T) {
 		`  new Flake {`,
 		`    url = "github:someorg/custom-tool"`,
 		`    packages { "cli" }`,
-		`    modules = true`,
+		`    modules { "tools.git" }`,
 		`  }`,
 		`}`,
 	}, "\n")+"\n")
@@ -384,8 +384,8 @@ func TestLoad_FlakeModulesTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if len(cfg.Flakes) != 1 || !cfg.Flakes[0].Modules {
-		t.Errorf("Flakes = %v, want one entry with Modules = true", cfg.Flakes)
+	if len(cfg.Flakes) != 1 || len(cfg.Flakes[0].Modules) != 1 || cfg.Flakes[0].Modules[0] != "tools.git" {
+		t.Errorf("Flakes = %v, want one entry with Modules = [tools.git]", cfg.Flakes)
 	}
 }
 
