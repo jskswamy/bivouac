@@ -1,36 +1,35 @@
 # herdr ships raw release binaries rather than archives, so this is a fetch
 # and an install with no unpack step.
 #
-# Pinned to the same upstream release the maintainer's own machine runs
-# (overlays/60-herdr-latest.nix). nixpkgs is at 0.8.2 and has never carried
-# 0.9.0, so tracking nixpkgs cannot close the gap here -- and the gap is the
-# problem: `herdr machine add` inspects the server on the instance and, when
-# it is not a version the local client can talk to, stops it and deploys its
-# own copy under ~/.local/bin, outside nix and outside the systemd unit
-# common.nix installs. Matching versions is what keeps the instance's herdr
-# the one cloudlab put there.
+# Pinned to the same upstream release the maintainer's own machine runs.
+# nixpkgs has never carried a version this recent, so tracking nixpkgs
+# cannot close the gap here -- and the gap is the problem: `herdr machine
+# add` inspects the server on the instance and, when it is not a version
+# the local client can talk to, stops it and deploys its own copy under
+# ~/.local/bin, outside nix and outside the systemd unit common.nix
+# installs. Matching versions is what keeps the instance's herdr the one
+# cloudlab put there.
 #
-# Bumping means editing this file AND that overlay together, since a client
-# newer than the instance is exactly the state that triggers the takeover.
+# Bumping means matching whatever the maintainer's own machine is on, since
+# a client newer than the instance is exactly the state that triggers the
+# takeover.
 #
-# Only the two Linux systems the template flake builds; the overlay's darwin
-# entries are irrelevant here, and so is its dontFixup carve-out, which
-# exists for Gatekeeper on signed macOS binaries.
+# Only the two Linux systems the template flake builds.
 {
   stdenv,
   fetchurl,
   lib,
 }:
 let
-  version = "0.9.0";
+  version = "0.9.1";
   sources = {
     x86_64-linux = fetchurl {
       url = "https://github.com/herdrdev/herdr/releases/download/v${version}/herdr-linux-x86_64";
-      hash = "sha256-T6GgEVjdgEPaktMbJweAsNzBBgMDjZthysTYGrY/tx8=";
+      hash = "sha256-KgL+0WvrZR7wBuHUPwSPZSyk3FitBTzS1ERQVj1cVLc=";
     };
     aarch64-linux = fetchurl {
       url = "https://github.com/herdrdev/herdr/releases/download/v${version}/herdr-linux-aarch64";
-      hash = "sha256-nI2yD7fnQnsTjVNnET8WIf/TGfL2XW8AniWUApEV8NI=";
+      hash = "sha256-9Mz03nRfLLmjmpg+m6NwPa1Q7CpY3qgwJs6rchu9jZ4=";
     };
   };
   src =
