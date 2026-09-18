@@ -156,6 +156,7 @@ func TestReadValues_RoundTripsRender(t *testing.T) {
 		"packages":  []string{"ripgrep", "jq"},
 		"agents":    []string{"claude"},
 		"flakes":    []Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: []string{"default"}}},
+		"settings":  map[string]any{"programs.git.userEmail": "work@example.com"},
 	}
 
 	rendered, err := Render(want)
@@ -173,6 +174,38 @@ func TestReadValues_RoundTripsRender(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReadValues(Render(v)) = %#v, want %#v", got, want)
+	}
+}
+
+// A settings list reads back as pkl-go's []interface{}, not the []string
+// a caller would build, so re-rendering what was read -- which init and
+// preset do on every edit -- has to accept that shape too.
+func TestReadValues_SettingsReRender(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	path := filepath.Join(dir, "bivouac.pkl")
+	body := strings.Join([]string{
+		`settings {`,
+		`  ["home.sessionVariables.N"] = 3`,
+		`  ["programs.git.ignores"] = new Listing { "*.swp"; ".direnv" }`,
+		`  ["programs.jq.enable"] = true`,
+		`}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	values, err := ReadValues(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadValues() error = %v", err)
+	}
+	rendered, err := Render(values)
+	if err != nil {
+		t.Fatalf("Render(ReadValues()) error = %v", err)
+	}
+	if rendered != body {
+		t.Errorf("Render(ReadValues()) =\n%s\nwant\n%s", rendered, body)
 	}
 }
 
@@ -256,6 +289,8 @@ func TestIsDefault(t *testing.T) {
 		{FieldAgents, []string{}, true},
 		{FieldFlakes, []Flake{}, true},
 		{FieldFlakes, []Flake{{Url: "github:foo/bar"}}, false},
+		{FieldSettings, map[string]any{}, true},
+		{FieldSettings, map[string]any{"a.b": "x"}, false},
 		// No default means nothing to compare against: a value for one
 		// of these always says something the schema would not.
 		{FieldRegion, "", false},

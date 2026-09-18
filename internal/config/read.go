@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"strings"
@@ -75,6 +76,8 @@ func fieldValue(c Config, name string) (any, bool) {
 		return append([]string{}, c.Instructions...), true
 	case FieldFlakes:
 		return append([]Flake{}, c.Flakes...), true
+	case FieldSettings:
+		return maps.Clone(c.Settings), true
 	}
 	return nil, false
 }
@@ -106,6 +109,7 @@ var fieldDefaults = map[string]any{
 	FieldAgents:       []string{},
 	FieldInstructions: []string{},
 	FieldFlakes:       []Flake{},
+	FieldSettings:     map[string]any{},
 }
 
 // IsDefault reports whether value is what field would resolve to anyway,
@@ -127,6 +131,9 @@ func IsDefault(field string, value any) bool {
 	case []Flake:
 		v, isList := value.([]Flake)
 		return isList && len(v) == len(d)
+	case map[string]any:
+		v, isMap := value.(map[string]any)
+		return isMap && len(v) == len(d)
 	default:
 		return def == value
 	}
