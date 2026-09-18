@@ -12,10 +12,12 @@ import (
 // Replies are queued per verb ("workspace list", "pane split") and the last
 // one repeats, which is how a listing can differ before and after a create.
 type fakeRouted struct {
-	replies  map[string][]string
-	fail     string     // verb to fail, e.g. "pane split"; empty means never
-	calls    [][]string // argv after the --machine prefix
-	machines []string   // the selector each call was routed to
+	replies   map[string][]string
+	fail      string     // verb to fail, e.g. "pane split"; empty means never
+	failLimit int        // caps how many calls to fail verb fail; 0 means fail every time
+	failed    int        // calls to fail verb failed so far
+	calls     [][]string // argv after the --machine prefix
+	machines  []string   // the selector each call was routed to
 }
 
 func (f *fakeRouted) Run(args ...string) (string, error) {
@@ -26,7 +28,8 @@ func (f *fakeRouted) Run(args ...string) (string, error) {
 	rest := args[2:]
 	f.calls = append(f.calls, rest)
 	verb := rest[0] + " " + rest[1]
-	if verb == f.fail {
+	if verb == f.fail && (f.failLimit == 0 || f.failed < f.failLimit) {
+		f.failed++
 		return "boom", fmt.Errorf("herdr %s failed", verb)
 	}
 	queue := f.replies[verb]
