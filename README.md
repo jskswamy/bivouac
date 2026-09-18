@@ -1,6 +1,6 @@
 # bivouac
 
-[![CI](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/cloudlab/actions/workflows/ci.yml)
+[![CI](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml)
 
 A bivouac is a shelter improvised for one stay: no built infrastructure,
 struck completely afterward. This is that, for coding agents — a

@@ -81,7 +81,7 @@ directory you happen to be standing in:
    automatically.
 2. The instance name is derived from `git remote get-url origin` (the last
    two path segments, lowercased and joined with `-`, so
-   `git@github.com:jskswamy/cloudlab.git` becomes `jskswamy-cloudlab`),
+   `git@github.com:jskswamy/bivouac.git` becomes `jskswamy-bivouac`),
    falling back to the folder name for repos with no `origin` remote.
 3. `--repo <path>` overrides where identity is resolved from. Lookup-only
    commands (everything that just needs to find an existing instance in
@@ -168,7 +168,7 @@ For an instance name and a local `bivouac.pkl` path it:
 2. Resolves the config (`config.Resolve` — project file merged with the
    personal base config).
 3. Expands the template name to a flake ref. `python`/`docker` expand to
-   `github:jskswamy/cloudlab?dir=templates#<name>-<system>`, floated on the
+   `github:jskswamy/bivouac?dir=templates#<name>-<system>`, floated on the
    default branch so template fixes don't need a bivouac release. Anything
    else is assumed to already be a complete flake ref and passed through.
 4. If the config adds anything beyond the bare template — `packages`,
