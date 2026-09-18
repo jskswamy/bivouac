@@ -1,6 +1,6 @@
 # cloudlab herdr: `--machine` workspace/focus and configurable tabs
 
-Status: designed, verified against a live instance (herdr 0.9.1)
+Status: implemented
 Date: 2026-09-18
 Builds on: `docs/superpowers/specs/2026-09-10-herdr-machines-design.md` (already
 implemented: `EnsureMachine`, `CleanupHerdr`)
@@ -155,6 +155,8 @@ create` does, so a create is immediately followed by `tab rename`/`pane
 rename` to the configured label — this is also how the label becomes the
 matching key on the next `cloudlab herdr` run.
 
+> Superseded — see Implementation notes.
+
 **Command execution.** A pane's `command` runs only the first time that pane
 is created. Re-running `cloudlab herdr` against an already-populated
 workspace must not re-run `npm run dev` into a pane that's already running
@@ -188,6 +190,8 @@ doesn't advertise the needed capability is refused with an instruction to
 `cloudlab provision`, the same behavior the existing `EnsureMachine` gate
 already has for `machine add`.
 
+> Superseded — see Implementation notes.
+
 ## Testing
 
 - `EnsureWorkspaceViaMachine`/`FocusWorkspaceViaMachine`: table tests over the
@@ -220,3 +224,41 @@ opt-in, additive, user-declared.
 **Encoding pane tree/split direction explicitly in config.** Rejected as
 unnecessary complexity: sequential chaining from declaration order covers
 every case seen so far and needs no additional schema.
+
+## Implementation notes
+
+Where the implementation departs from the design above, verified against
+herdr 0.9.1 while planning:
+
+- `tab create` accepts `--label`, so tabs are labelled at creation. Only
+  panes need a `pane rename` after `pane split`.
+- `herdr --machine <x> status` is refused ("not an API-backed machine
+  command"), so the capability gate cannot be a status call. The first
+  routed call, `workspace list`, is the probe; forwarding never installs,
+  restarts or falls back to a local server, so asking with a real command
+  is safe. Its failure names `bivouac provision`.
+- The `--machine` selector is the profile id, not the label: herdr accepts
+  a label only while it is unique, and the user may rename it.
+- The SSH path already parsed JSON; `parseWorkspaceList` is reused
+  unchanged. With the SSH path gone, the functions keep the names
+  `EnsureWorkspace`/`FocusWorkspace` rather than gaining a `ViaMachine`
+  suffix.
+- Tab and pane failures warn rather than fail the attach.
+- herdr's default tab ("1") is left in place; configured tabs follow it.
+- `herdrTabs` is read from the session's local `bivouac.pkl`; a repository
+  without one gets no layout, including base.pkl's tabs.
+- Two tabs with the same label, or two panes with the same label inside
+  one tab, resolve to the first declaration; the later one is skipped,
+  since label is the only identity a re-attach can match against.
+- A pane is labelled before its command is sent, so a failed command is
+  never retried on a later attach -- it is found by label and left alone,
+  and the failure is surfaced as a warning naming the pane.
+- Tabs and panes do not go through `--machine`: `EnsureTabs` runs
+  `herdr --session <name> ...` over one SSH connection (the `remoteRunner`
+  seam). `--machine` measured about 5s a call against about 24ms for a
+  local one, paid on every call with no amortization, and herdr has no
+  batching or persistent-connection mode. Workspace and focus make two or
+  three calls, which is tolerable; a layout makes one per tab plus one per
+  pane after a tab's first, roughly a minute for a small config. So
+  `AttachMachine` does open an SSH connection again, but only when tabs are
+  configured; `EnsureWorkspace`/`FocusWorkspace` stay on `--machine`.
