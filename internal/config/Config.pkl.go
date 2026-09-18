@@ -65,6 +65,17 @@ type Config struct {
 
 	Flakes []Flake `pkl:"flakes"`
 
+	// Overrides layered onto the final merged home-manager configuration,
+	// keyed by a dot-separated path (e.g. "programs.git.userEmail",
+	// "tools.tig.enable"). Not scoped to any flake or module: the option
+	// being overridden may belong to the template, to the shared common
+	// module, or to a flakes[].modules import.
+	//
+	// Merges by key, not additively like the Listing fields above: the
+	// project's value replaces the base's for a matching key, and adds
+	// any key the base didn't have.
+	Settings map[string]any `pkl:"settings"`
+
 	// Tabs, and the panes inside them, that `bivouac herdr` lays out in a
 	// session's workspace when it attaches from inside herdr.
 	//
