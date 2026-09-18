@@ -57,3 +57,32 @@ class Flake {
   packages: Listing<String>
   modules: Boolean = false
 }
+
+/// Tabs, and the panes inside them, that `bivouac herdr` lays out in a
+/// session's workspace when it attaches from inside herdr.
+///
+/// Opt-in and additive like `packages`: base's tabs are created before
+/// this file's. bivouac declares no layout of its own, because what a
+/// useful tab looks like depends on the project's workflow.
+///
+/// Matched by label on every attach, so re-attaching adds only what is
+/// missing and never runs a pane's command twice.
+herdrTabs: Listing<HerdrTab> = new Listing {}
+
+class HerdrTab {
+  label: String(!isEmpty)
+  /// In declaration order: the first is the tab's own pane, and each
+  /// later one splits off the one before it.
+  panes: Listing<HerdrPane> = new Listing {}
+}
+
+class HerdrPane {
+  label: String(!isEmpty)
+  /// Run once, when the pane is first created.
+  command: String?
+  /// An absolute path, or one starting `~`, is passed to herdr
+  /// unchanged -- both are resolved on the instance itself. Anything
+  /// else is relative to the session's checkout on the instance;
+  /// omitted means the checkout itself.
+  cwd: String?
+}

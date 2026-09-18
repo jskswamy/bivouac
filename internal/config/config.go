@@ -125,6 +125,7 @@ func mergeConfig(base, project Config) Config {
 		Packages:  append(append([]string{}, base.Packages...), project.Packages...),
 		Agents:    append(append([]string{}, base.Agents...), project.Agents...),
 		Flakes:    append(append([]Flake{}, base.Flakes...), project.Flakes...),
+		HerdrTabs: append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
 	}
 }
 
