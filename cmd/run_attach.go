@@ -2,13 +2,18 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -43,24 +48,50 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir, forwardAgent)
 }
 
+// herdrTabsFor reads the tab layout the session's repository asks for.
+//
+// Best-effort, like beadsModeFor: `bivouac herdr` has never needed a
+// config to resolve, and the layout must not become the reason it fails.
+// A repository with no bivouac.pkl has nothing to lay out -- base.pkl's
+// tabs included, since Resolve is anchored on the project file.
+func herdrTabsFor(ctx context.Context, localRepo string) []config.HerdrTab {
+	if localRepo == "" {
+		return nil
+	}
+	path := filepath.Join(localRepo, "bivouac.pkl")
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+	cfg, err := config.Resolve(ctx, path)
+	if err != nil {
+		provider.ReportWarning(ctx, "herdr: could not resolve "+path+" ("+err.Error()+"); attaching without its tabs")
+		return nil
+	}
+	return cfg.HerdrTabs
+}
+
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	store, record, err := resolveInstance(name)
 	if err != nil {
 		return err
 	}
 	// nil, not args: args[0] here is the INSTANCE name (see the nil-args
-	// comment on runSSH). herdr has no way to attach a starting directory to
-	// a --remote session (that's cloudlab-7y1, via `workspace create --cwd`
-	// at `session start` time) -- but it does accept --session, so the
-	// resolved bivouac session still buys a per-session herdr session:
-	// reconnecting to the same session name lands back in the same place.
-	// With no session resolvable, connect anyway with herdr's own default
-	// session -- connecting is not destructive and must degrade, not refuse.
+	// comment on runSSH). herdr does not accept a starting directory for a
+	// --remote session (that's cloudlab-7y1, via `workspace create --cwd` at
+	// `session start` time) -- but it does accept --session, so the resolved
+	// bivouac session still buys a per-session herdr session: reconnecting
+	// to the same session name lands back in the same place. Inside herdr,
+	// AttachMachine roots the workspace in the checkout itself, so the
+	// starting directory is not missing there. With no session resolvable,
+	// connect anyway with herdr's own default session -- connecting is not
+	// destructive and must degrade, not refuse.
 	session := ""
 	repoName := record.Name
+	localRepo := ""
 	if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 		session = sess.Name
 		repoName = sess.RepoNameOr(record.Name)
+		localRepo = sess.LocalRepo
 	}
 
 	// Inside herdr, saving the instance as a machine puts it in the sidebar
@@ -69,14 +100,15 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
 		id, label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
-			record.User, session, repoName, ownedMachines(store))
-		if err != nil {
-			return err
+			record.User, session, repoName, herdrTabsFor(cmd.Context(), localRepo), ownedMachines(store))
+		// Recorded before the error is looked at: AttachMachine hands back a
+		// saved profile's id even when a later step failed, and teardown
+		// removes this exact profile -- one bivouac created but did not
+		// record is one nothing will ever clean up.
+		if rerr := recordHerdrMachine(store, record.Name, session, id); rerr != nil {
+			return errors.Join(err, rerr)
 		}
-		// Recorded before anything else can go wrong: teardown removes this
-		// exact profile, and a profile bivouac created but did not record
-		// is one nothing will ever clean up.
-		if err := recordHerdrMachine(store, record.Name, session, id); err != nil {
+		if err != nil {
 			return err
 		}
 		// Named, not selected. Which machine is current is client state

@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
 	"github.com/jskswamy/bivouac/internal/tool"
 )
@@ -49,11 +51,13 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // AttachMachine puts a session in the herdr window the user is already
 // looking at, and returns the profile id and the sidebar entry to pick.
 //
-// Three steps, in this order. The machine has to exist and be enabled before
-// `--machine` can route to it -- that is how the workspace steps reach the
-// instance's herdr, with no SSH connection of bivouac's own; the workspace
-// has to exist before it can be focused; and focusing is last because it is
-// the only step that moves anyone.
+// Four steps, in this order: machine, workspace, tabs, focus. The machine
+// has to exist and be enabled before `--machine` can route to it -- that is
+// how the workspace and focus steps reach the instance's herdr, with no SSH
+// connection of bivouac's own; the workspace has to exist before it can be
+// laid out or focused; and focusing is last because it is the only step
+// that moves anyone. Tabs are the exception to `--machine`: they run over
+// one SSH connection, opened only when there are tabs to lay out.
 //
 // The id comes back so the caller can record it. Teardown removes exactly
 // that profile and nothing else, which is the only way to tell bivouac's
@@ -63,7 +67,7 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // It stops short of selecting the machine. That is client state with no CLI,
 // no API operation and no keybinding -- verified against herdr 0.9.0 -- so
 // the label comes back for the caller to name, and the user picks it.
-func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string, owned OwnedMachines) (string, string, error) {
+func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
 	// No bivouac session means there is nowhere to record the id, and a
 	// machine standing for "the instance in general" is not what this is
 	// for: it could never be cleaned up, because nothing would remember it.
@@ -75,19 +79,49 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 		return "", "", err
 	}
 	target := MachineTarget(user, ip)
+	root := RemoteRepoPath(user, session, repoName)
 
-	h := localHerdr{ctx: ctx}
+	return attachMachine(ctx, localHerdr{ctx: ctx}, instance, ip, user, target, session, root, tabs, owned)
+}
+
+// attachMachine is AttachMachine's logic, seamed on herdrRunner the same way
+// EnsureMachine and EnsureWorkspace already are, so it can be driven by a
+// fake instead of a live herdr binary. AttachMachine itself stays the
+// public entry point: it is where the session-name check, the `herdr`
+// on-PATH check and the live localHerdr belong, none of which this needs to
+// run against a fake.
+func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, target, session, root string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
 	id, label, err := EnsureMachine(h, instance, target, session, owned)
 	if err != nil {
 		return "", "", err
 	}
 
-	wsID, err := EnsureWorkspace(h, id, RemoteRepoPath(user, session, repoName), session)
+	wsID, err := EnsureWorkspace(h, id, root, session)
 	if err != nil {
-		return id, label, err
+		// EnsureMachine already succeeded, so the sidebar entry exists even
+		// though the rest of the attach did not -- say so, and name it by
+		// the label the user sees in the sidebar rather than the opaque id.
+		return id, label, fmt.Errorf("%s is saved in your herdr sidebar, but its workspace could not be prepared: %w", label, err)
+	}
+	// Layout is best-effort: the machine is saved and the workspace exists,
+	// which is what attaching needs. A tab that would not open is worth
+	// saying, not worth refusing the attach over. Its own SSH connection,
+	// opened only when there are tabs to lay out -- see remoteHerdrCmd in
+	// herdrtabs.go for why EnsureTabs runs over SSH-exec rather than
+	// --machine like every other step here.
+	if len(tabs) > 0 {
+		if client, err := reconcile.Connect(ctx, ip, user); err != nil {
+			provider.ReportWarning(ctx, "herdr: laying out tabs: connecting to the instance: "+err.Error())
+		} else {
+			err := EnsureTabs(client, session, wsID, root, tabs)
+			_ = client.Close()
+			if err != nil {
+				provider.ReportWarning(ctx, "herdr: laying out tabs: "+err.Error())
+			}
+		}
 	}
 	if err := FocusWorkspace(h, id, wsID); err != nil {
-		return id, label, err
+		return id, label, fmt.Errorf("%s is saved in your herdr sidebar, but its workspace could not be prepared: %w", label, err)
 	}
 	return id, label, nil
 }

@@ -88,8 +88,11 @@ func workspaceCloseArgs(machine, id string) []string {
 // The listing is also the capability probe. `herdr --machine` refuses
 // `status`, so there is no cheaper question to ask first -- and forwarding
 // never installs, restarts or falls back to a local server, so asking with
-// a real command is safe. A failure here means the instance's herdr cannot
-// be driven this way, which provisioning fixes.
+// a real command is safe. A failure here has one of several causes -- an
+// old herdr on either end, a session server that was never started or died
+// with the instance, or the instance being unreachable at all -- and the
+// error lists them rather than pointing at only the one `bivouac provision`
+// fixes.
 //
 // Reused when it already exists. Reconnecting to a session is the common
 // case, and creating unconditionally would stack up a workspace per attach.
@@ -97,7 +100,11 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (string, error) 
 	out, err := h.Run(workspaceListArgs(machine)...)
 	if err != nil {
 		return "", fmt.Errorf("reaching the instance's herdr through saved machine %s: %w\n%s\n"+
-			"its herdr may predate machine forwarding (0.9.1) -- run `bivouac provision`, then try again",
+			"machine forwarding needs herdr 0.9.1 on both ends, and forwarding never starts a "+
+			"session server that isn't already running -- possible causes: this machine's herdr "+
+			"predates 0.9.1 (upgrade it); the instance's herdr predates 0.9.1 (run `bivouac "+
+			"provision`); the session's herdr server on the instance is not running, e.g. after a "+
+			"reboot; or the instance is unreachable",
 			machine, err, out)
 	}
 	workspaces, err := parseWorkspaceList(out)
