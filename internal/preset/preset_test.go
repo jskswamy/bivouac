@@ -257,7 +257,7 @@ func TestSave_ProducesAReadableFile(t *testing.T) {
 		"template":  "python",
 		"tailscale": true,
 		"packages":  []string{"jq"},
-		"flakes":    []config.Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: true}},
+		"flakes":    []config.Flake{{Url: "github:foo/bar", Packages: []string{"default"}, Modules: []string{"default"}}},
 	}
 	if err := Save("full", values); err != nil {
 		t.Fatalf("Save() error = %v", err)

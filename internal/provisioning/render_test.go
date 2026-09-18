@@ -61,10 +61,10 @@ func TestRender_WithFlakeModules_ImportsFlakeInputAndModule(t *testing.T) {
 	cfg := config.Config{
 		Arch: "x86_64",
 		Flakes: []config.Flake{
-			{Url: "github:someorg/custom-tool", Packages: []string{"cli"}, Modules: true},
+			{Url: "github:someorg/custom-tool", Packages: []string{"cli"}, Modules: []string{"tools.git", "git-tools"}},
 		},
 	}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -74,8 +74,11 @@ func TestRender_WithFlakeModules_ImportsFlakeInputAndModule(t *testing.T) {
 	if !strings.Contains(out, `flake0.packages."x86_64-linux"."cli"`) {
 		t.Errorf("output does not reference the flake's package:\n%s", out)
 	}
-	if !strings.Contains(out, "flake0.homeManagerModules.default") {
-		t.Errorf("output does not reference the flake's default module:\n%s", out)
+	if !strings.Contains(out, `flake0.homeManagerModules."tools"."git"`) {
+		t.Errorf("output does not reference the dotted module path:\n%s", out)
+	}
+	if !strings.Contains(out, `flake0.homeManagerModules."git-tools"`) {
+		t.Errorf("output does not reference the flat module name:\n%s", out)
 	}
 }
 
@@ -83,15 +86,15 @@ func TestRender_FlakeWithoutModules_OmitsModuleReference(t *testing.T) {
 	cfg := config.Config{
 		Arch: "x86_64",
 		Flakes: []config.Flake{
-			{Url: "github:someorg/custom-tool", Packages: []string{"cli"}, Modules: false},
+			{Url: "github:someorg/custom-tool", Packages: []string{"cli"}},
 		},
 	}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	if strings.Contains(out, "homeManagerModules.default") {
-		t.Errorf("output references homeManagerModules.default when Modules is false:\n%s", out)
+	if strings.Contains(out, "flake0.homeManagerModules") {
+		t.Errorf("output references flake0.homeManagerModules with no modules configured:\n%s", out)
 	}
 }
 
@@ -148,7 +151,7 @@ func TestRender_ValidValues_StillRender(t *testing.T) {
 		Arch:     "x86_64",
 		Packages: []string{"ripgrep", "python3.11", "gcc-arm-embedded", "nodejs_22"},
 		Flakes: []config.Flake{
-			{Url: "github:someorg/custom-tool?ref=main", Packages: []string{"cli"}, Modules: true},
+			{Url: "github:someorg/custom-tool?ref=main", Packages: []string{"cli"}, Modules: []string{"tools.git"}},
 		},
 	}
 	if _, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux"); err != nil {

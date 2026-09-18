@@ -91,9 +91,9 @@ func Validate(ctx context.Context, r Runner, cfg config.Resolved) error {
 				problems = append(problems, fmt.Sprintf("flake %q package %q: %v", f.Url, pkg, err))
 			}
 		}
-		if f.Modules {
-			if err := evalExists(ctx, r, f.Url, "homeManagerModules.default"); err != nil {
-				problems = append(problems, fmt.Sprintf("flake %q module: %v", f.Url, err))
+		for _, m := range f.Modules {
+			if err := evalExists(ctx, r, f.Url, "homeManagerModules."+m); err != nil {
+				problems = append(problems, fmt.Sprintf("flake %q module %q: %v", f.Url, m, err))
 			}
 		}
 	}

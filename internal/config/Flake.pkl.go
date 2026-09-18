@@ -6,5 +6,5 @@ type Flake struct {
 
 	Packages []string `pkl:"packages"`
 
-	Modules bool `pkl:"modules"`
+	Modules []string `pkl:"modules"`
 }

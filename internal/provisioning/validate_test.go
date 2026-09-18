@@ -38,7 +38,7 @@ func TestValidate_GoodConfig_NoError(t *testing.T) {
 		Config: config.Config{
 			Arch: "x86_64",
 			Flakes: []config.Flake{
-				{Url: testdataFlake(t, "good-flake"), Packages: []string{"cli"}, Modules: true},
+				{Url: testdataFlake(t, "good-flake"), Packages: []string{"cli"}, Modules: []string{"default", "tools.git"}},
 			},
 		},
 	}
@@ -77,7 +77,7 @@ func TestValidate_FlakeMissingModules_NamesItClearly(t *testing.T) {
 		Config: config.Config{
 			Arch: "x86_64",
 			Flakes: []config.Flake{
-				{Url: testdataFlake(t, "no-modules-flake"), Packages: []string{"cli"}, Modules: true},
+				{Url: testdataFlake(t, "no-modules-flake"), Packages: []string{"cli"}, Modules: []string{"default"}},
 			},
 		},
 	}
@@ -87,6 +87,26 @@ func TestValidate_FlakeMissingModules_NamesItClearly(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "homeManagerModules") {
 		t.Errorf("error %q does not mention homeManagerModules", err.Error())
+	}
+}
+
+func TestValidate_FlakeMissingNamedModule_NamesItClearly(t *testing.T) {
+	tmpl := validTemplateFor(t)
+	cfg := config.Resolved{
+		Template: tmpl,
+		Config: config.Config{
+			Arch: "x86_64",
+			Flakes: []config.Flake{
+				{Url: testdataFlake(t, "good-flake"), Packages: []string{"cli"}, Modules: []string{"tools.nonexistent"}},
+			},
+		},
+	}
+	err := Validate(context.Background(), LocalRunner{}, cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error naming the missing module")
+	}
+	if !strings.Contains(err.Error(), "tools.nonexistent") {
+		t.Errorf("error %q does not name the missing module path", err.Error())
 	}
 }
 

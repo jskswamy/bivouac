@@ -31,7 +31,9 @@ func NeedsRender(cfg config.Config) bool {
 // that only says "ok".
 const NixpkgsRef = "github:NixOS/nixpkgs/nixos-unstable"
 
-var renderTmpl = template.Must(template.New("flake").Parse(`{
+var renderTmpl = template.Must(template.New("flake").Funcs(template.FuncMap{
+	"nixPath": nixPath,
+}).Parse(`{
   inputs = {
     nixpkgs.url = "` + NixpkgsRef + `";
     home-manager.url = "github:nix-community/home-manager";
@@ -50,7 +52,7 @@ var renderTmpl = template.Must(template.New("flake").Parse(`{
 {{if .Packages}}        ({ pkgs, ... }: { home.packages = [ {{range .Packages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{if .AgentPackages}}        ({ pkgs, ... }: { home.packages = [ {{range .AgentPackages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{range $i, $f := .Flakes}}{{if $f.Packages}}        { home.packages = [ {{range $f.Packages}}flake{{$i}}.packages."{{$.System}}"."{{.}}" {{end}}]; }
-{{end}}{{if $f.Modules}}        flake{{$i}}.homeManagerModules.default
+{{end}}{{range $f.Modules}}        flake{{$i}}.homeManagerModules{{nixPath .}}
 {{end}}{{end}}      ];
     };
   };
@@ -174,6 +176,21 @@ func validateNixIdent(kind, name string) error {
 	return nil
 }
 
+// nixPath turns a dot-separated string into Nix attribute-access syntax
+// with every segment quoted. Nix source requires this: an unquoted
+// hyphenated segment (`a.git-tools`) parses as subtraction, not nested
+// attribute access, so every segment is quoted unconditionally rather
+// than only when it would otherwise be ambiguous.
+func nixPath(dotted string) string {
+	var b strings.Builder
+	for _, seg := range strings.Split(dotted, ".") {
+		b.WriteString(`."`)
+		b.WriteString(seg)
+		b.WriteString(`"`)
+	}
+	return b.String()
+}
+
 // validateNixString rejects a value (a flake URL) that isn't a valid
 // Nix identifier but is still embedded as a Nix string-literal value.
 // Flake refs legitimately use ':', '/', '?', '=', '&', '#', so this
@@ -205,6 +222,11 @@ func validateRenderData(data renderData) error {
 		}
 		for _, pkg := range f.Packages {
 			if err := validateNixIdent("flake package", pkg); err != nil {
+				return err
+			}
+		}
+		for _, m := range f.Modules {
+			if err := validateNixIdent("flake module", m); err != nil {
 				return err
 			}
 		}
