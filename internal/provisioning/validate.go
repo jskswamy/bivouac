@@ -92,6 +92,13 @@ func Validate(ctx context.Context, r Runner, cfg config.Resolved) error {
 			}
 		}
 		for _, m := range f.Modules {
+			// The same per-segment check Render applies, first: nix
+			// eval would reject "tools..git" too, but as a missing
+			// attribute rather than a malformed path.
+			if err := validateNixPath("module", m); err != nil {
+				problems = append(problems, fmt.Sprintf("flake %q: %v", f.Url, err))
+				continue
+			}
 			if err := evalExists(ctx, r, f.Url, "homeManagerModules."+m); err != nil {
 				problems = append(problems, fmt.Sprintf("flake %q module %q: %v", f.Url, m, err))
 			}

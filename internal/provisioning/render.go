@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -21,7 +22,7 @@ import (
 // nothing, so the template's default stands and the tailscaled unit is
 // never installed -- the flag silently does nothing at all.
 func NeedsRender(cfg config.Config) bool {
-	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0
+	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0 || len(cfg.Settings) > 0
 }
 
 // NixpkgsRef is the nixpkgs the rendered flake pins, and so the one a
@@ -32,7 +33,8 @@ func NeedsRender(cfg config.Config) bool {
 const NixpkgsRef = "github:NixOS/nixpkgs/nixos-unstable"
 
 var renderTmpl = template.Must(template.New("flake").Funcs(template.FuncMap{
-	"nixPath": nixPath,
+	"nixPath":  nixPath,
+	"nixValue": nixValue,
 }).Parse(`{
   inputs = {
     nixpkgs.url = "` + NixpkgsRef + `";
@@ -52,8 +54,9 @@ var renderTmpl = template.Must(template.New("flake").Funcs(template.FuncMap{
 {{if .Packages}}        ({ pkgs, ... }: { home.packages = [ {{range .Packages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{if .AgentPackages}}        ({ pkgs, ... }: { home.packages = [ {{range .AgentPackages}}pkgs."{{.}}" {{end}}]; })
 {{end}}{{range $i, $f := .Flakes}}{{if $f.Packages}}        { home.packages = [ {{range $f.Packages}}flake{{$i}}.packages."{{$.System}}"."{{.}}" {{end}}]; }
-{{end}}{{range $f.Modules}}        flake{{$i}}.homeManagerModules{{nixPath .}}
-{{end}}{{end}}      ];
+{{end}}{{range $f.Modules}}        flake{{$i}}.homeManagerModules.{{nixPath .}}
+{{end}}{{end}}{{if .Settings}}        ({ ... }: { {{range $k, $v := .Settings}}{{nixPath $k}} = {{nixValue $v}}; {{end}}})
+{{end}}      ];
     };
   };
 }
@@ -73,6 +76,7 @@ type renderData struct {
 	AgentPackages  []string
 	UnfreePackages []string
 	Flakes         []config.Flake
+	Settings       map[string]any
 }
 
 // agentPackages maps a config `agents` entry to its nixpkgs attribute
@@ -131,9 +135,9 @@ func resolveAgents(agents []string) (pkgs, unfree []string, err error) {
 
 // Render produces the per-instance wrapper flake.nix content for cfg,
 // importing templateRef's homeManagerModules.<name> as the template
-// module, plus a synthetic module for cfg.Packages and one per
-// cfg.Flakes[] entry (its packages, and its homeManagerModules.default
-// if Modules is true).
+// module, plus a synthetic module for cfg.Packages, one per
+// cfg.Flakes[] entry's packages and each homeManagerModules path it
+// names, and a final one for cfg.Settings.
 func Render(cfg config.Config, templateRef string) (string, error) {
 	url, name := splitFlakeRef(templateRef)
 	agentPkgs, unfreePkgs, err := resolveAgents(cfg.Agents)
@@ -149,6 +153,7 @@ func Render(cfg config.Config, templateRef string) (string, error) {
 		AgentPackages:  agentPkgs,
 		UnfreePackages: unfreePkgs,
 		Flakes:         cfg.Flakes,
+		Settings:       cfg.Settings,
 	}
 	if err := validateRenderData(data); err != nil {
 		return "", err
@@ -176,30 +181,90 @@ func validateNixIdent(kind, name string) error {
 	return nil
 }
 
-// nixPath turns a dot-separated string into Nix attribute-access syntax
-// with every segment quoted. Nix source requires this: an unquoted
-// hyphenated segment (`a.git-tools`) parses as subtraction, not nested
-// attribute access, so every segment is quoted unconditionally rather
-// than only when it would otherwise be ambiguous.
+// nixPath turns a dot-separated string into a Nix attribute path with
+// every segment quoted: "tools.git" becomes "tools"."git". Nix source
+// requires this: an unquoted hyphenated segment (`a.git-tools`) parses
+// as subtraction, not nested attribute access, so every segment is
+// quoted unconditionally rather than only when it would otherwise be
+// ambiguous. There is no leading dot, so the same path works both after
+// an expression (x.<path>) and as a binding's left-hand side
+// (<path> = v;), where a leading dot is a syntax error.
 func nixPath(dotted string) string {
-	var b strings.Builder
-	for _, seg := range strings.Split(dotted, ".") {
-		b.WriteString(`."`)
-		b.WriteString(seg)
-		b.WriteString(`"`)
+	segs := strings.Split(dotted, ".")
+	for i, seg := range segs {
+		segs[i] = `"` + seg + `"`
 	}
-	return b.String()
+	return strings.Join(segs, ".")
 }
 
-// validateNixString rejects a value (a flake URL) that isn't a valid
-// Nix identifier but is still embedded as a Nix string-literal value.
-// Flake refs legitimately use ':', '/', '?', '=', '&', '#', so this
-// only blocks the two ways out of a Nix double-quoted string: a literal
-// '"' closing it early, and Nix's own "${...}" interpolation syntax,
-// which evaluates arbitrary Nix without even needing to close the quote.
+// nixValue renders a settings value (pkl-go's decoding of a
+// String|Boolean|Int|Listing<String> union) as a Nix literal. Listing<String>
+// decodes as []interface{}, not []string -- every element is itself
+// boxed in `any` -- so the list case type-asserts each element on its
+// own rather than a single slice-wide assertion.
+func nixValue(v any) (string, error) {
+	switch x := v.(type) {
+	case string:
+		return quotedNixString(x)
+	case bool:
+		return strconv.FormatBool(x), nil
+	case int:
+		return strconv.Itoa(x), nil
+	case []interface{}:
+		parts := make([]string, len(x))
+		for i, e := range x {
+			s, ok := e.(string)
+			if !ok {
+				return "", fmt.Errorf("settings value: list element %v is not a string", e)
+			}
+			q, err := quotedNixString(s)
+			if err != nil {
+				return "", err
+			}
+			parts[i] = q
+		}
+		return "[ " + strings.Join(parts, " ") + " ]", nil
+	default:
+		return "", fmt.Errorf("settings value %v: unsupported type %T", v, v)
+	}
+}
+
+// quotedNixString renders a settings string, alone or as a list
+// element, as a Nix string literal, rejecting anything that could leave
+// the literal rather than escaping it.
+func quotedNixString(s string) (string, error) {
+	if err := validateNixString("settings value", s); err != nil {
+		return "", err
+	}
+	return `"` + s + `"`, nil
+}
+
+// validateNixPath applies validateNixIdent to each segment of a dotted
+// path rather than to the whole string. The charset admits '.', so a
+// whole-string check would pass "tools..git" or ".git", which nixPath
+// would render with a quoted empty attribute name.
+func validateNixPath(kind, dotted string) error {
+	for _, seg := range strings.Split(dotted, ".") {
+		if seg == "" {
+			return fmt.Errorf("%s %q has an empty path segment", kind, dotted)
+		}
+		if err := validateNixIdent(kind, seg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateNixString rejects a value (a flake URL, a settings string)
+// that isn't a valid Nix identifier but is still embedded as a Nix
+// string-literal value. Flake refs legitimately use ':', '/', '?', '=',
+// '&', '#', so this only blocks the ways out of a Nix double-quoted
+// string: a literal '"' closing it early, a '\' escaping the closing
+// quote Render adds, and Nix's own "${...}" interpolation syntax, which
+// evaluates arbitrary Nix without even needing to close the quote.
 func validateNixString(kind, value string) error {
-	if strings.Contains(value, `"`) || strings.Contains(value, "${") {
-		return fmt.Errorf("%s %q is not safe to embed in a Nix string literal (contains '\"' or '${')", kind, value)
+	if strings.ContainsAny(value, `"\`) || strings.Contains(value, "${") {
+		return fmt.Errorf("%s %q is not safe to embed in a Nix string literal (contains '\"', '\\' or '${')", kind, value)
 	}
 	return nil
 }
@@ -226,9 +291,14 @@ func validateRenderData(data renderData) error {
 			}
 		}
 		for _, m := range f.Modules {
-			if err := validateNixIdent("flake module", m); err != nil {
+			if err := validateNixPath("flake module", m); err != nil {
 				return err
 			}
+		}
+	}
+	for k := range data.Settings {
+		if err := validateNixPath("settings key", k); err != nil {
+			return err
 		}
 	}
 	return nil
