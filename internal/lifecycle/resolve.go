@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // AmbiguousError reports that no rule could pick a session and names what was
@@ -25,7 +25,7 @@ func (e *AmbiguousError) Error() string {
 // SessionFromCwd reports the session whose worktree cwd is inside.
 //
 // Reads the checked-out branch rather than matching on the path: a worktree
-// created by hand or moved elsewhere still carries cloudlab/<name>, while a
+// created by hand or moved elsewhere still carries bivouac/<name>, while a
 // path match on .worktrees/ would miss it and would also match a directory
 // that merely looks like one.
 func SessionFromCwd(ctx context.Context, cwd string) (string, bool) {
@@ -69,7 +69,7 @@ func ResolveSession(ctx context.Context, cwd string, record state.Record, explic
 
 	switch len(record.Sessions) {
 	case 0:
-		return state.Session{}, fmt.Errorf("instance %s has no sessions — start one with `cloudlab session start <name>`", record.Name)
+		return state.Session{}, fmt.Errorf("instance %s has no sessions — start one with `bivouac session start <name>`", record.Name)
 	case 1:
 		return record.Sessions[0], nil
 	default:

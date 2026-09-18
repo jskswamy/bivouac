@@ -1,5 +1,5 @@
 // Package reconcile brings a live instance's home-manager environment
-// up to date with its local cloudlab.pkl: resolve the config, render a
+// up to date with its local bivouac.pkl: resolve the config, render a
 // per-instance wrapper flake if needed, ship it over SSH, and run
 // home-manager switch. It is the one piece up, shell, and provision all
 // share.
@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // Client wraps an established SSH connection to an instance.
@@ -47,7 +47,7 @@ type Client struct {
 // added to the agent -- and if SSH_AUTH_SOCK points at gpg-agent, it
 // typically serves *only* the smartcard key, so the plain ~/.ssh/id_*
 // key registered with the cloud provider is invisible to it. Trying the
-// agent alone made cloudlab fail to authenticate against instances that
+// agent alone made bivouac fail to authenticate against instances that
 // `ssh` itself could log into fine, which is both baffling to diagnose
 // and, because the caller then retries, escalates into the instance
 // blackholing this host (see lifecycle.WaitReady).

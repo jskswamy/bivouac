@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/preset"
-	"github.com/jskswamy/cloudlab/internal/wizard"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/preset"
+	"github.com/jskswamy/bivouac/internal/wizard"
 )
 
 // scriptedPrompter stands in for the huh forms. The forms are the one
@@ -128,8 +128,8 @@ func newInitFixture(t *testing.T) *initFixture {
 	return &initFixture{
 		xdg:      xdg,
 		root:     resolved,
-		basePath: filepath.Join(xdg, "cloudlab", "base.pkl"),
-		project:  filepath.Join(resolved, "cloudlab.pkl"),
+		basePath: filepath.Join(xdg, "bivouac", "base.pkl"),
+		project:  filepath.Join(resolved, "bivouac.pkl"),
 		out:      &bytes.Buffer{},
 	}
 }
@@ -199,7 +199,7 @@ func TestInitFlow_FirstRunEver(t *testing.T) {
 	// would have given anyway.
 	wantProject := config.Values{"template": "python", "agents": []string{"claude"}, "packages": []string{"jq"}}
 	if got := f.values(t, f.project); !reflect.DeepEqual(got, wantProject) {
-		t.Errorf("cloudlab.pkl = %#v, want %#v", got, wantProject)
+		t.Errorf("bivouac.pkl = %#v, want %#v", got, wantProject)
 	}
 }
 
@@ -219,7 +219,7 @@ func TestInitFlow_ProjectFileNeverGetsTheSSHKey(t *testing.T) {
 		t.Fatalf("runInitFlow() error = %v", err)
 	}
 	if text := f.text(t, f.project); strings.Contains(text, "aa:bb:cc") {
-		t.Errorf("cloudlab.pkl contains the SSH key:\n%s", text)
+		t.Errorf("bivouac.pkl contains the SSH key:\n%s", text)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestInitFlow_ExistingBaseKept(t *testing.T) {
 
 // A base.pkl written before `size` existed, or edited by hand, is
 // missing a field config.Resolve requires. "Use these" must not trust it
-// blindly and let that surface only at the read-back, after cloudlab.pkl
+// blindly and let that surface only at the read-back, after bivouac.pkl
 // has already been written: it should ask for exactly what is missing.
 func TestInitFlow_ExistingBaseMissingSizeIsAsked(t *testing.T) {
 	f := newInitFixture(t)
@@ -371,7 +371,7 @@ func TestInitFlow_StampedPresetIsNotLinked(t *testing.T) {
 	}
 	text := f.text(t, f.project)
 	if strings.Contains(text, "basePath") || strings.Contains(text, "presets") {
-		t.Errorf("cloudlab.pkl links to the preset store:\n%s", text)
+		t.Errorf("bivouac.pkl links to the preset store:\n%s", text)
 	}
 }
 
@@ -484,7 +484,7 @@ func TestInitFlow_MovesPersonalFieldsOnAccept(t *testing.T) {
 	project := f.values(t, f.project)
 	for _, field := range wizard.PersonalFields() {
 		if _, ok := project[field]; ok {
-			t.Errorf("cloudlab.pkl still declares %q after the move", field)
+			t.Errorf("bivouac.pkl still declares %q after the move", field)
 		}
 	}
 	base := f.values(t, f.basePath)
@@ -515,7 +515,7 @@ func TestInitFlow_DecliningTheMoveKeepsTheFieldsInPlace(t *testing.T) {
 	}
 	project := f.values(t, f.project)
 	if project["region"] != "nyc3" || project["size"] != "s-1vcpu-1gb" {
-		t.Errorf("cloudlab.pkl = %#v, want region and size left where they were", project)
+		t.Errorf("bivouac.pkl = %#v, want region and size left where they were", project)
 	}
 	if !reflect.DeepEqual(project["sshKeys"], []string{"aa:bb:cc"}) {
 		t.Errorf("sshKeys = %v, want it left in place", project["sshKeys"])
@@ -565,7 +565,7 @@ func TestInitFlow_NoPersonalFieldsMeansNoMoveQuestion(t *testing.T) {
 // instructions is a personal field but must never be offered the move.
 // Its value is a path resolved against the file that declares it, so
 // lifting the line into base.pkl silently repoints it at
-// ~/.config/cloudlab -- and config.InstructionFiles errors on a file
+// ~/.config/bivouac -- and config.InstructionFiles errors on a file
 // that is not there, so the user's next up would fail. The move is
 // offered on the promise that both outcomes resolve to the same config,
 // and this is the one field that would break it.
@@ -585,7 +585,7 @@ func TestInitFlow_InstructionsAreNotOfferedAMove(t *testing.T) {
 
 	project := f.values(t, f.project)
 	if !reflect.DeepEqual(project[config.FieldInstructions], []string{"docs/workflow.md"}) {
-		t.Errorf("cloudlab.pkl instructions = %v, want the path left where it resolves", project[config.FieldInstructions])
+		t.Errorf("bivouac.pkl instructions = %v, want the path left where it resolves", project[config.FieldInstructions])
 	}
 	base := f.values(t, f.basePath)
 	if _, moved := base[config.FieldInstructions]; moved {
@@ -655,8 +655,8 @@ func TestRequireTerminal_NamesInitAndOpensNoForm(t *testing.T) {
 	if err == nil {
 		t.Fatal("requireTerminal(false) error = nil, want a refusal")
 	}
-	if !strings.Contains(err.Error(), "cloudlab init") {
-		t.Errorf("error = %q, want it to name `cloudlab init`", err)
+	if !strings.Contains(err.Error(), "bivouac init") {
+		t.Errorf("error = %q, want it to name `bivouac init`", err)
 	}
 	if err := requireTerminal(true); err != nil {
 		t.Errorf("requireTerminal(true) error = %v, want nil", err)
@@ -673,13 +673,13 @@ func TestInitCmd_RefusesWithoutATerminal(t *testing.T) {
 	// not a character device -- exactly the non-interactive case.
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("cloudlab init error = nil without a terminal, want a refusal")
+		t.Fatal("bivouac init error = nil without a terminal, want a refusal")
 	}
-	if !strings.Contains(err.Error(), "cloudlab init") {
-		t.Errorf("error = %q, want it to name `cloudlab init`", err)
+	if !strings.Contains(err.Error(), "bivouac init") {
+		t.Errorf("error = %q, want it to name `bivouac init`", err)
 	}
 	if _, statErr := os.Stat(f.project); !os.IsNotExist(statErr) {
-		t.Error("cloudlab.pkl was written despite refusing to run")
+		t.Error("bivouac.pkl was written despite refusing to run")
 	}
 }
 
@@ -691,16 +691,16 @@ func TestUpCmd_RefusesWithoutATerminalWhenConfigIsMissing(t *testing.T) {
 	cmd.SetErr(f.out)
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("cloudlab up error = nil with no config and no terminal, want a refusal")
+		t.Fatal("bivouac up error = nil with no config and no terminal, want a refusal")
 	}
-	if !strings.Contains(err.Error(), "cloudlab init") {
-		t.Errorf("error = %q, want it to name `cloudlab init`", err)
+	if !strings.Contains(err.Error(), "bivouac init") {
+		t.Errorf("error = %q, want it to name `bivouac init`", err)
 	}
 }
 
 func TestErrNoConfig_IsRecognisedByUp(t *testing.T) {
 	dir := t.TempDir()
-	_, err := config.Resolve(context.Background(), filepath.Join(dir, "cloudlab.pkl"))
+	_, err := config.Resolve(context.Background(), filepath.Join(dir, "bivouac.pkl"))
 	if err == nil {
 		t.Fatal("Resolve() of a missing file error = nil")
 	}
@@ -729,10 +729,10 @@ func TestInitFlow_AcceptedDefaultsAreNotWritten(t *testing.T) {
 		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
 	}
 	if got := f.values(t, f.project); !reflect.DeepEqual(got, config.Values{"template": "python"}) {
-		t.Errorf("cloudlab.pkl = %#v, want only the template that was chosen", got)
+		t.Errorf("bivouac.pkl = %#v, want only the template that was chosen", got)
 	}
 	if text := f.text(t, f.project); strings.Contains(text, "beads") || strings.Contains(text, "tailscale") {
-		t.Errorf("cloudlab.pkl restates the schema's defaults:\n%s", text)
+		t.Errorf("bivouac.pkl restates the schema's defaults:\n%s", text)
 	}
 }
 
@@ -752,7 +752,7 @@ func TestInitFlow_NonDefaultAnswersAreWritten(t *testing.T) {
 	}
 	got := f.values(t, f.project)
 	if got["beads"] != "off" || got["tailscale"] != true {
-		t.Errorf("cloudlab.pkl = %#v, want the chosen beads and tailscale", got)
+		t.Errorf("bivouac.pkl = %#v, want the chosen beads and tailscale", got)
 	}
 }
 

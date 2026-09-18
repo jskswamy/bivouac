@@ -12,10 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // sessionTestStore isolates state and returns a store holding record.
@@ -178,7 +178,7 @@ func TestChooseListener(t *testing.T) {
 			name:       "port does not match any listener",
 			listeners:  many,
 			port:       9999,
-			wantErrMsg: "nothing is listening on port 9999 — run `cloudlab connect` with no --port to see what is",
+			wantErrMsg: "nothing is listening on port 9999 — run `bivouac connect` with no --port to see what is",
 		},
 		{
 			name:      "zero listeners",
@@ -238,8 +238,8 @@ func TestChooseListener(t *testing.T) {
 
 // TestChooseListener_ServeVocabulary covers the two messages serve's
 // caller-specific wording changes: serve has no --port flag (its port is
-// a positional), and its own recovery command is `cloudlab serve`, not
-// `cloudlab connect`.
+// a positional), and its own recovery command is `bivouac serve`, not
+// `bivouac connect`.
 func TestChooseListener_ServeVocabulary(t *testing.T) {
 	many := []lifecycle.Listener{
 		{Addr: "127.0.0.1", Port: 8888},
@@ -253,7 +253,7 @@ func TestChooseListener_ServeVocabulary(t *testing.T) {
 	}
 
 	_, err = chooseListener(many, 9999, false, true, servePortVocabulary)
-	wantMsg = "nothing is listening on port 9999 — run `cloudlab serve` with no port to see what is"
+	wantMsg = "nothing is listening on port 9999 — run `bivouac serve` with no port to see what is"
 	if err == nil || err.Error() != wantMsg {
 		t.Errorf("chooseListener() err = %v, want %q", err, wantMsg)
 	}
@@ -291,7 +291,7 @@ func TestRunSession_RejectsANameThatCannotBeABranchOrPath(t *testing.T) {
 // A forced delete against a dead instance tears the local half down -- remote
 // included -- so the record entry must go with it. An entry left behind names
 // a session whose local remote no longer exists, which nothing can ever rescue
-// again: every later `cloudlab down` refuses on it and recommends the --force
+// again: every later `bivouac down` refuses on it and recommends the --force
 // that skips the rescue for every other session on the instance too.
 func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testing.T) {
 	localRepo := t.TempDir()
@@ -577,7 +577,7 @@ func TestPrintSessions_ListsEverySessionWithItsState(t *testing.T) {
 
 	printSessions(c, record)
 
-	for _, want := range []string{"auth", "docs", "cloudlab/auth", "cloudlab/docs"} {
+	for _, want := range []string{"auth", "docs", "bivouac/auth", "bivouac/docs"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output does not mention %q:\n%s", want, out.String())
 		}
@@ -866,7 +866,7 @@ func TestBeadsModeFor_WarnsAndFallsBackWhenTheConfigWillNotResolve(t *testing.T)
 	var out, errOut bytes.Buffer
 	ctx := provider.WithOutput(context.Background(), &out, &errOut)
 
-	// No cloudlab.pkl at all in this directory: config.Resolve fails to read
+	// No bivouac.pkl at all in this directory: config.Resolve fails to read
 	// the file, which is the same failure a syntactically broken or
 	// unreadable config produces.
 	root := t.TempDir()
@@ -891,7 +891,7 @@ func TestBeadsModeFor_SilentWhenTheConfigResolves(t *testing.T) {
 
 	root := t.TempDir()
 	pkl := "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nbeads = \"off\"\n"
-	if err := os.WriteFile(filepath.Join(root, "cloudlab.pkl"), []byte(pkl), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "bivouac.pkl"), []byte(pkl), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// No base file at the XDG default location for this test's HOME.

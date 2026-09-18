@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
 )
 
 func TestFormatUptime(t *testing.T) {

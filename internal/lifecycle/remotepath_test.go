@@ -9,13 +9,13 @@ import (
 func TestRemotePath_UnderHome_Mirrors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	local := filepath.Join(home, "source", "github.com", "jskswamy", "cloudlab")
+	local := filepath.Join(home, "source", "github.com", "jskswamy", "bivouac")
 
 	got, err := RemotePath(local, "devuser")
 	if err != nil {
 		t.Fatalf("RemotePath() error = %v", err)
 	}
-	want := "/home/devuser/source/github.com/jskswamy/cloudlab"
+	want := "/home/devuser/source/github.com/jskswamy/bivouac"
 	if got != want {
 		t.Errorf("RemotePath() = %q, want %q", got, want)
 	}

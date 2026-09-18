@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // herdrWorkspace is one entry from `herdr workspace list` on an instance.
@@ -32,9 +32,9 @@ func parseWorkspaceList(out string) ([]herdrWorkspace, error) {
 	return reply.Result.Workspaces, nil
 }
 
-// findWorkspace locates the workspace cloudlab created for a session.
+// findWorkspace locates the workspace bivouac created for a session.
 //
-// By label, because that is the only part cloudlab chose. Ids are assigned
+// By label, because that is the only part bivouac chose. Ids are assigned
 // by the instance's own herdr server and mean nothing anywhere else.
 func findWorkspace(workspaces []herdrWorkspace, label string) (herdrWorkspace, bool) {
 	for _, w := range workspaces {
@@ -158,7 +158,7 @@ func EnsureWorkspace(r remoteRunner, session, repo, label string) (string, error
 
 // FocusWorkspace switches the instance's herdr to the session's workspace.
 //
-// This is the only part of "switch to my session" cloudlab can perform.
+// This is the only part of "switch to my session" bivouac can perform.
 // Selecting the machine itself is client state with no API, so the caller
 // still has to name the sidebar entry for the user to pick.
 func FocusWorkspace(r remoteRunner, session, id string) error {

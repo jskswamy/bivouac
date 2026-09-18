@@ -1,4 +1,4 @@
-// Package shellcmd builds the command strings cloudlab hands to a remote
+// Package shellcmd builds the command strings bivouac hands to a remote
 // shell over SSH.
 //
 // It is deliberately a leaf: the only import is "strings". Quoting a shell
@@ -21,7 +21,7 @@ func Quote(s string) string {
 
 // LoginShell wraps inner so the remote shell runs it as a login shell.
 //
-// bash -lc is mandatory, not stylistic: the binaries cloudlab invokes on an
+// bash -lc is mandatory, not stylistic: the binaries bivouac invokes on an
 // instance (git, bd, tmux, herdr, tailscale) come from the instance user's
 // home-manager profile (~/.nix-profile/bin), and a non-interactive SSH
 // command runs a non-login shell that never sources the profile scripts

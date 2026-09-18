@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 // fakeNix answers without a nix on the machine running the test, which

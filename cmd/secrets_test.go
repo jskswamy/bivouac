@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // generateTestAgeRecipient creates a fresh age identity, points
@@ -56,7 +56,7 @@ func TestSecretsInit_CreatesEncryptedFile(t *testing.T) {
 		t.Fatalf("secrets init error = %v: %s", err, out.String())
 	}
 
-	path := filepath.Join(configDir, "cloudlab", "secrets.yaml")
+	path := filepath.Join(configDir, "bivouac", "secrets.yaml")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("secrets file not created: %v", err)
 	}

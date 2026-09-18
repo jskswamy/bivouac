@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 func TestSessionFromCwd_ReadsTheBranchNotThePath(t *testing.T) {
@@ -15,7 +15,7 @@ func TestSessionFromCwd_ReadsTheBranchNotThePath(t *testing.T) {
 	main := filepath.Join(base, "main")
 	initRepo(t, main)
 	wt := filepath.Join(main, ".worktrees", "auth")
-	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "cloudlab/auth")
+	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "bivouac/auth")
 
 	got, ok := SessionFromCwd(context.Background(), wt)
 	if !ok || got != "auth" {
@@ -33,7 +33,7 @@ func TestResolveSession_PrefersExplicitThenCwdThenOnly(t *testing.T) {
 	main := filepath.Join(base, "main")
 	initRepo(t, main)
 	wt := filepath.Join(main, ".worktrees", "docs")
-	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "cloudlab/docs")
+	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "bivouac/docs")
 
 	var r state.Record
 	r.PutSession(state.Session{Name: "auth", Base: "aaa"})
@@ -70,7 +70,7 @@ func TestResolveSession_CwdMatchesTheOnlySession(t *testing.T) {
 	main := filepath.Join(base, "main")
 	initRepo(t, main)
 	wt := filepath.Join(main, ".worktrees", "auth")
-	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "cloudlab/auth")
+	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "bivouac/auth")
 
 	var r state.Record
 	r.PutSession(state.Session{Name: "auth", Base: "aaa"})
@@ -82,7 +82,7 @@ func TestResolveSession_CwdMatchesTheOnlySession(t *testing.T) {
 }
 
 // Cwd is checked before "exactly one session", not merely compatible with
-// it: the record's only session is "auth" but cwd sits on cloudlab/docs, a
+// it: the record's only session is "auth" but cwd sits on bivouac/docs, a
 // name the record does not have. Rule-2-first (correct) sees "docs", finds
 // no such session, and fails naming it. Rule-3-first (wrong) would instead
 // see exactly one session and silently hand back "auth" -- the wrong
@@ -97,7 +97,7 @@ func TestResolveSession_CwdBeatsTheSingleSessionRule(t *testing.T) {
 	main := filepath.Join(base, "main")
 	initRepo(t, main)
 	wt := filepath.Join(main, ".worktrees", "docs")
-	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "cloudlab/docs")
+	mustGit(t, main, "worktree", "add", "--quiet", wt, "-b", "bivouac/docs")
 
 	var r state.Record
 	r.PutSession(state.Session{Name: "auth", Base: "aaa"})

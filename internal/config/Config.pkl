@@ -1,5 +1,5 @@
-@go.Package { name = "github.com/jskswamy/cloudlab/internal/config" }
-module cloudlab.Config
+@go.Package { name = "github.com/jskswamy/bivouac/internal/config" }
+module bivouac.Config
 
 import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/go.pkl"
 
@@ -42,11 +42,11 @@ agents: Listing<"claude"|"codex"|"copilot"|"cursor"|"opencode"|"pi"> = new Listi
 /// coding agent on the instance.
 ///
 /// Paths are relative to the file that declares them, so a base.pkl
-/// entry resolves against ~/.config/cloudlab and a project entry
+/// entry resolves against ~/.config/bivouac and a project entry
 /// against the repository root. Merges additively like `packages`:
 /// base's files are delivered before this file's.
 ///
-/// cloudlab never parses the content. What a workflow says, and which
+/// bivouac never parses the content. What a workflow says, and which
 /// harness's vocabulary it is written in, is the author's business.
 instructions: Listing<String> = new Listing {}
 

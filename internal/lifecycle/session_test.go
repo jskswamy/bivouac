@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // noGitSSH makes git's ssh transport fail instantly instead of dialling.
@@ -48,7 +48,7 @@ func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	initRepo(t, repo)
 
-	remoteRepo := RemoteRepoPath("devuser", "auth", "cloudlab")
+	remoteRepo := RemoteRepoPath("devuser", "auth", "bivouac")
 	err := seedSession(context.Background(), addr, "devuser", repo, remoteRepo,
 		SessionBranch("auth"), sshGitURL("devuser", addr, remoteRepo), addr, "auth", "session", "")
 	if err == nil {
@@ -64,7 +64,7 @@ func TestSeedSession_CreatesTheRepoThenPushes(t *testing.T) {
 	if !strings.Contains(commands[0], "init") || strings.Contains(commands[0], "--bare") {
 		t.Errorf("commands[0] = %q, want a non-bare init first", commands[0])
 	}
-	if !strings.Contains(commands[0], "sessions/auth/cloudlab") {
+	if !strings.Contains(commands[0], "sessions/auth/bivouac") {
 		t.Errorf("commands[0] = %q, want the per-session repo path", commands[0])
 	}
 	// The checkout must not have happened: it runs only after a push
@@ -88,7 +88,7 @@ func TestRescueSession_CheckpointsBeforeFetching(t *testing.T) {
 		return "", 0
 	})
 
-	_, _, _ = RescueSession(context.Background(), addr, "devuser", t.TempDir(), "cloudlab", "auth")
+	_, _, _ = RescueSession(context.Background(), addr, "devuser", t.TempDir(), "bivouac", "auth")
 
 	var checkpointAt = -1
 	for i, c := range commands {
@@ -125,7 +125,7 @@ func TestRescueSession_FailsFastAndAdoptsTheKnownGoodAddressWhenTheStoredRemoteI
 	mustGit(t, repo, "remote", "add", remote, "ssh://user@192.0.2.1/repo")
 
 	start := time.Now()
-	_, _, err := RescueSession(context.Background(), addr, "devuser", repo, "cloudlab", "auth")
+	_, _, err := RescueSession(context.Background(), addr, "devuser", repo, "bivouac", "auth")
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -136,7 +136,7 @@ func TestRescueSession_FailsFastAndAdoptsTheKnownGoodAddressWhenTheStoredRemoteI
 	}
 
 	got := gitOut(t, repo, "remote", "get-url", remote)
-	want := sshGitURL("devuser", addr, RemoteRepoPath("devuser", "auth", "cloudlab"))
+	want := sshGitURL("devuser", addr, RemoteRepoPath("devuser", "auth", "bivouac"))
 	if got != want {
 		t.Errorf("remote %s = %q after the fallback attempt, want it adopted as %q so the next call skips the dead route", remote, got, want)
 	}
@@ -178,7 +178,7 @@ func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T
 		return "", 0
 	})
 
-	_, _ = PullSession(context.Background(), addr, "devuser", t.TempDir(), "cloudlab", "auth", "")
+	_, _ = PullSession(context.Background(), addr, "devuser", t.TempDir(), "bivouac", "auth", "")
 
 	if len(commands) == 0 {
 		t.Fatal("PullSession() ran no remote commands, want at least a checkpoint")
@@ -220,7 +220,7 @@ func TestStartSession_SeedsRepoBeforeCreatingTheWorktree(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "commit", "--quiet", "-m", "first")
 
-	if err := StartSession(context.Background(), addr, "devuser", repo, "cloudlab", "auth-refactor", "session", ""); err == nil {
+	if err := StartSession(context.Background(), addr, "devuser", repo, "bivouac", "auth-refactor", "session", ""); err == nil {
 		t.Fatal("StartSession() = nil, want an error since the fake SSH server cannot complete a real git push")
 	}
 
@@ -271,7 +271,7 @@ func TestTrackSession_RegistersTheRemote(t *testing.T) {
 	mustGit(t, repo, "config", "user.email", "t@example.com")
 	mustGit(t, repo, "config", "user.name", "t")
 
-	url := sshGitURL("devuser", "203.0.113.5", RemoteRepoPath("devuser", "auth-refactor", "cloudlab"))
+	url := sshGitURL("devuser", "203.0.113.5", RemoteRepoPath("devuser", "auth-refactor", "bivouac"))
 	err := trackSession(context.Background(), repo, "auth-refactor", SessionBranch("auth-refactor"), url)
 	if err == nil {
 		t.Fatal("trackSession() = nil, want an error: there is no instance to fetch from")
@@ -298,7 +298,7 @@ func TestTrackSession_UsesTheURLItWasGiven(t *testing.T) {
 	repo := t.TempDir()
 	mustGit(t, repo, "init", "--quiet")
 
-	tailnetURL := sshGitURL("devuser", "100.64.0.7", RemoteRepoPath("devuser", "auth", "cloudlab"))
+	tailnetURL := sshGitURL("devuser", "100.64.0.7", RemoteRepoPath("devuser", "auth", "bivouac"))
 	_ = trackSession(context.Background(), repo, "auth", SessionBranch("auth"), tailnetURL)
 
 	gotURL, err := runLocalGit(context.Background(), repo, "remote", "get-url", sessionRemote("auth"))
@@ -333,7 +333,7 @@ func TestMergeSession_RefusesOnADirtyTree(t *testing.T) {
 	// Empty base: a session recorded before session_base existed. The
 	// rewritten-base check must not fire, so the dirty-tree refusal is what
 	// this test still observes.
-	_, err := MergeSession(ctx, addr, "devuser", "cloudlab",
+	_, err := MergeSession(ctx, addr, "devuser", "bivouac",
 		state.Session{Name: "auth", LocalRepo: repo})
 	if err == nil {
 		t.Fatal("MergeSession() = nil, want a refusal on a dirty worktree")
@@ -362,7 +362,7 @@ func TestSeedSession_ForwardsAgentToTheInstance(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	initRepo(t, repo)
 
-	remoteRepo := RemoteRepoPath("devuser", "auth", "cloudlab")
+	remoteRepo := RemoteRepoPath("devuser", "auth", "bivouac")
 	// seedSession fails at the push -- the fake server has no real git
 	// backend -- but forwarding is requested on the very first session
 	// it opens, before that push ever runs. See

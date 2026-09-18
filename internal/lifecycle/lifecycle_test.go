@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // fakeProvider is a minimal provider.Provider test double: Create
@@ -53,9 +53,9 @@ func writeFixture(t *testing.T, path, body string) {
 	}
 }
 
-func minimalCloudlabPkl(t *testing.T, dir string) string {
+func minimalBivouacPkl(t *testing.T, dir string) string {
 	t.Helper()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	writeFixture(t, path, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -74,7 +74,7 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	})
 
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: addr, Region: "nyc3", Size: "s-1vcpu-1gb"}}
 
@@ -95,7 +95,7 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	var progress []string
 	ctx := provider.WithProgress(context.Background(), func(status string) { progress = append(progress, status) })
 
-	if err := Up(ctx, p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+	if err := Up(ctx, p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 
@@ -143,11 +143,11 @@ func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	p := &fakeProvider{err: errors.New("create failed")}
 
-	err := Up(context.Background(), p, DefaultSteps(), "myinstance", cloudlabPath, repoRoot)
+	err := Up(context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error when Create fails")
 	}
@@ -180,7 +180,7 @@ func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	store, err := state.Open()
 	if err != nil {
@@ -194,7 +194,7 @@ func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
 	}
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-new", IP: "192.0.2.1"}}
-	err = Up(context.Background(), p, DefaultSteps(), "myinstance", cloudlabPath, repoRoot)
+	err = Up(context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() = nil, want a refusal when the instance already exists")
 	}
@@ -218,11 +218,11 @@ func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
 
 func TestUp_RejectsInvalidInstanceNameBeforeCreate(t *testing.T) {
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1"}}
 
-	err := Up(context.Background(), p, DefaultSteps(), "my.instance", cloudlabPath, repoRoot)
+	err := Up(context.Background(), p, DefaultSteps(), "my.instance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error for an invalid instance name")
 	}
@@ -236,8 +236,8 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
-	cloudlabPath := filepath.Join(repoRoot, "cloudlab.pkl")
-	writeFixture(t, cloudlabPath, strings.Join([]string{
+	bivouacPath := filepath.Join(repoRoot, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
@@ -249,14 +249,14 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 	var gotIP, gotUser string
 	steps := Steps{
 		WaitReady: func(ctx context.Context, ip, user string, timeout time.Duration) error { return nil },
-		Reconcile: func(ctx context.Context, name, cloudlabPath string) error { return nil },
+		Reconcile: func(ctx context.Context, name, bivouacPath string) error { return nil },
 		JoinTailscale: func(ctx context.Context, ip, user string) error {
 			gotIP, gotUser = ip, user
 			return nil
 		},
 	}
 
-	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 	if gotIP != "192.0.2.1" || gotUser == "" {
@@ -281,18 +281,18 @@ func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1", Region: "nyc3", Size: "s-1vcpu-1gb"}}
 
 	called := false
 	steps := Steps{
 		WaitReady:     func(ctx context.Context, ip, user string, timeout time.Duration) error { return nil },
-		Reconcile:     func(ctx context.Context, name, cloudlabPath string) error { return nil },
+		Reconcile:     func(ctx context.Context, name, bivouacPath string) error { return nil },
 		JoinTailscale: func(ctx context.Context, ip, user string) error { called = true; return nil },
 	}
 
-	if err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot); err != nil {
+	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 	if called {
@@ -317,7 +317,7 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
 
 	repoRoot := t.TempDir()
-	cloudlabPath := minimalCloudlabPkl(t, repoRoot)
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1", Region: "nyc3", Size: "s-1vcpu-1gb"}}
 
@@ -325,10 +325,10 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 		WaitReady: func(ctx context.Context, ip, user string, timeout time.Duration) error {
 			return errors.New("simulated unreachable")
 		},
-		Reconcile: func(ctx context.Context, name, cloudlabPath string) error { return nil },
+		Reconcile: func(ctx context.Context, name, bivouacPath string) error { return nil },
 	}
 
-	err := Up(context.Background(), p, steps, "myinstance", cloudlabPath, repoRoot)
+	err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error when WaitReady fails")
 	}

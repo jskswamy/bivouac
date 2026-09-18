@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jskswamy/cloudlab/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/secrets"
 )
 
 // resolveToken returns the DigitalOcean API token, preferring
@@ -15,7 +15,7 @@ import (
 // The environment wins deliberately, and the reasoning is the opposite
 // of the usual instinct that a file beats an env var. Decryption here
 // goes through age, commonly an age-plugin-yubikey identity whose touch
-// policy can require physical presence. cloudlab exists so agents can
+// policy can require physical presence. bivouac exists so agents can
 // work unattended, and an agent cannot touch a key -- so the env var is
 // the override that keeps unattended provisioning possible, and the
 // secrets file is the durable home for an interactive machine. Reading

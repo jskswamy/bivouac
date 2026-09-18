@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // minRsyncVersion is the floor the flags below require: --mkpath landed
@@ -35,7 +35,7 @@ var rsyncVersionRe = regexp.MustCompile(`version (\d+)\.(\d+)`)
 // openrsync (a 2.6.9-compatible reimplementation) as /usr/bin/rsync,
 // which supports neither --info=progress2 nor --mkpath. Without this,
 // the first sign of trouble is rsync dumping its entire usage text and
-// exiting 1, which reads like a cloudlab bug rather than "the rsync you
+// exiting 1, which reads like a bivouac bug rather than "the rsync you
 // have is too old". The failure is also confusingly intermittent: a
 // shell inside this repo's nix develop gets rsync 3.x and works, while
 // the same command in any other directory does not.
@@ -74,7 +74,7 @@ func rsyncVersionError(versionOutput, path string) error {
 	if strings.Contains(versionOutput, "openrsync") {
 		flavour = fmt.Sprintf("openrsync (%d.%d-compatible), macOS's built-in rsync", major, minor)
 	}
-	return fmt.Errorf("%s at %s is too old: cloudlab needs GNU rsync %d.%d+ for --mkpath and --info=progress2.\ninstall a newer one and put it ahead on PATH, e.g. `nix profile install nixpkgs#rsync` or `brew install rsync`",
+	return fmt.Errorf("%s at %s is too old: bivouac needs GNU rsync %d.%d+ for --mkpath and --info=progress2.\ninstall a newer one and put it ahead on PATH, e.g. `nix profile install nixpkgs#rsync` or `brew install rsync`",
 		flavour, path, minRsyncVersion[0], minRsyncVersion[1])
 }
 

@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // startFakeAgent runs an in-process fake ssh-agent (a real
@@ -38,7 +38,7 @@ func startFakeAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir, err := os.MkdirTemp("", "cloudlab-agent")
+	dir, err := os.MkdirTemp("", "bivouac-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestConnect_UsesGivenUsername(t *testing.T) {
 // gpg-agent it typically serves only a smartcard key, leaving the plain
 // ~/.ssh/id_ed25519 registered with the cloud provider invisible. `ssh`
 // falls back to on-disk identity files in that situation and connects
-// fine, so cloudlab must too -- otherwise it fails to authenticate
+// fine, so bivouac must too -- otherwise it fails to authenticate
 // against instances the user can log into by hand.
 func TestConnect_FallsBackToOnDiskKeyWhenAgentHasNone(t *testing.T) {
 	home := t.TempDir()
@@ -275,14 +275,14 @@ func TestClient_WriteFile_SendsContentViaCatRedirect(t *testing.T) {
 	}
 	defer func() { _ = client.Close() }()
 
-	if err := client.WriteFile("/root/.cache/cloudlab/flake.nix", "hello flake"); err != nil {
+	if err := client.WriteFile("/root/.cache/bivouac/flake.nix", "hello flake"); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
 	if !strings.Contains(got.Command, "cat >") {
 		t.Errorf("command = %q, want it to contain a cat redirect", got.Command)
 	}
-	if !strings.Contains(got.Command, "/root/.cache/cloudlab/flake.nix") {
+	if !strings.Contains(got.Command, "/root/.cache/bivouac/flake.nix") {
 		t.Errorf("command = %q, want it to reference the target path", got.Command)
 	}
 	if string(got.Stdin) != "hello flake" {
@@ -307,14 +307,14 @@ func TestClient_WriteSecretFile_SendsContentViaStdinWithRestrictedMode(t *testin
 	defer func() { _ = client.Close() }()
 
 	secret := []byte("tskey-abc123-example")
-	if err := client.WriteSecretFile("/run/user/1000/cloudlab-ts-authkey", secret); err != nil {
+	if err := client.WriteSecretFile("/run/user/1000/bivouac-ts-authkey", secret); err != nil {
 		t.Fatalf("WriteSecretFile() error = %v", err)
 	}
 
 	if !strings.Contains(got.Command, "install -m 600") {
 		t.Errorf("command = %q, want it to use install -m 600", got.Command)
 	}
-	if !strings.Contains(got.Command, "/run/user/1000/cloudlab-ts-authkey") {
+	if !strings.Contains(got.Command, "/run/user/1000/bivouac-ts-authkey") {
 		t.Errorf("command = %q, want it to reference the target path", got.Command)
 	}
 	if string(got.Stdin) != "tskey-abc123-example" {

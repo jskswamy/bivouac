@@ -11,7 +11,7 @@ import (
 // the design's sharpest failure mode: checkpointCmd runs `git add -A`, bd
 // writes a multi-megabyte .beads/embeddeddolt into the checkout, and
 // .git/info/exclude does not travel over `git push` -- so the instance's
-// repository has none of the Mac's exclusions unless cloudlab writes them.
+// repository has none of the Mac's exclusions unless bivouac writes them.
 func TestExcludeBeadsCmd_KeepsTheDatabaseOutOfTheCheckpoint(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	initRepo(t, repo)
@@ -30,7 +30,7 @@ func TestExcludeBeadsCmd_KeepsTheDatabaseOutOfTheCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if out, err := runShell(t, checkpointCmd(repo, "cloudlab: checkpoint s")); err != nil {
+	if out, err := runShell(t, checkpointCmd(repo, "bivouac: checkpoint s")); err != nil {
 		t.Fatalf("checkpointCmd: %v\n%s", err, out)
 	}
 

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 func TestStatus_ReportsLiveStatusOnSuccess(t *testing.T) {

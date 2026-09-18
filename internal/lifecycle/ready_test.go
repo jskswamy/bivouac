@@ -14,8 +14,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // startFakeAgent runs an in-process fake ssh-agent (a real
@@ -298,7 +298,7 @@ func TestWaitReady_SucceedsOnceCloudInitFinishes(t *testing.T) {
 		return "status: done\n", 0
 	})
 
-	if err := WaitReady(context.Background(), addr, "cloudlab", 5*time.Second); err != nil {
+	if err := WaitReady(context.Background(), addr, "bivouac", 5*time.Second); err != nil {
 		t.Fatalf("WaitReady() error = %v", err)
 	}
 }
@@ -314,7 +314,7 @@ func TestWaitReady_ReportsProgressBeforeWaiting(t *testing.T) {
 	var got []string
 	ctx := provider.WithProgress(context.Background(), func(status string) { got = append(got, status) })
 
-	if err := WaitReady(ctx, addr, "cloudlab", 5*time.Second); err != nil {
+	if err := WaitReady(ctx, addr, "bivouac", 5*time.Second); err != nil {
 		t.Fatalf("WaitReady() error = %v", err)
 	}
 	if len(got) == 0 || !strings.Contains(got[0], "ready") {
@@ -332,7 +332,7 @@ func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 		return "status: error\n", 1
 	})
 
-	err := WaitReady(context.Background(), addr, "cloudlab", 5*time.Second)
+	err := WaitReady(context.Background(), addr, "bivouac", 5*time.Second)
 	if err == nil {
 		t.Fatal("WaitReady() error = nil, want error for cloud-init failure")
 	}
@@ -342,7 +342,7 @@ func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 }
 
 func TestWaitReady_TimesOutIfNeverReachable(t *testing.T) {
-	err := WaitReady(context.Background(), "127.0.0.1:1", "cloudlab", time.Second)
+	err := WaitReady(context.Background(), "127.0.0.1:1", "bivouac", time.Second)
 	if err == nil {
 		t.Fatal("WaitReady() error = nil, want timeout error")
 	}
@@ -383,7 +383,7 @@ func TestWaitReady_BacksOffInsteadOfHammeringPort22(t *testing.T) {
 		}
 	}()
 
-	if err := WaitReady(context.Background(), listener.Addr().String(), "cloudlab", 5*time.Second); err == nil {
+	if err := WaitReady(context.Background(), listener.Addr().String(), "bivouac", 5*time.Second); err == nil {
 		t.Fatal("WaitReady() error = nil, want timeout against a server that never completes a handshake")
 	}
 
@@ -405,7 +405,7 @@ func TestWaitReady_CloudInitHangIsBoundedByTimeout(t *testing.T) {
 	})
 
 	start := time.Now()
-	err := WaitReady(context.Background(), addr, "cloudlab", 500*time.Millisecond)
+	err := WaitReady(context.Background(), addr, "bivouac", 500*time.Millisecond)
 	elapsed := time.Since(start)
 
 	if err == nil {

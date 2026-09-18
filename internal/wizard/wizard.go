@@ -13,18 +13,18 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provisioning"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provisioning"
 )
 
 // Destination is the file an answer is written to.
 type Destination int
 
 const (
-	// Personal is ~/.config/cloudlab/base.pkl: answers that describe
+	// Personal is ~/.config/bivouac/base.pkl: answers that describe
 	// the user, not the project.
 	Personal Destination = iota
-	// Project is ./cloudlab.pkl: answers that describe the project and
+	// Project is ./bivouac.pkl: answers that describe the project and
 	// are committed with it.
 	Project
 )
@@ -33,13 +33,13 @@ func (d Destination) String() string {
 	if d == Personal {
 		return "base.pkl"
 	}
-	return "cloudlab.pkl"
+	return "bivouac.pkl"
 }
 
 // destinations maps every schema field to the file it belongs in.
 //
 // The split is by the nature of the field rather than by asking the
-// user, because the right answer never varies: cloudlab.pkl is
+// user, because the right answer never varies: bivouac.pkl is
 // committed, so stamping a fingerprint or a personal machine size into
 // it hands the next person who clones the repo the author's key and the
 // author's sizing. basePath is deliberately absent — it selects which
@@ -103,13 +103,13 @@ func PersonalFields() []string {
 
 // MovablePersonalFields are the personal fields that a project file can
 // hand over to base.pkl without changing what the config means. The
-// offer to lift them out of a committed cloudlab.pkl is built from
+// offer to lift them out of a committed bivouac.pkl is built from
 // these rather than from PersonalFields.
 //
 // instructions is the one that cannot move, and nothing in its value
 // shows it: the value is a path, resolved against the file that declares
 // it, so "docs/agent-workflow.md" means the repository root while it
-// sits in cloudlab.pkl and ~/.config/cloudlab once it sits in base.pkl.
+// sits in bivouac.pkl and ~/.config/bivouac once it sits in base.pkl.
 // Moving the line would silently repoint it at a file that is not there,
 // and config.InstructionFiles treats a missing file as a hard error --
 // so the move would break the next up rather than leave the config
@@ -265,7 +265,7 @@ func PersonalQuestions(baseDir string) []Question {
 }
 
 // ProjectQuestions describe the shape of this project's instance and
-// are written to the committed cloudlab.pkl.
+// are written to the committed bivouac.pkl.
 //
 // The template question is a Select over the built-ins with Freeform
 // set, because a template may also be any flake ref. It is single-value

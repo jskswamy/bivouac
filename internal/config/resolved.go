@@ -4,7 +4,7 @@ package config
 // fields are known to be set, and carried as plain strings rather than the
 // pointers the generated struct uses.
 //
-// The embedded Config is the whole of what cloudlab.pkl declares, so a field
+// The embedded Config is the whole of what bivouac.pkl declares, so a field
 // added to the schema reaches callers without being restated here. Only the
 // three fields whose presence Resolve actually proves are lifted out, and
 // they deliberately shadow their pointer-shaped counterparts: cfg.Region is

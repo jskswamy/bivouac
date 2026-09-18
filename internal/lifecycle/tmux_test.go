@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 func TestTmuxArgs_BuildsExpectedCommand(t *testing.T) {

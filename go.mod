@@ -1,4 +1,4 @@
-module github.com/jskswamy/cloudlab
+module github.com/jskswamy/bivouac
 
 go 1.26.0
 

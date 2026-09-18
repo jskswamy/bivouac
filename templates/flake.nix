@@ -1,5 +1,5 @@
 {
-  description = "cloudlab template catalog";
+  description = "bivouac template catalog";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

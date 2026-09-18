@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestTaskText_WritesFreeTextVerbatim(t *testing.T) {

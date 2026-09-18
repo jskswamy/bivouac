@@ -8,12 +8,12 @@ import (
 func TestResolveBasePath_NoOverride_UsesXDGConfigHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
 
-	got, err := resolveBasePath("/repo/cloudlab.pkl", nil)
+	got, err := resolveBasePath("/repo/bivouac.pkl", nil)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
 
-	want := filepath.Join("/xdg/config", "cloudlab", "base.pkl")
+	want := filepath.Join("/xdg/config", "bivouac", "base.pkl")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -23,12 +23,12 @@ func TestResolveBasePath_NoOverride_NoXDG_UsesHomeConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "/home/alice")
 
-	got, err := resolveBasePath("/repo/cloudlab.pkl", nil)
+	got, err := resolveBasePath("/repo/bivouac.pkl", nil)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
 
-	want := filepath.Join("/home/alice", ".config", "cloudlab", "base.pkl")
+	want := filepath.Join("/home/alice", ".config", "bivouac", "base.pkl")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -37,7 +37,7 @@ func TestResolveBasePath_NoOverride_NoXDG_UsesHomeConfig(t *testing.T) {
 func TestResolveBasePath_OverrideAbsolute_UsedAsIs(t *testing.T) {
 	override := "/custom/base.pkl"
 
-	got, err := resolveBasePath("/repo/cloudlab.pkl", &override)
+	got, err := resolveBasePath("/repo/bivouac.pkl", &override)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
@@ -51,7 +51,7 @@ func TestResolveBasePath_OverrideHomeRelative_Expands(t *testing.T) {
 	t.Setenv("HOME", "/home/alice")
 	override := "~/work-base.pkl"
 
-	got, err := resolveBasePath("/repo/cloudlab.pkl", &override)
+	got, err := resolveBasePath("/repo/bivouac.pkl", &override)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
@@ -65,7 +65,7 @@ func TestResolveBasePath_OverrideHomeRelative_Expands(t *testing.T) {
 func TestResolveBasePath_OverrideRelative_ResolvesAgainstProjectDir(t *testing.T) {
 	override := "./base.pkl"
 
-	got, err := resolveBasePath("/repo/nested/cloudlab.pkl", &override)
+	got, err := resolveBasePath("/repo/nested/bivouac.pkl", &override)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
@@ -80,12 +80,12 @@ func TestResolveBasePath_OverrideEmptyString_TreatedAsUnset(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
 	override := ""
 
-	got, err := resolveBasePath("/repo/cloudlab.pkl", &override)
+	got, err := resolveBasePath("/repo/bivouac.pkl", &override)
 	if err != nil {
 		t.Fatalf("resolveBasePath() error = %v", err)
 	}
 
-	want := filepath.Join("/xdg/config", "cloudlab", "base.pkl")
+	want := filepath.Join("/xdg/config", "bivouac", "base.pkl")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

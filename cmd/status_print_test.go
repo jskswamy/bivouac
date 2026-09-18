@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ func TestPrintStatus_ShowsEveryRecordFieldAndTheCost(t *testing.T) {
 	st := lifecycle.InstanceStatus{
 		Record: state.Record{
 			Name: "myrepo", Provider: "digitalocean", Region: "blr1",
-			Size: "s-2vcpu-4gb", Template: "python", User: "cloudlab",
+			Size: "s-2vcpu-4gb", Template: "python", User: "bivouac",
 			IP: "139.59.12.44", RepoPath: "~/sessions/myrepo",
 		},
 		LiveStatus: "active",
@@ -40,7 +40,7 @@ func TestPrintStatus_ShowsEveryRecordFieldAndTheCost(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"myrepo", "active", "digitalocean", "blr1", "s-2vcpu-4gb",
-		"python", "cloudlab", "139.59.12.44", "~/sessions/myrepo",
+		"python", "bivouac", "139.59.12.44", "~/sessions/myrepo",
 		"$0.42", "3h 12m", "$0.0357/hr",
 	} {
 		if !strings.Contains(got, want) {

@@ -3,8 +3,8 @@ package lifecycle
 import (
 	"context"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // tmuxArgs builds the argv Tmux passes to the ssh binary: a PTY

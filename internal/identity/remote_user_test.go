@@ -74,15 +74,15 @@ func TestRemoteUser_TruncatesTo32Chars(t *testing.T) {
 	}
 }
 
-func TestRemoteUser_FallsBackToCloudlabWhenNothingUsableRemains(t *testing.T) {
+func TestRemoteUser_FallsBackToBivouacWhenNothingUsableRemains(t *testing.T) {
 	withCurrentUser(t, &user.User{Username: "!!!"}, nil)
 
 	got, err := RemoteUser()
 	if err != nil {
 		t.Fatalf("RemoteUser() error = %v", err)
 	}
-	if got != "cloudlab" {
-		t.Errorf("RemoteUser() = %q, want %q", got, "cloudlab")
+	if got != "bivouac" {
+		t.Errorf("RemoteUser() = %q, want %q", got, "bivouac")
 	}
 }
 

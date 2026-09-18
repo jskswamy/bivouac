@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // unauthenticatedNote is the tail of every message explaining that gh was
@@ -24,7 +24,7 @@ const unauthenticatedNote = "gh will run unauthenticated (60 requests/hour, fine
 // rate limit.
 //
 // Purely optional, gated on whether github_token decrypts successfully,
-// with no cloudlab.pkl field to enable or disable it. A missing secrets
+// with no bivouac.pkl field to enable or disable it. A missing secrets
 // file, or one with no github_token key, is not a warning -- unlike
 // placeDoltCredential's missing-credential case, gh has a fully working
 // fallback (unauthenticated, just rate-limited) rather than a
@@ -33,7 +33,7 @@ const unauthenticatedNote = "gh will run unauthenticated (60 requests/hour, fine
 // Like placeDoltCredential and JoinTailscale, this writes only into
 // $XDG_RUNTIME_DIR (tmpfs): the plaintext never touches the instance's
 // persistent disk, never an environment variable, never a command-line
-// argument. A reboot clears it, and the recovery is `cloudlab provision`,
+// argument. A reboot clears it, and the recovery is `bivouac provision`,
 // which is already idempotent.
 func placeGitHubToken(ctx context.Context, client *Client) {
 	path, err := secrets.Path()
@@ -74,14 +74,14 @@ func placeGitHubTokenValue(ctx context.Context, client *Client, token []byte) {
 		return
 	}
 
-	ghDir := runtimeDir + "/cloudlab/gh"
+	ghDir := runtimeDir + "/bivouac/gh"
 	out, err := client.Run(shellcmd.LoginShell(symlinkPrepareScript(".config/gh", ghDir)))
 	if err != nil {
 		provider.ReportWarning(ctx, "gh: could not prepare ~/.config/gh on the instance: "+err.Error()+"\n"+out)
 		return
 	}
 	if strings.Contains(out, "NOTASYMLINK") {
-		provider.ReportWarning(ctx, "gh: ~/.config/gh on the instance is not cloudlab's symlink -- a real `gh auth login` is not ours to overwrite, so it is left alone and "+unauthenticatedNote)
+		provider.ReportWarning(ctx, "gh: ~/.config/gh on the instance is not bivouac's symlink -- a real `gh auth login` is not ours to overwrite, so it is left alone and "+unauthenticatedNote)
 		return
 	}
 
@@ -108,7 +108,7 @@ var githubAPIBase = "https://api.github.com"
 // The design spec anticipated this ("if gh turns out to want it, the fix
 // is resolving it with one extra call before shipping the token, not a
 // design change"); this is that call, made directly rather than by running
-// a gh cloudlab does not require locally.
+// a gh bivouac does not require locally.
 func githubLogin(ctx context.Context, token []byte) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

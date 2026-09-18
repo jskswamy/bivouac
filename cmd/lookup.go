@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jskswamy/cloudlab/internal/identity"
+	"github.com/jskswamy/bivouac/internal/identity"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +14,7 @@ import (
 // instance name (false for sync/download, whose positionals are paths).
 type lookupCommandSpec struct {
 	use, short, verb string
-	// long is the help text cobra shows for `cloudlab <verb> --help`, on top
+	// long is the help text cobra shows for `bivouac <verb> --help`, on top
 	// of short. Left empty for every command whose flags speak for
 	// themselves; start's flags need the extra explanation of how --task and
 	// --issue relate.
@@ -22,7 +22,7 @@ type lookupCommandSpec struct {
 	args  cobra.PositionalArgs
 	named bool
 	// parent groups this command under a noun instead of putting it at the
-	// top level. Session verbs live under "session" so cloudlab's top level
+	// top level. Session verbs live under "session" so bivouac's top level
 	// stays about the instance -- up, down, ssh, status, provision -- and a
 	// new verb is a new command rather than another string comparison.
 	parent string
@@ -285,7 +285,7 @@ func newLookupCommands() []*cobra.Command {
 
 // newGroupCmd builds the noun a set of verbs hangs off. It runs nothing
 // itself: invoked bare it prints help, which is what someone typing
-// `cloudlab session` wants.
+// `bivouac session` wants.
 func newGroupCmd(name string) *cobra.Command {
 	return &cobra.Command{
 		Use:   name,

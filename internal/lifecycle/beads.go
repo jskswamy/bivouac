@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // seedBeads gives the session's agent the repository's issue tracker: the
@@ -62,7 +62,7 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 	}
 
 	// Only in "dolthub" mode, and only from a repository that actually has an
-	// external remote to reuse -- cloudlab.pkl says whether to ship a
+	// external remote to reuse -- bivouac.pkl says whether to ship a
 	// credential, never what the URL is.
 	external := ""
 	if beadsMode == config.BeadsDolthub && detected.Mode == beads.ModeExternal {
@@ -85,7 +85,7 @@ func seedBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, u
 // because the instance predates beads and has no `bd` on PATH -- otherwise
 // leaves that remote in place, and every later requireBeadsLanded call then
 // runs `bd dolt push` against an instance with no .beads/ at all, which
-// fails forever and makes session delete and `cloudlab down` refuse
+// fails forever and makes session delete and `bivouac down` refuse
 // permanently. Removing it turns a warned-and-continued setup failure back
 // into a known nothing, which is what the fail-closed teardown guard is
 // built to pass on.
@@ -143,7 +143,7 @@ func bootstrapWarning(err error) string {
 		return "beads: " + err.Error()
 	}
 	return "beads: this session has no issue tracking -- the instance has no `bd` installed" +
-		"\nrun `cloudlab provision` to install it, then start the session again" +
+		"\nrun `bivouac provision` to install it, then start the session again" +
 		"\nif it is still missing after that, the instance builds its home-manager config from" +
 		" the templates flake on this repository's default branch, so the beads packaging has" +
 		" to be pushed there before provision can see it"
@@ -198,7 +198,7 @@ func warnDolthubWithoutExternalRemote(ctx context.Context, beadsMode config.Bead
 // Silent when beads was never wired for this session. The session's dolt
 // remote is the whole test -- pull, merge, delete and down never resolve a
 // config, and a session started while beads was off must stay off for the
-// rest of its life whatever cloudlab.pkl says now.
+// rest of its life whatever bivouac.pkl says now.
 func pullBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, session string) bool {
 	if !beads.Wired(ctx, localRepo, session) {
 		// Nothing to sync is not a failed sync: a caller weighing what it is
@@ -236,7 +236,7 @@ func checkBeadsLanded(ctx context.Context, ip, user, localRepo, repo, session st
 // machine does not have.
 //
 // The one place beads is fail-closed, and it inverts everything else in this
-// file deliberately. An error from Unpulled means cloudlab does not know
+// file deliberately. An error from Unpulled means bivouac does not know
 // whether the agent's issues are safe, and delete and down are the two verbs
 // that make an unknown permanent -- so an unknown is treated as unsafe, the
 // same stance 47118eb took for commits.
@@ -250,14 +250,14 @@ func requireBeadsLanded(ctx context.Context, client *reconcile.Client, localRepo
 	}
 	unpulled, err := beads.Unpulled(ctx, localRepo, session, client, repo)
 	if err != nil {
-		return fmt.Errorf("cannot confirm session %s's issues have landed: %w\nrefusing to discard issue work cloudlab cannot see — fix the instance and retry, or pass --force to discard it anyway", session, err)
+		return fmt.Errorf("cannot confirm session %s's issues have landed: %w\nrefusing to discard issue work bivouac cannot see — fix the instance and retry, or pass --force to discard it anyway", session, err)
 	}
 	// Unreachable under Unpulled's current contract -- true is only ever
 	// returned alongside a non-nil err, which the branch above already
 	// catches. Kept anyway: if that contract ever loosens, this is what
 	// stands between the change and a silent fail-open regression here.
 	if unpulled {
-		return fmt.Errorf("session %s still holds issue work that is not on this machine — `cloudlab session pull %s` takes it, or --force throws it away", session, session)
+		return fmt.Errorf("session %s still holds issue work that is not on this machine — `bivouac session pull %s` takes it, or --force throws it away", session, session)
 	}
 	return nil
 }

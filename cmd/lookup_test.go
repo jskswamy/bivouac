@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 func TestLookupCommands_NameFlagResolves(t *testing.T) {
@@ -230,7 +230,7 @@ func TestLookupCommandSpecs_SessionListSpansInstances(t *testing.T) {
 // them would notice if lookupCommandSpecs' own registration were deleted.
 // Found through newRootCmd/newLookupCommands, the real command tree
 // Execute() runs, not the spec table directly: that is what proves the
-// flags are actually wired to `cloudlab session start`, not merely declared
+// flags are actually wired to `bivouac session start`, not merely declared
 // somewhere.
 func TestSessionStartCommand_HasTaskAndIssueFlags(t *testing.T) {
 	start, _, err := newRootCmd().Find([]string{"session", "start"})

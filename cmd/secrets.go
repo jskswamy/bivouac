@@ -3,18 +3,18 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
-// newSecretsCmd builds the `cloudlab secrets` command group. Unlike
+// newSecretsCmd builds the `bivouac secrets` command group. Unlike
 // every lookupCommandSpecs entry, these never touch an instance or
 // state.Record -- secrets.yaml is purely local to the developer's
 // machine.
 func newSecretsCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "secrets",
-		Short: "Manage cloudlab's personal, sops-encrypted secrets file",
+		Short: "Manage bivouac's personal, sops-encrypted secrets file",
 	}
 	root.AddCommand(newSecretsInitCmd(), newSecretsEditCmd(), newSecretsKeysCmd())
 	return root

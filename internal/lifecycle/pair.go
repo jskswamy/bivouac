@@ -3,8 +3,8 @@ package lifecycle
 import (
 	"context"
 
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // pairArgs builds the argv Pair passes to the ssh binary: a PTY

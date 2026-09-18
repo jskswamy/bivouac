@@ -6,13 +6,13 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 // Runner runs one nix invocation and returns its combined output.
 //
 // An interface because the nix that matters is the instance's, not the
-// user's. cloudlab requires no local nix -- every build happens on the
+// user's. bivouac requires no local nix -- every build happens on the
 // VM -- and checking a config against whatever nix a laptop happens to
 // have would prove the wrong thing anyway: a different nixpkgs, a
 // different system, a different answer.
@@ -20,11 +20,11 @@ type Runner interface {
 	RunNix(ctx context.Context, args ...string) ([]byte, error)
 }
 
-// LocalRunner runs nix on the machine cloudlab itself is running on.
+// LocalRunner runs nix on the machine bivouac itself is running on.
 //
 // Not used by any command. It exists for CI and for the tests that need
 // a real evaluator, so that requiring nix stays a choice the caller
-// makes rather than something a user of cloudlab inherits.
+// makes rather than something a user of bivouac inherits.
 type LocalRunner struct{}
 
 // RunNix implements Runner.
@@ -33,7 +33,7 @@ func (LocalRunner) RunNix(ctx context.Context, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("nix CLI not found on PATH (run inside `nix develop`, or install it: https://nixos.org/download): %w", err)
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; args are built
-	// from cloudlab.pkl, already treated as trusted input (see
+	// from bivouac.pkl, already treated as trusted input (see
 	// docs/config.md's "A note on trust").
 	return exec.CommandContext(ctx, "nix", args...).CombinedOutput()
 }

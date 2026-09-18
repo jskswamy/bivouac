@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // JoinTailscale joins the instance at ip (connecting as user) to the
@@ -45,11 +45,11 @@ import (
 func RemoteTailscaleBin(ctx context.Context, client *reconcile.Client) (string, error) {
 	out, err := client.RunContext(ctx, shellcmd.LoginShell("command -v tailscale"))
 	if err != nil {
-		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first:\n%s", out)
+		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in bivouac.pkl and run \"bivouac provision\" first:\n%s", out)
 	}
 	path := strings.TrimSpace(out)
 	if path == "" {
-		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" first")
+		return "", fmt.Errorf("tailscale is not installed on the instance — set \"tailscale = true\" in bivouac.pkl and run \"bivouac provision\" first")
 	}
 	return path, nil
 }
@@ -123,7 +123,7 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	if runtimeDir == "" {
 		return fmt.Errorf("instance has no $XDG_RUNTIME_DIR (no active login session for %s?)", user)
 	}
-	authKeyPath := runtimeDir + "/cloudlab-ts-authkey"
+	authKeyPath := runtimeDir + "/bivouac-ts-authkey"
 
 	// Resolved before the key is shipped, so an instance without
 	// tailscale installed fails without a secret having been written to
@@ -151,12 +151,12 @@ func JoinTailscale(ctx context.Context, ip, user string) error {
 	out, err := client.Run(script)
 	if err != nil {
 		// tailscaled is a systemd --user unit that common.nix only
-		// declares when cloudlab.tailscale is true, so the most likely
+		// declares when bivouac.tailscale is true, so the most likely
 		// cause is an instance provisioned with the flag off -- the
 		// daemon's own message suggests `systemctl start tailscaled`,
 		// which does not exist here and sends people the wrong way.
 		if strings.Contains(out, "failed to connect to local tailscaled") {
-			return fmt.Errorf("tailscaled is not running on the instance — set \"tailscale = true\" in cloudlab.pkl and run \"cloudlab provision\" to install it:\n%s", out)
+			return fmt.Errorf("tailscaled is not running on the instance — set \"tailscale = true\" in bivouac.pkl and run \"bivouac provision\" to install it:\n%s", out)
 		}
 		return fmt.Errorf("tailscale up failed: %w\n%s", err, out)
 	}

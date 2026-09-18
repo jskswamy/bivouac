@@ -6,19 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/agentcontext"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/provisioning"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/agentcontext"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provisioning"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // remoteNix runs nix on the instance, for provisioning.Validate.
 //
 // The instance is the machine that builds, so it is the machine whose
 // answer counts: its nixpkgs, its system, its cache. It is also the
-// reason cloudlab itself needs no nix installed -- see
+// reason bivouac itself needs no nix installed -- see
 // provisioning.Runner.
 type remoteNix struct{ client *Client }
 
@@ -34,7 +34,7 @@ func (r remoteNix) RunNix(ctx context.Context, args ...string) ([]byte, error) {
 // the reconciling user's own home -- not a fixed path, since that user
 // varies per instance (see state.Record.User).
 func remoteFlakeDir(user string) string {
-	return "/home/" + user + "/.cache/cloudlab"
+	return "/home/" + user + "/.cache/bivouac"
 }
 
 func remoteFlakePath(user string) string {
@@ -42,11 +42,11 @@ func remoteFlakePath(user string) string {
 }
 
 // Reconcile brings name's home-manager environment up to date with its
-// local cloudlab.pkl at cloudlabPath: resolves the config, renders a
+// local bivouac.pkl at bivouacPath: resolves the config, renders a
 // per-instance wrapper flake if packages/flakes require one, ships it to
 // the instance over SSH, and runs home-manager switch. This is the one
 // piece up, shell, and provision all share.
-func Reconcile(ctx context.Context, name, cloudlabPath string) error {
+func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	store, err := state.Open()
 	if err != nil {
 		return err
@@ -56,10 +56,10 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("instance %q not found — run \"cloudlab up %s\" first", name, name)
+		return fmt.Errorf("instance %q not found — run \"bivouac up %s\" first", name, name)
 	}
 
-	cfg, err := config.Resolve(ctx, cloudlabPath)
+	cfg, err := config.Resolve(ctx, bivouacPath)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// Before the switch, which runs for minutes: an instructions file the
 	// config names but the disk does not have is a typo, and a typo should
 	// surface now rather than after a build.
-	if err := WriteAgentContext(ctx, client, record.User, cfg.Agents, cloudlabPath); err != nil {
+	if err := WriteAgentContext(ctx, client, record.User, cfg.Agents, bivouacPath); err != nil {
 		return err
 	}
 
@@ -91,7 +91,7 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	//
 	// On the instance rather than here: that is where every build
 	// happens, so it is the only nix whose answer is the one that will
-	// matter -- and cloudlab asks for no nix on the user's own machine.
+	// matter -- and bivouac asks for no nix on the user's own machine.
 	provider.ReportProgress(ctx, "checking the config resolves")
 	if err := provisioning.Validate(ctx, remoteNix{client}, cfg); err != nil {
 		return err
@@ -137,13 +137,13 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 	// After the switch, not before: placing a credential on a box whose
 	// environment failed to build helps nobody, and this is the path both
 	// `up` and `provision` run -- so recovery after a reboot clears tmpfs is
-	// `cloudlab provision`, which is already idempotent.
-	placeDoltCredential(ctx, client, config.BeadsMode(cfg.Beads), filepath.Dir(cloudlabPath))
+	// `bivouac provision`, which is already idempotent.
+	placeDoltCredential(ctx, client, config.BeadsMode(cfg.Beads), filepath.Dir(bivouacPath))
 	placeGitHubToken(ctx, client)
 	return nil
 }
 
-// WriteAgentContext delivers cloudlab's session facts and the user's
+// WriteAgentContext delivers bivouac's session facts and the user's
 // instructions files to every configured harness's global instruction
 // file, and names the harnesses it cannot reach.
 //
@@ -163,14 +163,14 @@ func Reconcile(ctx context.Context, name, cloudlabPath string) error {
 // callers. There is nothing to fix and nothing to retry -- the tool simply
 // has no file for cross-project instructions -- so refusing to provision
 // over it would only make a supported config unusable.
-func WriteAgentContext(ctx context.Context, client *Client, user string, agents []string, cloudlabPath string) error {
+func WriteAgentContext(ctx context.Context, client *Client, user string, agents []string, bivouacPath string) error {
 	// Nobody to deliver to means nothing to read. agents is empty by
 	// default, so this is the common case, and InstructionFiles is a pkl
 	// run -- worth not paying on every up and every session start.
 	if len(agents) == 0 {
 		return nil
 	}
-	files, err := config.InstructionFiles(ctx, cloudlabPath)
+	files, err := config.InstructionFiles(ctx, bivouacPath)
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func WriteAgentContext(ctx context.Context, client *Client, user string, agents 
 		return err
 	}
 	for _, name := range unreachable {
-		provider.ReportWarning(ctx, "instructions: "+name+" has no global instruction file, so cloudlab cannot deliver to it — put them in that tool's own settings")
+		provider.ReportWarning(ctx, "instructions: "+name+" has no global instruction file, so bivouac cannot deliver to it — put them in that tool's own settings")
 	}
 	return nil
 }

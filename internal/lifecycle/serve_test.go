@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestParseServeStatus_Empty(t *testing.T) {
@@ -67,7 +67,7 @@ func TestParseServeStatus_LeadingStderrNoise(t *testing.T) {
 	// client.Run returns combined stdout+stderr, so a routine warning
 	// (sudo's hostname resolution complaint under bash -lc, here) that
 	// doesn't change the exit status must not make this fail.
-	in := "sudo: unable to resolve host cloudlab-1: Name or service not known\n" +
+	in := "sudo: unable to resolve host bivouac-1: Name or service not known\n" +
 		`{"TCP":{"9876":{"TCPForward":"localhost:9876"}}}`
 	got, err := parseServeStatus(in)
 	if err != nil {
@@ -141,7 +141,7 @@ func TestUnserve_TurnsOffOneEntry(t *testing.T) {
 		t.Errorf("Unserve() ran %q, want the per-entry off command", joined)
 	}
 	if strings.Contains(joined, "serve reset") {
-		t.Errorf("Unserve() ran %q, which would clear entries cloudlab did not create", joined)
+		t.Errorf("Unserve() ran %q, which would clear entries bivouac did not create", joined)
 	}
 }
 

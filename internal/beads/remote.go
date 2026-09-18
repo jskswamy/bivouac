@@ -12,7 +12,7 @@ import (
 // name for one thing is what makes `git remote -v` and `bd dolt remote list`
 // legible side by side.
 func RemoteName(session string) string {
-	return "cloudlab-" + session
+	return "bivouac-" + session
 }
 
 // RemoteURL is the dolt remote URL the Mac pushes issue data to: the

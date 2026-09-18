@@ -2,9 +2,9 @@
 
 ## Overview
 
-cloudlab is a Go CLI that manages **instances**: named, ephemeral cloud VMs
+bivouac is a Go CLI that manages **instances**: named, ephemeral cloud VMs
 provisioned from a **template** (`python` or `docker`) plus whatever the
-repo's own `cloudlab.pkl` adds on top. Multiple named instances can exist at
+repo's own `bivouac.pkl` adds on top. Multiple named instances can exist at
 once, each brought up, worked in, and torn down independently. The compute
 backend is a cloud VM reached over the network, not a process on your
 machine, and provisioning is done with Nix + home-manager instead of ad hoc
@@ -17,24 +17,24 @@ boundary is deliberately not DO-specific — see
 
 ```
  local repo                              cloud VM ("instance")
-┌──────────────┐                        ┌────────────────────────────┐
-│ cloudlab.pkl │ ──── up ──────────────▶ │ cloud-init: install Nix,   │
-└──────┬───────┘   create VM, wait       │  create user, sudo, linger │
+┌─────────────┐                          ┌────────────────────────────┐
+│ bivouac.pkl │ ──── up ──────────────▶  │ cloud-init: install Nix,   │
+└──────┬──────┘    create VM, wait       │  create user, sudo, linger │
        │           for SSH               └────────────┬───────────────┘
        │                                              │
        │  ── reconcile (over SSH) ────────────────────▶│
-       │     ship ~/.cache/cloudlab/flake.nix,        │
+       │     ship ~/.cache/bivouac/flake.nix,         │
        │     run `home-manager switch`                │
        │                                              ▼
        │                                 ┌────────────────────────────┐
        └──── session start <name> ─────▶ │ ~/sessions/<name>/<repo>   │
-             git push HEAD               │ on branch cloudlab/<name>  │
+             git push HEAD               │ on branch bivouac/<name>   │
                                          └────────────┬───────────────┘
        ◀──── pull / merge (git fetch) ────────────────┘
        .worktrees/<name>
 ```
 
-`up` never touches the repository — it only needs `cloudlab.pkl`, read from
+`up` never touches the repository — it only needs `bivouac.pkl`, read from
 the local checkout, to reconcile the Nix environment. Code first reaches the
 instance when a session starts, and moves back as git commits. See
 [Sessions](#sessions-code-moves-as-git-commits) below, and
@@ -49,7 +49,7 @@ Four packages sit below everything else and may be imported from anywhere:
 | --- | --- |
 | `internal/shellcmd` | quoting a shell argument, the `bash -lc` wrapper, remote argv |
 | `internal/tool` | finding an external binary on PATH, running it, handing it the terminal |
-| `internal/xdg` | where cloudlab keeps its own files under the user's home |
+| `internal/xdg` | where bivouac keeps its own files under the user's home |
 | `internal/testenv` | an isolated home for a test |
 
 Their defining constraint is that they import only the standard library.
@@ -145,7 +145,7 @@ does exactly five things:
 2. Create the instance's non-root user with `useradd --create-home`, seeded
    with root's own `authorized_keys` (DigitalOcean puts the account's
    registered SSH keys there at boot).
-3. Grant that user passwordless sudo — cloudlab is fully automated with no
+3. Grant that user passwordless sudo — bivouac is fully automated with no
    interactive terminal on the remote side.
 4. `loginctl enable-linger` for it, so home-manager's declared
    `systemd --user` services (the docker template's `dockerd`, the
@@ -155,27 +155,27 @@ does exactly five things:
    instance out entirely.
 
 That's the entire payload, and it's identical across templates. Notably it
-does **not** run home-manager: cloudlab does that itself over SSH once the
+does **not** run home-manager: bivouac does that itself over SSH once the
 instance is reachable, so it can ship a per-instance flake first and stream
 the output back live. See [ADR-0004](adr/0004-nix-home-manager-provisioning.md).
 
 ## Reconciliation: the per-instance flake
 
 `internal/reconcile.Reconcile` is the one piece `up` and `provision` share.
-For an instance name and a local `cloudlab.pkl` path it:
+For an instance name and a local `bivouac.pkl` path it:
 
 1. Looks the instance up in state (IP, remote user).
 2. Resolves the config (`config.Resolve` — project file merged with the
    personal base config).
 3. Expands the template name to a flake ref. `python`/`docker` expand to
    `github:jskswamy/cloudlab?dir=templates#<name>-<system>`, floated on the
-   default branch so template fixes don't need a cloudlab release. Anything
+   default branch so template fixes don't need a bivouac release. Anything
    else is assumed to already be a complete flake ref and passed through.
 4. If the config adds anything beyond the bare template — `packages`,
    `agents`, `flakes`, or `tailscale = true` — renders a per-instance
-   wrapper flake and writes it to `/home/<user>/.cache/cloudlab/flake.nix`
+   wrapper flake and writes it to `/home/<user>/.cache/bivouac/flake.nix`
    on the instance, then targets that directory
-   (`path:/home/<user>/.cache/cloudlab#default`) instead of the template ref
+   (`path:/home/<user>/.cache/bivouac#default`) instead of the template ref
    directly.
 5. Runs `nix run home-manager -- switch --no-write-lock-file --refresh
    --impure --flake <ref>` inside a login shell, streaming output live.
@@ -189,7 +189,7 @@ hardcoded in a shared, checked-in template.
 
 Everything the wrapper flake embeds is validated first: package and module
 names against a narrow nixpkgs-attribute charset, flake URLs against `"` and
-`${` (Nix string interpolation), so nothing in a `cloudlab.pkl` can break out
+`${` (Nix string interpolation), so nothing in a `bivouac.pkl` can break out
 of the Nix string literal it lands in.
 
 ## Templates
@@ -205,8 +205,8 @@ Both templates import `modules/common.nix`, which every instance gets:
 - **tmux config:** [gpakosz/.tmux](https://github.com/gpakosz/.tmux), pinned
   by revision and hash, symlinked as upstream ships it. `.tmux.conf.local`
   is wrapped in `mkDefault` so a personal flake module can override it.
-- **`cloudlab.tailscale` option:** when true (set by the rendered wrapper
-  flake from `cloudlab.pkl`), installs a `tailscaled` `systemd --user` unit
+- **`bivouac.tailscale` option:** when true (set by the rendered wrapper
+  flake from `bivouac.pkl`), installs a `tailscaled` `systemd --user` unit
   running under sudo. Off by default, because tailscaled starting during
   provisioning would block SSH.
 - **moshi-hook service:** installed via a home-manager activation script;
@@ -224,7 +224,7 @@ lifecycle, and a second `herdr server` would fail on the socket.
 
 ## Package, agent and flake composition
 
-Everything beyond the template comes from `cloudlab.pkl`:
+Everything beyond the template comes from `bivouac.pkl`:
 
 ```pkl
 agents { "claude" }
@@ -274,13 +274,13 @@ refused. See [`docs/config.md`](config.md#agents) for the full table.
 `home-manager switch` is idempotent, and runs at exactly two points:
 
 - **`up`** — after the VM is reachable, before the command returns.
-- **`provision`** — on demand, for "I only changed `cloudlab.pkl`, apply it
+- **`provision`** — on demand, for "I only changed `bivouac.pkl`, apply it
   now" with none of `up`'s side effects.
 
 There's no file-watcher of any kind, and no live sync of repository content:
 code moves as git commits (`session start`, `pull`, `merge`).
 `sync`/`download` are plain one-shot rsync transfers for data that
-deliberately isn't in git; they never touch `cloudlab.pkl` or trigger a
+deliberately isn't in git; they never touch `bivouac.pkl` or trigger a
 reconcile.
 
 (`shell` is designed as a third trigger — reconcile, then drop into a local
@@ -291,7 +291,7 @@ subshell with instance envs injected, mirroring `devbox shell`'s
 ## Sessions: code moves as git commits
 
 A **session** is the unit of agent work. It is named by the user, lives on
-branch `cloudlab/<session>`, and is one ordinary git repository on the
+branch `bivouac/<session>`, and is one ordinary git repository on the
 instance — not a worktree of a shared bare store. One session, one clone.
 
 **`session start <name>`:**
@@ -304,17 +304,17 @@ instance — not a worktree of a shared bare store. One session, one clone.
    anything, so a start that fails halfway still leaves a session `down` can
    see and rescue.
 3. `git init` at `~/sessions/<name>/<repo>` on the instance, pushes local
-   `HEAD` to `refs/heads/cloudlab/<name>`, *then* checks that branch out.
+   `HEAD` to `refs/heads/bivouac/<name>`, *then* checks that branch out.
    The order matters: a fresh `git init` leaves HEAD unborn, so the pushed
    branch isn't the checked-out one and the push is legal without
    `receive.denyCurrentBranch=updateInstead`.
-4. Registers a local remote `cloudlab-<name>` and creates the tracking
+4. Registers a local remote `bivouac-<name>` and creates the tracking
    worktree at `<repo>/.worktrees/<name>`, adding `/.worktrees/` to
-   `.git/info/exclude` (cloudlab's own bookkeeping, not the user's
+   `.git/info/exclude` (bivouac's own bookkeeping, not the user's
    `.gitignore`).
 5. Seeds the repository's issue tracker, best-effort: excludes `.beads/` on
    the instance (so the next checkpoint's `git add -A` can't commit it),
-   registers a dolt remote `cloudlab-<name>` on the Mac pointing at the same
+   registers a dolt remote `bivouac-<name>` on the Mac pointing at the same
    repository over the same SSH channel, pushes the Mac's issue database into
    it, and has the instance clone it back out. Every step here warns and
    continues rather than failing the session — see
@@ -403,7 +403,7 @@ session's beads issues are checked the same way delete checks them, for the
 same reason: down is the other verb that makes their loss permanent.
 
 The instance never pushes and never talks to a shared remote, with one
-opt-in carve-out: `beads = "dolthub"` in `cloudlab.pkl` places an
+opt-in carve-out: `beads = "dolthub"` in `bivouac.pkl` places an
 account-wide DoltHub credential on the instance so its issue database can
 sync there directly (see Secrets, below). Otherwise, pull-direction means an
 agent *cannot* push anywhere, enforcing "no unreviewed pushes" structurally
@@ -412,9 +412,9 @@ running overnight against a closed laptop.
 
 ## Secrets: a personal, sops-encrypted file
 
-`cloudlab secrets init/edit/keys` manage a personal file at
-`$XDG_CONFIG_HOME/cloudlab/secrets.yaml` (else
-`~/.config/cloudlab/secrets.yaml`), encrypted with
+`bivouac secrets init/edit/keys` manage a personal file at
+`$XDG_CONFIG_HOME/bivouac/secrets.yaml` (else
+`~/.config/bivouac/secrets.yaml`), encrypted with
 [sops](https://github.com/getsops/sops). It holds the Tailscale auth key and,
 for anyone using `beads = "dolthub"`, a DoltHub credential (`dolthub_creds`,
 the JWK itself, and `dolthub_creds_id`, its filename stem) — whatever else
@@ -435,16 +435,16 @@ the local copy immediately after the remote write, whether or not
 `down` best-effort logs the instance out of the tailnet before destroying
 it, gated on `record.TailscaleJoined` rather than the current config (the
 config's value may have changed, or the instance may have been joined
-manually by `cloudlab tailscale`).
+manually by `bivouac tailscale`).
 
 `internal/reconcile` places the DoltHub credential the same careful way, and
-only when `cloudlab.pkl` sets `beads = "dolthub"`: it decrypts `dolthub_creds`
+only when `bivouac.pkl` sets `beads = "dolthub"`: it decrypts `dolthub_creds`
 and `dolthub_creds_id`, resolves the instance's `$XDG_RUNTIME_DIR` with a real
 round-trip, symlinks `~/.dolt` there, writes the credential into that tmpfs
 directory over SSH, and zeroes the local copies. Skipped — with a warning
 naming why — for a repository with no beads database at all, since nothing
 there could ever use it. A reboot clears tmpfs and leaves the symlink
-dangling; `cloudlab provision` restores it, the same recovery path `up`
+dangling; `bivouac provision` restores it, the same recovery path `up`
 already runs.
 
 `placeGitHubToken` is the same sequence once more, for `github_token` into
@@ -457,11 +457,11 @@ migration that aborts every command when it cannot make that call itself;
 doing it here also means a rejected token is reported on the machine whose
 user can fix it, before anything reaches the instance.
 It differs from the DoltHub credential in what a missing secret means: no
-`cloudlab.pkl` field enables this, so an absent key is an ordinary choice,
+`bivouac.pkl` field enables this, so an absent key is an ordinary choice,
 reported as progress rather than a warning, and `gh` is left
 unauthenticated. The `~/.dolt` and `~/.config/gh` symlinks are prepared by
 one shared script builder, `symlinkPrepareScript`, which refuses to touch
-anything already there that is not cloudlab's own link.
+anything already there that is not bivouac's own link.
 
 > **Note on agent credentials.** [ADR-0006](adr/0006-credentials-via-aide-secrets.md)
 > describes injecting `SOPS_AGE_KEY` into `shell`/`ssh` sessions so aide can
@@ -477,13 +477,13 @@ anything already there that is not cloudlab's own link.
 | Command | Scope | Purpose |
 |---------|-------|---------|
 | `up [name]` | per-instance | Create the VM, run cloud-init, wait for SSH, reconcile home-manager, optionally join the tailnet. Confirms before anything billable. Seeds no repository — see `session start` |
-| `provision [name]` | per-instance | Reconcile home-manager with the current `cloudlab.pkl`, nothing else |
+| `provision [name]` | per-instance | Reconcile home-manager with the current `bivouac.pkl`, nothing else |
 | `ssh [name]` | per-instance | Interactive **remote** shell on the VM. `--dir` picks the directory to land in; without it, the resolved session's repository on the instance. Where several sessions are live and none is implied, it asks — connecting is not destructive, so with no session at all it still connects and lands in `$HOME` |
-| `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) — a background session that survives disconnects. Names its herdr session after the resolved cloudlab session, so reconnecting returns to the same one. It cannot start in the session's directory: `herdr --remote` takes no working directory, only `herdr workspace create --cwd` does. Refuses to nest inside an existing herdr session |
-| `tmux [session-name]` | per-instance | Remote tmux session, create-or-attach (`new-session -A`). Named after the resolved cloudlab session so reconnecting returns to the same one; the positional overrides that, and the default is `main` when no session resolves. It does not start in the session's directory — `tmuxArgs` passes no `-c` |
+| `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) — a background session that survives disconnects. Names its herdr session after the resolved bivouac session, so reconnecting returns to the same one. It cannot start in the session's directory: `herdr --remote` takes no working directory, only `herdr workspace create --cwd` does. Refuses to nest inside an existing herdr session |
+| `tmux [session-name]` | per-instance | Remote tmux session, create-or-attach (`new-session -A`). Named after the resolved bivouac session so reconnecting returns to the same one; the positional overrides that, and the default is `main` when no session resolves. It does not start in the session's directory — `tmuxArgs` passes no `-c` |
 | `pair [name]` | per-instance | Pair the getmoshi.app mobile app with the instance via its QR flow. Prompts for which address the QR advertises (tailnet vs public) when both are available; `--host` sets it directly |
-| `tailscale [name]` | per-instance | Join the instance to your tailnet. Also runs as part of `up` when `cloudlab.pkl` sets `tailscale = true` |
-| `session start <name>` | per-instance | Start a named agent session: seed a fresh repository on the instance on branch `cloudlab/<name>`, plus the local tracking worktree at `<repo>/.worktrees/<name>`. An instance can run several sessions at once |
+| `tailscale [name]` | per-instance | Join the instance to your tailnet. Also runs as part of `up` when `bivouac.pkl` sets `tailscale = true` |
+| `session start <name>` | per-instance | Start a named agent session: seed a fresh repository on the instance on branch `bivouac/<name>`, plus the local tracking worktree at `<repo>/.worktrees/<name>`. An instance can run several sessions at once |
 | `session pull [session]` | per-instance | Checkpoint and fetch a session's commits without merging them, and fast-forward the local worktree. `[session]` is optional — resolved from the current worktree, or the instance's only session |
 | `session merge [session]` | per-instance | Replay a session's commits onto the current branch with your signature, verify every one, then retire the session from both sides. `[session]` optional, same resolution as `session pull` |
 | `session delete [session]` | per-instance | Discard a session without merging its work. Rescues the instance first (checkpoint + fetch), so it needs the instance reachable and refuses when it isn't; refuses while it has unmerged commits unless `--force` |
@@ -511,7 +511,7 @@ the command (or its forward) and the door closes. `serve` lasts until
 `unserve` is run and is reachable from the whole tailnet, not just the
 machine that published it. `serve`/`unserve` never run `tailscale serve
 reset`: reset clears every entry on the instance, including ones the user
-set up by hand outside cloudlab, so both commands only ever add or remove
+set up by hand outside bivouac, so both commands only ever add or remove
 their own single entry.
 
 `shell` vs `ssh`: `shell` is designed never to touch the network to open an
@@ -553,8 +553,8 @@ working directory each time. So the field is reported, not resolved against.
 
 ## State
 
-State is a JSON file at `$XDG_STATE_HOME/cloudlab/state.json` (else
-`~/.local/state/cloudlab/state.json`), holding one entry per instance keyed
+State is a JSON file at `$XDG_STATE_HOME/bivouac/state.json` (else
+`~/.local/state/bivouac/state.json`), holding one entry per instance keyed
 by name — not a single global record, which is necessary once more than one
 instance can be alive at a time. `list` reads across all entries.
 

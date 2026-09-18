@@ -15,7 +15,7 @@ install -d -m 0700 -o {{.Username}} -g {{.Username}} /home/{{.Username}}/.ssh
 # the new user rather than requiring a second key registration.
 install -m 0600 -o {{.Username}} -g {{.Username}} /root/.ssh/authorized_keys /home/{{.Username}}/.ssh/authorized_keys
 
-# cloudlab is fully automated with no interactive terminal on the
+# bivouac is fully automated with no interactive terminal on the
 # remote side -- passwordless sudo is required for any future
 # automation that needs root, at the same trust level root already had.
 echo '{{.Username}} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{{.Username}}
@@ -35,7 +35,7 @@ loginctl enable-linger {{.Username}}
 # key-based login is confirmed in place, so a failure anywhere above
 # never locks the instance out entirely.
 if [ -s /home/{{.Username}}/.ssh/authorized_keys ]; then
-  echo 'PermitRootLogin no' > /etc/ssh/sshd_config.d/99-cloudlab-disable-root.conf
+  echo 'PermitRootLogin no' > /etc/ssh/sshd_config.d/99-bivouac-disable-root.conf
   sshd -t
   systemctl reload ssh 2>/dev/null || systemctl reload sshd
 fi

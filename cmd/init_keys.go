@@ -7,14 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/provider/digitalocean"
-	"github.com/jskswamy/cloudlab/internal/sshkeys"
-	"github.com/jskswamy/cloudlab/internal/wizard"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/wizard"
 )
 
-// registerKeysURL is where a user registers a key by hand when cloudlab
+// registerKeysURL is where a user registers a key by hand when bivouac
 // cannot do it for them.
 const registerKeysURL = "https://cloud.digitalocean.com/account/security"
 
@@ -95,7 +95,7 @@ func askSSHKeys(ctx context.Context, out io.Writer, p prompter, sources keySourc
 // rather than failing.
 //
 // A token scoped without the SSH-key permission is the configuration
-// cloudlab recommends, so a refusal here is an answer -- this tier is
+// bivouac recommends, so a refusal here is an answer -- this tier is
 // unavailable -- not an error worth stopping for.
 func lookUpAccount(ctx context.Context, out io.Writer, sources keySources) (provider.KeyRegistry, []provider.SSHKey, bool) {
 	registry, err := sources.registry(ctx)
@@ -109,7 +109,7 @@ func lookUpAccount(ctx context.Context, out io.Writer, sources keySources) (prov
 	account, err := registry.ListKeys(ctx)
 	if err != nil {
 		if provider.IsForbidden(err) {
-			printf(out, "This token cannot read your account's SSH keys, so cloudlab cannot say which are registered. Offering this machine's keys only.\n")
+			printf(out, "This token cannot read your account's SSH keys, so bivouac cannot say which are registered. Offering this machine's keys only.\n")
 		} else {
 			printf(out, "Could not list your account's SSH keys (%v); offering this machine's keys only.\n", err)
 		}

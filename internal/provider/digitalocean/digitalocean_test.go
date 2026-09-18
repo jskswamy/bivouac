@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // newTestProvider spins up an httptest.Server backed by mux, points a

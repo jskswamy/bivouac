@@ -123,7 +123,7 @@ func TestRepoRoot_FromInsideALinkedWorktreeReturnsTheMainRepo(t *testing.T) {
 	runGit(t, main, "commit", "-q", "-m", "first")
 
 	wt := filepath.Join(main, ".worktrees", "auth")
-	runGit(t, main, "worktree", "add", "-q", wt, "-b", "cloudlab/auth")
+	runGit(t, main, "worktree", "add", "-q", wt, "-b", "bivouac/auth")
 
 	got, err := RepoRoot(context.Background(), wt, "")
 	if err != nil {
@@ -139,27 +139,27 @@ func TestRepoRoot_FromInsideALinkedWorktreeReturnsTheMainRepo(t *testing.T) {
 
 func TestDeriveName_FromHTTPSOrigin(t *testing.T) {
 	root := initRepo(t)
-	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/bivouac.git")
 
 	got, err := DeriveName(context.Background(), root)
 	if err != nil {
 		t.Fatalf("DeriveName() error = %v", err)
 	}
-	if got != "jskswamy-cloudlab" {
-		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-cloudlab")
+	if got != "jskswamy-bivouac" {
+		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-bivouac")
 	}
 }
 
 func TestDeriveName_FromSSHOrigin(t *testing.T) {
 	root := initRepo(t)
-	runGit(t, root, "remote", "add", "origin", "git@github.com:jskswamy/cloudlab.git")
+	runGit(t, root, "remote", "add", "origin", "git@github.com:jskswamy/bivouac.git")
 
 	got, err := DeriveName(context.Background(), root)
 	if err != nil {
 		t.Fatalf("DeriveName() error = %v", err)
 	}
-	if got != "jskswamy-cloudlab" {
-		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-cloudlab")
+	if got != "jskswamy-bivouac" {
+		t.Errorf("DeriveName() = %q, want %q", got, "jskswamy-bivouac")
 	}
 }
 
@@ -198,27 +198,27 @@ func TestInstanceName_NameFlagWinsOverCwd(t *testing.T) {
 
 func TestInstanceName_DerivedFromCwdRepo(t *testing.T) {
 	root := initRepo(t)
-	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/bivouac.git")
 
 	got, err := InstanceName(context.Background(), root, "", "", "")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
-	if got != "jskswamy-cloudlab" {
-		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-cloudlab")
+	if got != "jskswamy-bivouac" {
+		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-bivouac")
 	}
 }
 
 func TestInstanceName_DerivedFromRepoFlagOutsideAnyRepo(t *testing.T) {
 	other := initRepo(t)
-	runGit(t, other, "remote", "add", "origin", "https://github.com/jskswamy/cloudlab.git")
+	runGit(t, other, "remote", "add", "origin", "https://github.com/jskswamy/bivouac.git")
 
 	got, err := InstanceName(context.Background(), t.TempDir(), other, "", "")
 	if err != nil {
 		t.Fatalf("InstanceName() error = %v", err)
 	}
-	if got != "jskswamy-cloudlab" {
-		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-cloudlab")
+	if got != "jskswamy-bivouac" {
+		t.Errorf("InstanceName() = %q, want %q", got, "jskswamy-bivouac")
 	}
 }
 

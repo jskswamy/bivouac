@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // writeTokenSecretsFixture points XDG_CONFIG_HOME at a temp directory
@@ -22,7 +22,7 @@ import (
 // sops+age path production uses rather than a stub.
 //
 // Pinning XDG_CONFIG_HOME is not just tidiness: without it these tests
-// read the developer's own ~/.config/cloudlab/secrets.yaml, and a
+// read the developer's own ~/.config/bivouac/secrets.yaml, and a
 // YubiKey-backed identity would make `go test ./cmd/` block on a
 // physical touch. Every test below that clears DIGITALOCEAN_TOKEN must
 // pin it, whether or not it wants a fixture.

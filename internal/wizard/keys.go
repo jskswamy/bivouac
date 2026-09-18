@@ -3,8 +3,8 @@ package wizard
 import (
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
 // KeyChoice is one SSH key the sshKeys question can offer.

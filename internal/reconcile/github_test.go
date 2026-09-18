@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/secrets"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 func TestPlaceGitHubToken_SkipsCleanlyWhenNoSecretIsConfigured(t *testing.T) {
@@ -73,7 +73,7 @@ func TestPlaceGitHubTokenValue_LeavesAForeignConfigGhAlone(t *testing.T) {
 	placeGitHubTokenValue(ctx, client, []byte("ghp_example"))
 
 	got := errOut.String()
-	if !strings.Contains(got, "not cloudlab's symlink") {
+	if !strings.Contains(got, "not bivouac's symlink") {
 		t.Errorf("errOut = %q, want it to explain ~/.config/gh is foreign", got)
 	}
 	for _, cmd := range commands {
@@ -172,7 +172,7 @@ func TestPlaceGitHubToken_WritesHostsYAMLWhenTokenIsConfigured(t *testing.T) {
 	if string(stdins[2]) != wantYAML {
 		t.Errorf("stdin to the write step = %q, want %q", stdins[2], wantYAML)
 	}
-	if !strings.Contains(commands[2], "/run/user/1000/cloudlab/gh/hosts.yml") {
+	if !strings.Contains(commands[2], "/run/user/1000/bivouac/gh/hosts.yml") {
 		t.Errorf("commands[2] = %q, want it to write into the resolved runtime dir", commands[2])
 	}
 	// The token must only ever travel over stdin: a command line is visible

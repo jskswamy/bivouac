@@ -21,7 +21,7 @@ func schemaPath(t *testing.T) string {
 
 func TestLoadFromPath_MinimalFixture(t *testing.T) {
 	dir := t.TempDir()
-	fixture := filepath.Join(dir, "cloudlab.pkl")
+	fixture := filepath.Join(dir, "bivouac.pkl")
 	content := "amends " + quote(schemaPath(t)) + "\n\n" +
 		"region = \"nyc3\"\n" +
 		"packages {\n  \"ripgrep\"\n}\n"

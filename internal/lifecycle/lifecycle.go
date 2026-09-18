@@ -6,13 +6,13 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/provisioning"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/state"
-	"github.com/jskswamy/cloudlab/internal/tui"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provisioning"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
+	"github.com/jskswamy/bivouac/internal/tui"
 )
 
 const readyTimeout = 5 * time.Minute
@@ -47,7 +47,7 @@ func CheckSessionName(session string) error {
 // callers always use DefaultSteps.
 type Steps struct {
 	WaitReady     func(ctx context.Context, ip, user string, timeout time.Duration) error
-	Reconcile     func(ctx context.Context, name, cloudlabPath string) error
+	Reconcile     func(ctx context.Context, name, bivouacPath string) error
 	JoinTailscale func(ctx context.Context, ip, user string) error
 }
 
@@ -58,9 +58,9 @@ type Steps struct {
 func DefaultSteps() Steps {
 	return Steps{
 		WaitReady: WaitReady,
-		Reconcile: func(ctx context.Context, name, cloudlabPath string) error {
+		Reconcile: func(ctx context.Context, name, bivouacPath string) error {
 			return tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error {
-				return reconcile.Reconcile(ctx, name, cloudlabPath)
+				return reconcile.Reconcile(ctx, name, bivouacPath)
 			})
 		},
 		JoinTailscale: JoinTailscale,
@@ -73,12 +73,12 @@ func DefaultSteps() Steps {
 // home-manager once. It does not seed a repository -- nothing needs the
 // code on the instance until a session exists, so that happens in
 // StartSession instead.
-func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPath, repoRoot string) error {
+func Up(ctx context.Context, p provider.Provider, steps Steps, name, bivouacPath, repoRoot string) error {
 	if !validInstanceName.MatchString(name) {
 		return fmt.Errorf("instance name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens -- it is also used as the repository name in paths on both machines) -- pass an explicit --name", name)
 	}
 
-	cfg, err := config.Resolve(ctx, cloudlabPath)
+	cfg, err := config.Resolve(ctx, bivouacPath)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return fmt.Errorf("deriving remote username: %w", err)
 	}
 	// remotePath is likewise computed once and stored (state.Record.RepoPath)
-	// rather than re-derived: a later `cloudlab ssh` may run from
+	// rather than re-derived: a later `bivouac ssh` may run from
 	// somewhere that isn't this repo's checkout at all, and needs to
 	// know where THIS instance's repo actually landed.
 	remotePath, err := RemotePath(repoRoot, remoteUser)
@@ -136,7 +136,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 	if existing, ok, err := store.Get(name); err != nil {
 		return err
 	} else if ok {
-		return fmt.Errorf("instance %q already exists at %s (id %s)\nrun `cloudlab provision %s` to finish setting it up, or `cloudlab down %s` to destroy it first — creating another would leave this one running and unreachable", name, existing.IP, existing.VMID, name, name)
+		return fmt.Errorf("instance %q already exists at %s (id %s)\nrun `bivouac provision %s` to finish setting it up, or `bivouac down %s` to destroy it first — creating another would leave this one running and unreachable", name, existing.IP, existing.VMID, name, name)
 	}
 
 	provider.ReportProgress(ctx, "creating instance")
@@ -171,7 +171,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, cloudlabPat
 		return fmt.Errorf("waiting for %s to be ready: %w", name, err)
 	}
 
-	if err := steps.Reconcile(ctx, name, cloudlabPath); err != nil {
+	if err := steps.Reconcile(ctx, name, bivouacPath); err != nil {
 		return err
 	}
 

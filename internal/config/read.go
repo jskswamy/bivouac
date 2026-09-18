@@ -21,7 +21,7 @@ import (
 // never mentioned would make editing one package rewrite the file with
 // lines its author chose to leave out.
 func ReadValues(ctx context.Context, path string) (Values, error) {
-	// #nosec G304 -- path is the cloudlab.pkl/base.pkl/preset the caller
+	// #nosec G304 -- path is the bivouac.pkl/base.pkl/preset the caller
 	// asked to read; see loadResolved for the same rationale.
 	raw, err := os.ReadFile(path)
 	if err != nil {

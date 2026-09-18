@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +76,7 @@ func liveVMs(cmd *cobra.Command) (map[string]provider.VM, error) {
 //
 // Separate from the command so it can be tested without a provider or a
 // token, and with a fixed clock -- accrued cost otherwise changes between
-// runs. The write error is returned rather than dropped: `cloudlab list`
+// runs. The write error is returned rather than dropped: `bivouac list`
 // piped into a closed pipe must fail rather than exit 0 having printed
 // nothing.
 func printInstances(cmd *cobra.Command, records []state.Record, vms map[string]provider.VM, now time.Time) error {
@@ -94,7 +94,7 @@ func printInstances(cmd *cobra.Command, records []state.Record, vms map[string]p
 		row := []string{s.value.Render(r.Name), r.Provider, r.IP}
 		if vms != nil {
 			// A record with no matching droplet is one destroyed outside
-			// cloudlab, or stale state. Both are worth showing as a row --
+			// bivouac, or stale state. Both are worth showing as a row --
 			// that gap is the useful part -- but neither can be costed.
 			vm, ok := vms[r.VMID]
 			cost := "?"

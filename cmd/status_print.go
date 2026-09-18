@@ -5,8 +5,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/spf13/cobra"
 )
 

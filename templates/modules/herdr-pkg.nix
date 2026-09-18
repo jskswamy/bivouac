@@ -8,7 +8,7 @@
 # the local client can talk to, stops it and deploys its own copy under
 # ~/.local/bin, outside nix and outside the systemd unit common.nix
 # installs. Matching versions is what keeps the instance's herdr the one
-# cloudlab put there.
+# bivouac put there.
 #
 # Bumping means matching whatever the maintainer's own machine is on, since
 # a client newer than the instance is exactly the state that triggers the

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
 )
 
 // styles is the small palette the read-only reports (status, list) render

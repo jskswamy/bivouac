@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
 // fakeRegistry stands in for a provider's SSH key API.
@@ -111,7 +111,7 @@ func TestInitFlow_Keys_NeverReachTheProjectFile(t *testing.T) {
 		t.Fatalf("runInitFlow() error = %v", err)
 	}
 	if text := f.text(t, f.project); strings.Contains(text, "aa:bb") {
-		t.Errorf("cloudlab.pkl holds the key:\n%s", text)
+		t.Errorf("bivouac.pkl holds the key:\n%s", text)
 	}
 }
 

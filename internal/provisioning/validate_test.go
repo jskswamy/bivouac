@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/config"
+	"github.com/jskswamy/bivouac/internal/config"
 )
 
 func testdataFlake(t *testing.T, name string) string {

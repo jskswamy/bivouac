@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/jskswamy/cloudlab/cmd"
+	"github.com/jskswamy/bivouac/cmd"
 )
 
 func main() {

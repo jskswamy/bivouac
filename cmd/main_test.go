@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // Every test in this package starts with an isolated home.
@@ -12,7 +12,7 @@ import (
 // resolveToken falls back to the personal secrets file whenever
 // DIGITALOCEAN_TOKEN is empty, so without this a test that clears the token
 // -- or simply runs somewhere it was never exported -- reads the developer's
-// own ~/.config/cloudlab/secrets.yaml. With a YubiKey-backed age identity
+// own ~/.config/bivouac/secrets.yaml. With a YubiKey-backed age identity
 // that does not fail, it blocks: `go test ./cmd/` sits waiting for a touch
 // with no output explaining why.
 //

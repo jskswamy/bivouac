@@ -7,11 +7,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
 )
 
 // A picker that prompts where nothing can answer is a hang. CI, a script and
-// an agent driving cloudlab all get the error instead.
+// an agent driving bivouac all get the error instead.
 func TestPickSession_ReadsAChoiceFromStdin(t *testing.T) {
 	c := &cobra.Command{}
 	var out bytes.Buffer

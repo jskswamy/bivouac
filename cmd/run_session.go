@@ -8,24 +8,24 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/beads"
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/identity"
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
-// beadsModeFor reads the beads setting out of the repository's cloudlab.pkl.
+// beadsModeFor reads the beads setting out of the repository's bivouac.pkl.
 //
-// Best-effort by design. `cloudlab session start` does not require pkl today,
+// Best-effort by design. `bivouac session start` does not require pkl today,
 // and beads must not be the reason it starts to: a config that will not
 // resolve is a problem `up` and `provision` report properly, with a better
 // message than this could give. The fallback is inert on a repository with no
 // .beads/, which is the overwhelmingly common case.
 func beadsModeFor(ctx context.Context, root string) config.BeadsMode {
-	cfg, err := config.Resolve(ctx, filepath.Join(root, "cloudlab.pkl"))
+	cfg, err := config.Resolve(ctx, filepath.Join(root, "bivouac.pkl"))
 	if err != nil {
 		provider.ReportWarning(ctx, "beads: could not resolve "+root+"'s config ("+err.Error()+"); falling back to session mode")
 		return config.BeadsSession
@@ -57,7 +57,7 @@ func markIssueStarted(ctx context.Context, ip, user, localRepo, repo, session, i
 	}
 }
 
-// runSessionStart backs `cloudlab session start <name>`. Cobra resolves the
+// runSessionStart backs `bivouac session start <name>`. Cobra resolves the
 // verb now, so there is no hand-rolled dispatch here and no unknown-subcommand
 // error to maintain -- an unrecognised verb gets cobra's own suggestion.
 func runSessionStart(cmd *cobra.Command, name string, args []string) error {
@@ -126,8 +126,8 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	}
 	cmd.Printf("Session %s started on %s\n", session, name)
 	cmd.Printf("\nLocal   %s\n", lifecycle.LocalWorktreePath(root, session))
-	cmd.Printf("Fetch   cloudlab session pull %s\n", session)
-	cmd.Printf("Accept  cloudlab session merge %s\n", session)
+	cmd.Printf("Fetch   bivouac session pull %s\n", session)
+	cmd.Printf("Accept  bivouac session merge %s\n", session)
 	return nil
 }
 
@@ -261,8 +261,8 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	for _, c := range commits {
 		cmd.Printf("  %s\n", c)
 	}
-	cmd.Printf("\nReview  git log HEAD..%s\n", "cloudlab-"+sess.Name+"/"+lifecycle.SessionBranch(sess.Name))
-	cmd.Printf("Accept  cloudlab session merge %s\n", sess.Name)
+	cmd.Printf("\nReview  git log HEAD..%s\n", "bivouac-"+sess.Name+"/"+lifecycle.SessionBranch(sess.Name))
+	cmd.Printf("Accept  bivouac session merge %s\n", sess.Name)
 	return nil
 }
 

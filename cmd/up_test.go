@@ -12,21 +12,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/sshkeys"
-	"github.com/jskswamy/cloudlab/internal/testenv"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
-// minimalCloudlabPkl writes a valid cloudlab.pkl into dir, real enough
+// minimalBivouacPkl writes a valid bivouac.pkl into dir, real enough
 // for config.Resolve to evaluate with the pkl CLI.
 //
 // sshKeys is set so tests exercising something other than the SSH-key
 // question -- most of them -- don't trip ensureSSHKeys' refusal, which
 // runs before any of them reach the check they actually mean to test.
-func minimalCloudlabPkl(t *testing.T, dir string) {
+func minimalBivouacPkl(t *testing.T, dir string) {
 	t.Helper()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	body := strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -83,7 +83,7 @@ func TestUpCommand_NotInRepoErrors(t *testing.T) {
 func TestUpCommand_MissingTokenErrors(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
-	minimalCloudlabPkl(t, dir)
+	minimalBivouacPkl(t, dir)
 	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
@@ -105,7 +105,7 @@ func TestUpCommand_MissingTokenErrors(t *testing.T) {
 func TestUpCommand_DeclinedConfirmation_AbortsWithoutCreating(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
-	minimalCloudlabPkl(t, dir)
+	minimalBivouacPkl(t, dir)
 	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
 
 	root := newRootCmd()
@@ -129,7 +129,7 @@ func TestUpCommand_DeclinedConfirmation_AbortsWithoutCreating(t *testing.T) {
 func TestUpCommand_ConfirmationSummary_ShownBeforePrompt(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
-	minimalCloudlabPkl(t, dir)
+	minimalBivouacPkl(t, dir)
 	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
 
 	root := newRootCmd()
@@ -152,7 +152,7 @@ func TestUpCommand_ConfirmationSummary_ShownBeforePrompt(t *testing.T) {
 func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 	dir := initTestRepo(t)
 	chdir(t, dir)
-	minimalCloudlabPkl(t, dir)
+	minimalBivouacPkl(t, dir)
 	testenv.Isolate(t)
 	t.Setenv("DIGITALOCEAN_TOKEN", "")
 
@@ -172,7 +172,7 @@ func TestUpCommand_PositionalNameOverridesDerivedName(t *testing.T) {
 }
 
 // up and provision need the repository root regardless of how the instance
-// name was resolved -- cloudlab.pkl lives in it, and lifecycle.Up takes it.
+// name was resolved -- bivouac.pkl lives in it, and lifecycle.Up takes it.
 // So unlike identity.InstanceName, which returns a positional name without
 // ever looking for a repository, these two must still fail outside one even
 // when the name was given explicitly.
@@ -196,7 +196,7 @@ func TestUpCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
 
 			err := root.Execute()
 			if err == nil {
-				t.Fatal("expected an error: cloudlab.pkl cannot be found without a repository root")
+				t.Fatal("expected an error: bivouac.pkl cannot be found without a repository root")
 			}
 			if !strings.Contains(err.Error(), "use --repo") {
 				t.Errorf("error = %q, want mention of --repo", err.Error())
@@ -205,12 +205,12 @@ func TestUpCommand_NotInRepoErrorsEvenWithAnExplicitName(t *testing.T) {
 	}
 }
 
-// noSSHKeysCloudlabPkl writes a resolvable cloudlab.pkl with no sshKeys
+// noSSHKeysBivouacPkl writes a resolvable bivouac.pkl with no sshKeys
 // field, the exact shape that let `up` create an unreachable droplet
 // before ensureSSHKeys existed.
-func noSSHKeysCloudlabPkl(t *testing.T, dir string) string {
+func noSSHKeysBivouacPkl(t *testing.T, dir string) string {
 	t.Helper()
-	path := filepath.Join(dir, "cloudlab.pkl")
+	path := filepath.Join(dir, "bivouac.pkl")
 	body := strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
@@ -239,7 +239,7 @@ func TestEnsureSSHKeys_AlreadyConfigured_ReturnsCfgUnchanged(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetContext(context.Background())
 
-	got, err := ensureSSHKeys(cmd, cfg, "/unused/cloudlab.pkl")
+	got, err := ensureSSHKeys(cmd, cfg, "/unused/bivouac.pkl")
 	if err != nil {
 		t.Fatalf("ensureSSHKeys() error = %v", err)
 	}
@@ -249,7 +249,7 @@ func TestEnsureSSHKeys_AlreadyConfigured_ReturnsCfgUnchanged(t *testing.T) {
 }
 
 // Without a terminal, asking is indistinguishable from a hang -- so a
-// missing key must refuse the same way a missing cloudlab.pkl does,
+// missing key must refuse the same way a missing bivouac.pkl does,
 // not silently proceed as it did before this guard existed.
 func TestEnsureSSHKeys_NoneConfiguredNoTerminal_Refuses(t *testing.T) {
 	cfg := config.Resolved{}
@@ -257,7 +257,7 @@ func TestEnsureSSHKeys_NoneConfiguredNoTerminal_Refuses(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetContext(context.Background())
 
-	_, err := ensureSSHKeys(cmd, cfg, "/unused/cloudlab.pkl")
+	_, err := ensureSSHKeys(cmd, cfg, "/unused/bivouac.pkl")
 	if err == nil {
 		t.Fatal("ensureSSHKeys() error = nil, want a refusal with no terminal to ask on")
 	}
@@ -268,7 +268,7 @@ func TestEnsureSSHKeys_NoneConfiguredNoTerminal_Refuses(t *testing.T) {
 
 func TestEnsureSSHKeysWith_WritesChosenKeyAndReResolves(t *testing.T) {
 	dir := t.TempDir()
-	path := noSSHKeysCloudlabPkl(t, dir)
+	path := noSSHKeysBivouacPkl(t, dir)
 	testenv.Isolate(t)
 
 	cmd := &cobra.Command{}
@@ -311,7 +311,7 @@ func TestEnsureSSHKeysWith_WritesChosenKeyAndReResolves(t *testing.T) {
 // warned, never silently as it was before.
 func TestEnsureSSHKeysWith_NoKeysChosen_RefusesRatherThanProceeding(t *testing.T) {
 	dir := t.TempDir()
-	path := noSSHKeysCloudlabPkl(t, dir)
+	path := noSSHKeysBivouacPkl(t, dir)
 	testenv.Isolate(t)
 
 	cmd := &cobra.Command{}

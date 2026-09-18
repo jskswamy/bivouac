@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/reconcile"
-	"github.com/jskswamy/cloudlab/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/shellcmd"
 )
 
 // Listener is one listening socket reported by `ss -tlnp`.
@@ -32,7 +32,7 @@ func (l Listener) LoopbackOnly() bool {
 
 // infraPorts are the ports connect hides by default. Both belong to
 // services cloud-init and the template put there, never to work someone
-// started on the instance: 22 is sshd, which `cloudlab ssh` already
+// started on the instance: 22 is sshd, which `bivouac ssh` already
 // reaches, and 53 is systemd-resolved, which is not addressable from
 // off-box at all.
 var infraPorts = map[int]bool{22: true, 53: true}
@@ -110,7 +110,7 @@ func parseListeners(out string) []Listener {
 // Listeners asks the instance what is listening.
 //
 // `ss` rather than `lsof` or `netstat`: it is in iproute2, which is
-// present on every Ubuntu image cloudlab boots, and needs no package
+// present on every Ubuntu image bivouac boots, and needs no package
 // from the template. Run unprivileged, so the process column is empty
 // for sockets this user does not own -- the port is what connect
 // needs, and the name is a convenience when it happens to be visible.

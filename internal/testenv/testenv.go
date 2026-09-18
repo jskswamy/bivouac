@@ -1,7 +1,7 @@
 // Package testenv gives a test an isolated view of the user's home
 // directory.
 //
-// It exists because isolation used to be opt-in: cloudlab resolves paths out
+// It exists because isolation used to be opt-in: bivouac resolves paths out
 // of $HOME (config, cache, state, ~/.ssh/known_hosts), and a test that forgot
 // to redirect it wrote to the developer's real files. That is not
 // hypothetical -- reconcile.Connect's trust-on-first-connect left 190
@@ -22,7 +22,7 @@ import (
 // Env is the isolated environment Run builds for one test.
 type Env struct {
 	// Home is the temporary directory standing in for the user's home. Every
-	// path cloudlab derives from $HOME -- and, because the XDG variables are
+	// path bivouac derives from $HOME -- and, because the XDG variables are
 	// cleared, every XDG base directory too -- resolves inside it.
 	Home string
 }
@@ -33,7 +33,7 @@ func (e Env) Path(parts ...string) string {
 }
 
 // Run calls fn with $HOME pointed at a fresh temporary directory and the
-// XDG_* variables cleared, so everything cloudlab reads or writes under the
+// XDG_* variables cleared, so everything bivouac reads or writes under the
 // user's home lands inside Env.Home.
 //
 // Clearing the XDG variables rather than pointing each at its own temp dir is
@@ -108,7 +108,7 @@ func Isolate(t *testing.T) Env {
 // temporary home is removed before RunMain returns, so the caller's os.Exit
 // -- which skips defers -- does not strand it.
 func RunMain(m *testing.M) int {
-	home, err := os.MkdirTemp("", "cloudlab-testenv-")
+	home, err := os.MkdirTemp("", "bivouac-testenv-")
 	if err != nil {
 		panic("testenv: creating the isolated home: " + err.Error())
 	}

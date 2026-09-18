@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	term "github.com/charmbracelet/x/term"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // isTerminal is a var, not a call, so tests can override it without

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +63,7 @@ func TestPrintInstances_WithCostShowsEachInstanceAndTheTotal(t *testing.T) {
 }
 
 // A droplet that state knows about but the API did not return (destroyed
-// outside cloudlab, or a stale record) must read as unknown, and must not
+// outside bivouac, or a stale record) must read as unknown, and must not
 // be silently counted as $0.00 in the total.
 func TestPrintInstances_UnknownCostIsNotCountedInTheTotal(t *testing.T) {
 	c, out := listTestCmd()

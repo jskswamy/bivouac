@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jskswamy/cloudlab/internal/tool"
+	"github.com/jskswamy/bivouac/internal/tool"
 )
 
 // herdrArgs builds the argv Herdr passes to the herdr binary: a thin
 // client connecting to ip as user, over herdr's own SSH bridge (see
 // https://herdr.dev/docs/how-to-work/). session, when non-empty, is passed
-// as herdr's own --session so each cloudlab session gets its own named
-// herdr session -- reconnecting to the same cloudlab session lands back in
+// as herdr's own --session so each bivouac session gets its own named
+// herdr session -- reconnecting to the same bivouac session lands back in
 // the same herdr session instead of everyone sharing one anonymous session.
 // herdr's --remote has no concept of a starting directory (its only cwd
 // knob, --cwd, belongs to `herdr workspace create`, a server-side operation
@@ -38,13 +38,13 @@ func Herdr(ctx context.Context, ip, user, session string) error {
 	// path's cue instead -- see AttachMachine, and the router in the
 	// command layer that chooses between them.
 	if InsideHerdr() {
-		return fmt.Errorf("already inside a herdr session -- attach the instance as a saved machine instead, or run `cloudlab ssh`/`cloudlab tmux`")
+		return fmt.Errorf("already inside a herdr session -- attach the instance as a saved machine instead, or run `bivouac ssh`/`bivouac tmux`")
 	}
 	if _, err := tool.Require("herdr"); err != nil {
 		return err
 	}
 	// Argv-array exec, no local shell; ip is
 	// provider-assigned, never attacker-controlled, and session is a
-	// cloudlab session name already checked by lifecycle.CheckSessionName.
+	// bivouac session name already checked by lifecycle.CheckSessionName.
 	return tool.Passthrough(ctx, "herdr", herdrArgs(ip, user, session)...)
 }

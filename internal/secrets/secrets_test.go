@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // setupSecretsTest generates a fresh age identity and points
@@ -138,7 +138,7 @@ func TestPath_UsesXDGConfigHomeWhenSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join("/custom/config", "cloudlab", "secrets.yaml")
+	want := filepath.Join("/custom/config", "bivouac", "secrets.yaml")
 	if got != want {
 		t.Errorf("Path() = %q, want %q", got, want)
 	}
@@ -152,7 +152,7 @@ func TestPath_FallsBackToHomeConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".config", "cloudlab", "secrets.yaml")
+	want := filepath.Join(home, ".config", "bivouac", "secrets.yaml")
 	if got != want {
 		t.Errorf("Path() = %q, want %q", got, want)
 	}
@@ -228,7 +228,7 @@ func TestInit_RequiresAtLeastOneRecipient(t *testing.T) {
 }
 
 // A value authored as a YAML block scalar -- plausible when pasting a long
-// auth key into `cloudlab secrets edit` -- really does come back from sops
+// auth key into `bivouac secrets edit` -- really does come back from sops
 // with a trailing newline, unlike a plain scalar. Callers were split on
 // coping with it: two trimmed, two did not, so the same key written two
 // ways reached the instance two different ways.

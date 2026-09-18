@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // StartSession creates a session: a repository on the instance for the agent
@@ -109,7 +109,7 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 	if err := writeAgentContext(ctx, client, localRepo, user); err != nil {
 		provider.ReportWarning(ctx, "instructions: "+err.Error()+
 			"\nthe session is usable, but its agents may be working from older instructions;"+
-			" fix this and run `cloudlab provision` to deliver them")
+			" fix this and run `bivouac provision` to deliver them")
 	}
 
 	// Last, deliberately. Beads never fails a session, so this returns
@@ -128,21 +128,21 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 // keeps the instructions the session gets tied to the config as it stands
 // now -- which is the whole point of writing them again at session start.
 func writeAgentContext(ctx context.Context, client *reconcile.Client, localRepo, user string) error {
-	cloudlabPath := filepath.Join(localRepo, "cloudlab.pkl")
+	bivouacPath := filepath.Join(localRepo, "bivouac.pkl")
 	// Absent and broken are different answers, the distinction
 	// config.Resolve and config.InstructionFiles already draw for the base
 	// config: a repository with no config declares no agents and no
 	// instructions, so there is nothing that failed to arrive. A config
 	// that exists and will not resolve does warn, below -- that one may
 	// well name instructions nobody got.
-	if _, err := os.Stat(cloudlabPath); os.IsNotExist(err) {
+	if _, err := os.Stat(bivouacPath); os.IsNotExist(err) {
 		return nil
 	}
-	cfg, err := config.Resolve(ctx, cloudlabPath)
+	cfg, err := config.Resolve(ctx, bivouacPath)
 	if err != nil {
 		return err
 	}
-	return reconcile.WriteAgentContext(ctx, client, user, cfg.Agents, cloudlabPath)
+	return reconcile.WriteAgentContext(ctx, client, user, cfg.Agents, bivouacPath)
 }
 
 // trackSession registers the session's remote on this machine and creates the
@@ -193,7 +193,7 @@ const worktreeDirPattern = "/.worktrees/"
 // already ignored the directory.
 //
 // Written to .git/info/exclude rather than .gitignore deliberately: it is
-// cloudlab's own bookkeeping, not something to add to a file the user commits
+// bivouac's own bookkeeping, not something to add to a file the user commits
 // and reviews. Idempotent, and a repository that already ignores the
 // directory some other way is left untouched.
 func excludeWorktreeDir(ctx context.Context, localRepo string) error {
@@ -223,7 +223,7 @@ func excludeWorktreeDir(ctx context.Context, localRepo string) error {
 		return fmt.Errorf("opening %s: %w", exclude, err)
 	}
 	defer func() { _ = f.Close() }()
-	if _, err := f.WriteString("\n# cloudlab session worktrees\n" + worktreeDirPattern + "\n"); err != nil {
+	if _, err := f.WriteString("\n# bivouac session worktrees\n" + worktreeDirPattern + "\n"); err != nil {
 		return fmt.Errorf("writing %s: %w", exclude, err)
 	}
 	return nil

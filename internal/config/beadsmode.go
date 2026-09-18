@@ -1,7 +1,7 @@
 package config
 
 // BeadsMode is how an instance's beads issue database syncs, as declared by
-// the `beads` field in cloudlab.pkl.
+// the `beads` field in bivouac.pkl.
 //
 // Hand-written beside the generated Config.pkl.go rather than in it: that
 // file says DO NOT EDIT and pkl-gen-go emits the Pkl union "session" |

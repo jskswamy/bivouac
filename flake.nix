@@ -1,5 +1,5 @@
 {
-  description = "cloudlab development environment";
+  description = "bivouac development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -114,7 +114,7 @@
                 # Go's own bin, so there is no C compiler on it. Linux
                 # stdlib builds os/user and net through cgo by default, so
                 # the scan died with `cgo: C compiler "gcc" not found` on
-                # ubuntu while passing on macOS. cloudlab imports no cgo,
+                # ubuntu while passing on macOS. bivouac imports no cgo,
                 # so turning it off scans exactly the same code.
                 entry = "env CGO_ENABLED=0 PATH=${pkgs.go}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
                 files = "\\.go$";

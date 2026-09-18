@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/jskswamy/cloudlab/internal/config"
-	"github.com/jskswamy/cloudlab/internal/preset"
-	"github.com/jskswamy/cloudlab/internal/wizard"
+	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/preset"
+	"github.com/jskswamy/bivouac/internal/wizard"
 	"github.com/spf13/cobra"
 )
 
@@ -19,9 +19,9 @@ func newPresetCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "preset",
 		Short: "Manage saved project shapes",
-		Long: "A preset is a set of answers saved from `cloudlab init` and offered as a\n" +
+		Long: "A preset is a set of answers saved from `bivouac init` and offered as a\n" +
 			"starting point in the next project that has no config. Its settings are\n" +
-			"copied into that project's cloudlab.pkl, never linked to from it.",
+			"copied into that project's bivouac.pkl, never linked to from it.",
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	c.AddCommand(newPresetListCmd(), newPresetShowCmd(), newPresetEditCmd(), newPresetDeleteCmd())
@@ -52,7 +52,7 @@ func newPresetListCmd() *cobra.Command {
 func printPresets(cmd *cobra.Command, presets []preset.Preset) error {
 	out := cmd.OutOrStdout()
 	if len(presets) == 0 {
-		_, err := fmt.Fprintln(out, "no presets — `cloudlab init` offers to save one at the end")
+		_, err := fmt.Fprintln(out, "no presets — `bivouac init` offers to save one at the end")
 		return err
 	}
 

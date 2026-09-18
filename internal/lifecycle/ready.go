@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 )
 
 // Retries back off exponentially from initialRetryInterval up to

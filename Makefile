@@ -1,4 +1,4 @@
-NAME  := cloudlab
+NAME  := bivouac
 BIN   := out/$(NAME)
 GOBIN ?= $(HOME)/go/bin
 
@@ -10,7 +10,7 @@ help: ## Show this help
 
 all: vet lint test build ## Run vet, lint, test, then build
 
-build: ## Build the cloudlab binary
+build: ## Build the bivouac binary
 	mkdir -p out
 	nix develop --command go build -o $(BIN) .
 

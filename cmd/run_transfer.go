@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
 )
 
 // syncLocalDir returns the local directory sync should push: the

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
+	"github.com/jskswamy/bivouac/internal/provider"
 )
 
 // The wizard reaches this capability by type assertion, so the

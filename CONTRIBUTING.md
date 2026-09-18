@@ -1,9 +1,9 @@
-# Contributing to cloudlab
+# Contributing to bivouac
 
 ## Development environment
 
 This repo's `flake.nix` provides everything needed to build and test
-cloudlab: Go, the Pkl CLI (pinned to the version `pkl-go`'s codegen
+bivouac: Go, the Pkl CLI (pinned to the version `pkl-go`'s codegen
 requires), `gopls`, and pre-commit tooling (`gofmt`, `golangci-lint`,
 `nixfmt-rfc-style`, `deadnix`, `trufflehog`, plus general hygiene
 checks).

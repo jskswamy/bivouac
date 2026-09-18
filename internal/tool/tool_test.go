@@ -21,7 +21,7 @@ func TestRequire_ReturnsThePathOfAToolThatExists(t *testing.T) {
 	}
 }
 
-// The drift this table exists to stop: every binary cloudlab depends on gets
+// The drift this table exists to stop: every binary bivouac depends on gets
 // a message naming it, and the ones the devshell supplies say so. sops is
 // the case that motivated it -- it used to get a bare "not found on PATH"
 // while pkl and nix, from the same devshell, explained themselves.

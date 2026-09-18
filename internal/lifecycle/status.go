@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // InstanceStatus combines an instance's local state record with a live
@@ -21,7 +21,7 @@ type InstanceStatus struct {
 }
 
 // Status reports record alongside a live provider.Get check. A Get
-// failure (network error, VM destroyed outside cloudlab, etc.) is
+// failure (network error, VM destroyed outside bivouac, etc.) is
 // captured in LiveErr rather than failing the call -- local state is
 // always more useful than nothing.
 func Status(ctx context.Context, p provider.Provider, record state.Record) InstanceStatus {

@@ -1,4 +1,4 @@
-// Package secrets manages cloudlab's personal, sops-encrypted secrets
+// Package secrets manages bivouac's personal, sops-encrypted secrets
 // file (Tailscale auth keys today, whatever else needs one later):
 // decrypting individual values just-in-time, listing key names, and
 // creating the file for a fresh setup. Every operation shells out to
@@ -18,12 +18,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jskswamy/cloudlab/internal/provider"
-	"github.com/jskswamy/cloudlab/internal/tool"
-	"github.com/jskswamy/cloudlab/internal/xdg"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/tool"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
-// Path returns the location of cloudlab's personal secrets file. See
+// Path returns the location of bivouac's personal secrets file. See
 // internal/xdg for the rule.
 func Path() (string, error) {
 	return xdg.Path(xdg.Config, "secrets.yaml")
@@ -37,7 +37,7 @@ func Path() (string, error) {
 //
 // The value comes back without a trailing newline. sops emits none for a
 // plain YAML scalar, but a value authored as a block scalar -- which
-// `cloudlab secrets edit` accepts, and which is a natural way to paste a
+// `bivouac secrets edit` accepts, and which is a natural way to paste a
 // long key -- really does carry one. Trimming here is what stops the same
 // secret behaving differently depending on how it was typed.
 //
@@ -56,12 +56,12 @@ func Decrypt(ctx context.Context, path, key string) ([]byte, error) {
 	provider.ReportProgress(ctx, "decrypting "+key+" (check your key if it prompts)")
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("secrets file %s doesn't exist yet (run `cloudlab secrets init`)", path)
+			return nil, fmt.Errorf("secrets file %s doesn't exist yet (run `bivouac secrets init`)", path)
 		}
 		return nil, err
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; path is
-	// cloudlab's own fixed secrets path and key is a fixed constant
+	// bivouac's own fixed secrets path and key is a fixed constant
 	// supplied by callers in this codebase, never external input.
 	cmd := exec.CommandContext(ctx, "sops", "-d", "--extract", fmt.Sprintf(`["%s"]`, key), path)
 	// A touch prompt needs no typed input, so this went unnoticed until a
@@ -114,7 +114,7 @@ func Keys(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("secrets file %s doesn't exist yet (run `cloudlab secrets init`)", path)
+			return nil, fmt.Errorf("secrets file %s doesn't exist yet (run `bivouac secrets init`)", path)
 		}
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func Init(ctx context.Context, path string, recipients []string) error {
 		return err
 	}
 	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("%s already exists (use `cloudlab secrets edit` to change it)", path)
+		return fmt.Errorf("%s already exists (use `bivouac secrets edit` to change it)", path)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -157,7 +157,7 @@ func Init(ctx context.Context, path string, recipients []string) error {
 	}
 
 	// #nosec G204 -- argv-array exec.Command, no shell; recipients are
-	// age public keys supplied via cloudlab's own --age flag, passed
+	// age public keys supplied via bivouac's own --age flag, passed
 	// through to sops's identical flag, never shell-interpreted.
 	cmd := exec.CommandContext(ctx, "sops",
 		"--age", strings.Join(recipients, ","),
@@ -183,12 +183,12 @@ func Edit(ctx context.Context, path string) error {
 	}
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("secrets file %s doesn't exist yet (run `cloudlab secrets init`)", path)
+			return fmt.Errorf("secrets file %s doesn't exist yet (run `bivouac secrets init`)", path)
 		}
 		return err
 	}
 	// #nosec G204 -- argv-array exec.Command, no shell; path is
-	// cloudlab's own fixed secrets path, never external input.
+	// bivouac's own fixed secrets path, never external input.
 	cmd := exec.CommandContext(ctx, "sops", path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

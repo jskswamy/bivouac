@@ -1,11 +1,11 @@
-// Package agentcontext builds the instructions cloudlab delivers to the
+// Package agentcontext builds the instructions bivouac delivers to the
 // coding agents on an instance.
 //
-// Two kinds of content, and only one is cloudlab's. cloudlab authors the
+// Two kinds of content, and only one is bivouac's. bivouac authors the
 // session facts, because it is the only thing that knows them and they
 // are true of every session. The workflow is the user's, named by the
 // config's instructions field and transported verbatim -- shipping a
-// workflow of cloudlab's own would push one harness's plugins on users
+// workflow of bivouac's own would push one harness's plugins on users
 // running another.
 package agentcontext
 
@@ -16,32 +16,32 @@ import (
 )
 
 // The managed block's delimiters. Everything between them belongs to
-// cloudlab and is replaced wholesale on every write; everything outside
+// bivouac and is replaced wholesale on every write; everything outside
 // belongs to whoever put it there and is preserved.
 const (
-	BeginMarker = "<!-- cloudlab:begin -->"
-	EndMarker   = "<!-- cloudlab:end -->"
+	BeginMarker = "<!-- bivouac:begin -->"
+	EndMarker   = "<!-- bivouac:end -->"
 )
 
-// sessionFacts is what only cloudlab can say. The closing paragraph
+// sessionFacts is what only bivouac can say. The closing paragraph
 // matters as much as the rest: these files load before a project's own,
-// so without it cloudlab's generic advice reads as outranking the
+// so without it bivouac's generic advice reads as outranking the
 // repository's actual conventions.
-const sessionFacts = `# Working in a cloudlab session
+const sessionFacts = `# Working in a bivouac session
 
-You are a coding agent on an ephemeral cloud VM created by cloudlab.
-Your checkout is at ~/sessions/<name>/<repo> on branch cloudlab/<name>.
+You are a coding agent on an ephemeral cloud VM created by bivouac.
+Your checkout is at ~/sessions/<name>/<repo> on branch bivouac/<name>.
 Run ` + "`pwd`" + ` and ` + "`git branch --show-current`" + ` for the actual values.
 
 - **Do not push anywhere.** You have no credentials, no GitHub access
   and no network git remote.
 - **Commits are what survive.** Work returns to the user's machine via
-  ` + "`cloudlab session pull`" + ` and ` + "`cloudlab session merge`" + `, run from their
+  ` + "`bivouac session pull`" + ` and ` + "`bivouac session merge`" + `, run from their
   end. Uncommitted changes are swept into a checkpoint commit, so commit
   deliberately rather than relying on that.
 - **Anything untracked gets committed** by that checkpoint (` + "`git add -A`" + `).
   Leave no scratch files, archives or databases in the working tree.
-- The VM is destroyed on ` + "`cloudlab down`" + `. Nothing outside the repository
+- The VM is destroyed on ` + "`bivouac down`" + `. Nothing outside the repository
   survives.
 
 ## What this session is for
@@ -56,7 +56,7 @@ The repository's own AGENTS.md, CLAUDE.md or CONTRIBUTING.md still apply
 and win wherever they disagree with this file.
 `
 
-// Render builds the managed block: cloudlab's session facts, then each
+// Render builds the managed block: bivouac's session facts, then each
 // named file's contents verbatim.
 func Render(files []string) (string, error) {
 	var b strings.Builder
@@ -112,9 +112,9 @@ func Splice(existing, block string) string {
 	}
 
 	// A begin marker with nothing to close it is our own interrupted
-	// write, never the user's: nothing but cloudlab ever writes a begin
-	// marker, and cloudlab always writes both together. So everything
-	// from here to EOF is a truncated cloudlab block, safe to discard
+	// write, never the user's: nothing but bivouac ever writes a begin
+	// marker, and bivouac always writes both together. So everything
+	// from here to EOF is a truncated bivouac block, safe to discard
 	// wholesale -- content before the marker is still the user's and is
 	// kept.
 	return existing[:start] + block
@@ -124,12 +124,12 @@ func Splice(existing, block string) string {
 // stands alone on its own line, or -1.
 //
 // A marker has to be alone on its line to count, because a Markdown file
-// may quote one as prose -- cloudlab's own documentation quotes both, in
+// may quote one as prose -- bivouac's own documentation quotes both, in
 // order, and a user may well paste that into an instructions file. A
 // plain substring search would take those quoted markers for a managed
-// block, splice cloudlab's block into the middle of the user's sentence
+// block, splice bivouac's block into the middle of the user's sentence
 // and leave the real block below it untouched, so the facts would stop
-// updating from then on. cloudlab always writes its own markers on lines
+// updating from then on. bivouac always writes its own markers on lines
 // of their own, so nothing it wrote is missed by this.
 func lineIndex(s, marker string, from int) int {
 	for i := from; i <= len(s); {

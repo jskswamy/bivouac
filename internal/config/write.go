@@ -97,7 +97,7 @@ func Fields() []string {
 }
 
 // Render turns a sparse set of field values into the text of a pkl file
-// that amends cloudlab's schema — a project cloudlab.pkl, a personal
+// that amends bivouac's schema — a project bivouac.pkl, a personal
 // base.pkl or a preset, which are all the same shape.
 //
 // Hand-written rather than generated: pkl-go's codegen produces readers
@@ -110,7 +110,7 @@ func Fields() []string {
 func Render(v Values) (string, error) {
 	for _, name := range sortedKeys(v) {
 		if !KnownField(name) {
-			return "", fmt.Errorf("rendering config: %q is not a field of cloudlab's schema", name)
+			return "", fmt.Errorf("rendering config: %q is not a field of bivouac's schema", name)
 		}
 	}
 

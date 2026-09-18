@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jskswamy/cloudlab/internal/lifecycle"
-	"github.com/jskswamy/cloudlab/internal/state"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 func runSSH(cmd *cobra.Command, name string, args []string) error {
@@ -33,7 +33,7 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 		// nil, not args: for ssh and herdr args[0] is the INSTANCE name
 		// (named: true), and for tmux it is a tmux session name -- a
 		// different namespace. Passing either through would resolve it as a
-		// cloudlab session and fail with "instance X has no session X".
+		// bivouac session and fail with "instance X has no session X".
 		// Resolution here comes from the cwd, the single session, or the
 		// picker; naming one explicitly is what `cd` into its worktree is for.
 		if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
@@ -52,7 +52,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// comment on runSSH). herdr has no way to attach a starting directory to
 	// a --remote session (that's cloudlab-7y1, via `workspace create --cwd`
 	// at `session start` time) -- but it does accept --session, so the
-	// resolved cloudlab session still buys a per-session herdr session:
+	// resolved bivouac session still buys a per-session herdr session:
 	// reconnecting to the same session name lands back in the same place.
 	// With no session resolvable, connect anyway with herdr's own default
 	// session -- connecting is not destructive and must degrade, not refuse.
@@ -74,7 +74,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 			return err
 		}
 		// Recorded before anything else can go wrong: teardown removes this
-		// exact profile, and a profile cloudlab created but did not record
+		// exact profile, and a profile bivouac created but did not record
 		// is one nothing will ever clean up.
 		if err := recordHerdrMachine(store, record.Name, session, id); err != nil {
 			return err
@@ -87,17 +87,17 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
 }
 
-// ownedMachines gathers the herdr profiles cloudlab registered, across every
+// ownedMachines gathers the herdr profiles bivouac registered, across every
 // instance, mapped to the instance that registered each.
 //
 // This is the only honest answer to "is this profile ours?". herdr stores no
-// owner field, so without it cloudlab would have to match on label or target
+// owner field, so without it bivouac would have to match on label or target
 // -- and would then rename or delete profiles the user added by hand.
 func ownedMachines(store *state.Store) lifecycle.OwnedMachines {
 	owned := lifecycle.OwnedMachines{}
 	records, err := store.List()
 	if err != nil {
-		// Best-effort: without this map cloudlab qualifies its own label and
+		// Best-effort: without this map bivouac qualifies its own label and
 		// renames nothing, which is the conservative half of the behaviour.
 		return owned
 	}
@@ -142,7 +142,7 @@ func runPair(cmd *cobra.Command, name string, args []string) error {
 	// The QR hands the phone an address to connect back to, so which one
 	// it advertises is a real choice: the public IP works from anywhere,
 	// the tailnet address keeps the session off the public internet but
-	// only works from a device on the same tailnet. cloudlab itself
+	// only works from a device on the same tailnet. bivouac itself
 	// always connects over the public IP regardless (see lifecycle.Pair).
 	advertise, err := cmd.Flags().GetString("host")
 	if err != nil {
@@ -191,11 +191,11 @@ func choosePairHost(cmd *cobra.Command, record state.Record) (string, error) {
 	return tsIP, nil
 }
 
-// defaultTmuxSession is the session cloudlab tmux creates-or-attaches
+// defaultTmuxSession is the session bivouac tmux creates-or-attaches
 // to when no session-name argument is given.
 const defaultTmuxSession = "main"
 
-// tmuxSession returns the session name cloudlab tmux should
+// tmuxSession returns the session name bivouac tmux should
 // create-or-attach: args[0] if given, else defaultTmuxSession.
 func tmuxSession(args []string) string {
 	if len(args) > 0 {
@@ -215,8 +215,8 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 	}
 	session := tmuxSession(args)
 	// nil, not args: args[0] here is a tmux session name, a different
-	// namespace from a cloudlab session name (see the nil-args comment on
-	// runSSH). Only substitute the cloudlab session's name when the caller
+	// namespace from a bivouac session name (see the nil-args comment on
+	// runSSH). Only substitute the bivouac session's name when the caller
 	// didn't already ask for a specific tmux session -- reconnecting to that
 	// same name is what lands back in the same place.
 	if len(args) == 0 {
