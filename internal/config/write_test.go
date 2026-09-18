@@ -199,3 +199,39 @@ func TestReadValues_KeepsInstructions(t *testing.T) {
 		t.Errorf("instructions round trip = %#v, want %#v", got[FieldInstructions], want)
 	}
 }
+
+func TestRender_Settings(t *testing.T) {
+	got, err := Render(Values{"settings": map[string]any{
+		"programs.git.userEmail": "work@example.com",
+		"tools.tig.enable":       false,
+		"retries":                3,
+		"tags":                   []string{"a", "b"},
+	}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	// Map iteration order is not guaranteed, so check for each line's
+	// presence rather than the whole block's exact text.
+	for _, want := range []string{
+		`settings {`,
+		`  ["programs.git.userEmail"] = "work@example.com"`,
+		`  ["tools.tig.enable"] = false`,
+		`  ["retries"] = 3`,
+		`  ["tags"] = new Listing { "a"; "b" }`,
+		`}`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Render() missing line %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestRender_EmptySettings(t *testing.T) {
+	got, err := Render(Values{"settings": map[string]any{}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(got, "settings {}\n") {
+		t.Errorf("Render() = %q, want an empty settings block", got)
+	}
+}

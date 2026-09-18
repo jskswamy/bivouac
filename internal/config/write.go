@@ -16,9 +16,9 @@ import (
 // need that distinction — writing a field nobody asked about turns
 // "change one package" into a diff touching every line.
 //
-// Permitted value types are string, bool, []string and []Flake, matched
-// per field by fieldKinds; Render rejects anything else rather than
-// emitting pkl that will not parse.
+// Permitted value types are string, bool, int, []string, []Flake, and
+// map[string]any (for settings, whose own values are string, bool, int,
+// or a list of strings as either []string or []interface{}).
 type Values map[string]any
 
 // Field names, spelled once here so the renderer, the wizard's routing
@@ -38,6 +38,7 @@ const (
 	FieldAgents       = "agents"
 	FieldInstructions = "instructions"
 	FieldFlakes       = "flakes"
+	FieldSettings     = "settings"
 )
 
 // fieldOrder is Config.pkl's own declaration order. Rendered files
@@ -58,6 +59,7 @@ var fieldOrder = []string{
 	FieldAgents,
 	FieldInstructions,
 	FieldFlakes,
+	FieldSettings,
 }
 
 type fieldKind int
@@ -67,6 +69,7 @@ const (
 	kindBool
 	kindStringList
 	kindFlakeList
+	kindSettingsMap
 )
 
 var fieldKinds = map[string]fieldKind{
@@ -83,6 +86,7 @@ var fieldKinds = map[string]fieldKind{
 	FieldAgents:       kindStringList,
 	FieldInstructions: kindStringList,
 	FieldFlakes:       kindFlakeList,
+	FieldSettings:     kindSettingsMap,
 }
 
 // KnownField reports whether name is a field of Config.pkl.
@@ -153,6 +157,12 @@ func renderField(b *strings.Builder, name string, value any) error {
 			return typeError(name, "a list of Flake", value)
 		}
 		renderFlakes(b, name, flakes)
+	case kindSettingsMap:
+		settings, ok := value.(map[string]any)
+		if !ok {
+			return typeError(name, "a map of settings", value)
+		}
+		return renderSettings(b, name, settings)
 	}
 	return nil
 }
@@ -191,6 +201,84 @@ func renderFlakes(b *strings.Builder, name string, flakes []Flake) {
 		b.WriteString("  }\n")
 	}
 	b.WriteString("}\n")
+}
+
+// renderSettings writes `name { ["key"] = value ... }`, sorting keys so
+// re-rendering the same map produces byte-identical output regardless
+// of map iteration order.
+func renderSettings(b *strings.Builder, name string, settings map[string]any) error {
+	if len(settings) == 0 {
+		fmt.Fprintf(b, "%s {}\n", name)
+		return nil
+	}
+	keys := make([]string, 0, len(settings))
+	for k := range settings {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	fmt.Fprintf(b, "%s {\n", name)
+	for _, k := range keys {
+		v, err := pklValue(settings[k])
+		if err != nil {
+			return fmt.Errorf("settings[%q]: %w", k, err)
+		}
+		fmt.Fprintf(b, "  [%s] = %s\n", quote(k), v)
+	}
+	b.WriteString("}\n")
+	return nil
+}
+
+// SettingList returns a settings list value's elements, reporting ok
+// false when v is not a list at all. A list arrives in either of two
+// shapes: pkl-go's boxed []interface{} when the value was decoded from
+// a file, or []string when a caller built the Config or Values in Go.
+// Both renderers -- pklValue here and internal/provisioning's nixValue
+// -- go through this so they cannot disagree on what a list may be.
+func SettingList(v any) (list []string, ok bool, err error) {
+	switch x := v.(type) {
+	case []string:
+		return x, true, nil
+	case []interface{}:
+		strs := make([]string, len(x))
+		for i, e := range x {
+			s, isString := e.(string)
+			if !isString {
+				return nil, true, fmt.Errorf("list element %v is not a string", e)
+			}
+			strs[i] = s
+		}
+		return strs, true, nil
+	}
+	return nil, false, nil
+}
+
+// pklValue renders a settings value as a Pkl literal -- the write-side
+// counterpart to internal/provisioning's nixValue.
+func pklValue(v any) (string, error) {
+	if list, ok, err := SettingList(v); ok {
+		if err != nil {
+			return "", err
+		}
+		if len(list) == 0 {
+			return "new Listing {}", nil
+		}
+		quoted := make([]string, len(list))
+		for i, s := range list {
+			quoted[i] = quote(s)
+		}
+		return "new Listing { " + strings.Join(quoted, "; ") + " }", nil
+	}
+	switch x := v.(type) {
+	case string:
+		return quote(x), nil
+	case bool:
+		return fmt.Sprintf("%t", x), nil
+	case int:
+		return fmt.Sprintf("%d", x), nil
+	default:
+		return "", fmt.Errorf("unsupported settings value type %T", v)
+	}
 }
 
 // quote renders a Go string as a pkl string literal. Backslash is

@@ -198,25 +198,16 @@ func nixPath(dotted string) string {
 }
 
 // nixValue renders a settings value (pkl-go's decoding of a
-// String|Boolean|Int|Listing<String> union) as a Nix literal. Listing<String>
-// decodes as []interface{}, not []string -- every element is itself
-// boxed in `any` -- so the list case type-asserts each element on its
-// own rather than a single slice-wide assertion.
+// String|Boolean|Int|Listing<String> union) as a Nix literal. Lists go
+// through config.SettingList, which accepts both pkl-go's boxed
+// []interface{} and a Go-built []string.
 func nixValue(v any) (string, error) {
-	switch x := v.(type) {
-	case string:
-		return quotedNixString(x)
-	case bool:
-		return strconv.FormatBool(x), nil
-	case int:
-		return strconv.Itoa(x), nil
-	case []interface{}:
-		parts := make([]string, len(x))
-		for i, e := range x {
-			s, ok := e.(string)
-			if !ok {
-				return "", fmt.Errorf("settings value: list element %v is not a string", e)
-			}
+	if list, ok, err := config.SettingList(v); ok {
+		if err != nil {
+			return "", fmt.Errorf("settings value: %w", err)
+		}
+		parts := make([]string, len(list))
+		for i, s := range list {
 			q, err := quotedNixString(s)
 			if err != nil {
 				return "", err
@@ -224,6 +215,14 @@ func nixValue(v any) (string, error) {
 			parts[i] = q
 		}
 		return "[ " + strings.Join(parts, " ") + " ]", nil
+	}
+	switch x := v.(type) {
+	case string:
+		return quotedNixString(x)
+	case bool:
+		return strconv.FormatBool(x), nil
+	case int:
+		return strconv.Itoa(x), nil
 	default:
 		return "", fmt.Errorf("settings value %v: unsupported type %T", v, v)
 	}

@@ -486,3 +486,16 @@ func TestRender_DottedPathWithEmptySegment_Rejected(t *testing.T) {
 		}
 	}
 }
+
+// A Config built in Go rather than decoded by pkl-go carries a list
+// setting as []string; the config writer already accepts that shape,
+// so Render must too or the two disagree on what a valid setting is.
+func TestNixValue_PlainStringSlice(t *testing.T) {
+	got, err := nixValue([]string{"x", "y"})
+	if err != nil {
+		t.Fatalf("nixValue() error = %v", err)
+	}
+	if got != `[ "x" "y" ]` {
+		t.Errorf("nixValue() = %q, want %q", got, `[ "x" "y" ]`)
+	}
+}

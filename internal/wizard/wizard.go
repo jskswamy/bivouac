@@ -61,6 +61,13 @@ var destinations = map[string]Destination{
 	config.FieldPackages:     Project,
 	config.FieldAgents:       Project,
 	config.FieldFlakes:       Project,
+	// Project, not Personal: the motivating case is a per-project
+	// override (a different git identity for one project's commits),
+	// committed with that project the same way packages/flakes are. A
+	// personal base.pkl can still declare its own settings -- Resolve's
+	// merge doesn't go through this routing table at all -- this only
+	// decides where an interactive wizard answer lands.
+	config.FieldSettings: Project,
 }
 
 // Route reports which file field's answer belongs in.
