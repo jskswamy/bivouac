@@ -71,6 +71,7 @@ func herdrTabsFor(ctx context.Context, localRepo string) []config.HerdrTab {
 }
 
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
+	ctx := progressCtx(cmd)
 	store, record, err := resolveInstance(name)
 	if err != nil {
 		return err
@@ -99,8 +100,8 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// every instance, which is what 0.9.0 added machines for. Outside it
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
-		id, label, err := lifecycle.AttachMachine(cmd.Context(), record.Name, record.IP,
-			record.User, session, repoName, herdrTabsFor(cmd.Context(), localRepo), ownedMachines(store))
+		id, label, err := lifecycle.AttachMachine(ctx, record.Name, record.IP,
+			record.User, session, repoName, herdrTabsFor(ctx, localRepo), ownedMachines(store))
 		// Recorded before the error is looked at: AttachMachine hands back a
 		// saved profile's id even when a later step failed, and teardown
 		// removes this exact profile -- one bivouac created but did not
@@ -116,7 +117,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 		cmd.Printf("%s is in your herdr sidebar — select it to attach\n", label)
 		return nil
 	}
-	return lifecycle.Herdr(cmd.Context(), record.IP, record.User, session)
+	return lifecycle.Herdr(ctx, record.IP, record.User, session)
 }
 
 // ownedMachines gathers the herdr profiles bivouac registered, across every
