@@ -13,19 +13,6 @@ let
   # internal/reconcile/reconcile.go).
   username = builtins.getEnv "USER";
 
-  # Pinned to gpakosz/.tmux's master branch HEAD at the time this was
-  # added (the repo has no tags/releases to pin to instead). sha256
-  # captured via `nix-prefetch-url --unpack
-  # https://github.com/gpakosz/.tmux/archive/<rev>.tar.gz` -- bump
-  # both rev and sha256 together the same way if a newer commit is
-  # ever wanted.
-  tmuxDotfiles = pkgs.fetchFromGitHub {
-    owner = "gpakosz";
-    repo = ".tmux";
-    rev = "58a3dcc0d718ec0fa1c0d5a2fddd640a1ad7a5b7";
-    sha256 = "0zky4qkndrs645xnxh6498zc8yj7y581sg72hh0h7b31a5jxng30";
-  };
-
   moshiHook = pkgs.callPackage ./moshi-hook-pkg.nix { };
 
   # The agent's issue tracker. Installed unconditionally rather than gated on
@@ -82,16 +69,6 @@ in
 
   config.programs.fish.enable = true;
   config.programs.starship.enable = true;
-
-  # gpakosz/.tmux's own config, used exactly as upstream ships it --
-  # both files symlinked straight from the fetched repo, nothing
-  # hand-copied or reproduced. .tmux.conf.local is wrapped in
-  # mkDefault so a personal base.pkl-declared flake module can set
-  # its own home.file.".tmux.conf.local".source later and win -- the
-  # same personal-customization path packages/flakes already use (see
-  # docs/config.md), no new bivouac.pkl field needed for this.
-  config.home.file.".tmux.conf".source = "${tmuxDotfiles}/.tmux.conf";
-  config.home.file.".tmux.conf.local".source = lib.mkDefault "${tmuxDotfiles}/.tmux.conf.local";
 
   # The Moshi mobile client supports herdr out of the box, so a phone
   # paired via `bivouac pair` expects a herdr server to be listening
