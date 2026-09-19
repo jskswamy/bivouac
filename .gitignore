@@ -2,6 +2,7 @@
 /dist/
 /out/
 /.worktrees/
+/bivouac.pkl
 *.test
 .direnv/
 /.gocache/
