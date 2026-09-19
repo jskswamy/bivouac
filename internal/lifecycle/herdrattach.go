@@ -91,11 +91,13 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 // on-PATH check and the live localHerdr belong, none of which this needs to
 // run against a fake.
 func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, target, session, root string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
+	provider.ReportProgress(ctx, "registering herdr machine")
 	id, label, err := EnsureMachine(h, instance, target, session, owned)
 	if err != nil {
 		return "", "", err
 	}
 
+	provider.ReportProgress(ctx, "preparing herdr workspace")
 	wsID, err := EnsureWorkspace(h, id, root, session)
 	if err != nil {
 		// EnsureMachine already succeeded, so the sidebar entry exists even
@@ -110,6 +112,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 	// herdrtabs.go for why EnsureTabs runs over SSH-exec rather than
 	// --machine like every other step here.
 	if len(tabs) > 0 {
+		provider.ReportProgress(ctx, "laying out herdr tabs")
 		if client, err := reconcile.Connect(ctx, ip, user); err != nil {
 			provider.ReportWarning(ctx, "herdr: laying out tabs: connecting to the instance: "+err.Error())
 		} else {
@@ -120,6 +123,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 			}
 		}
 	}
+	provider.ReportProgress(ctx, "focusing herdr workspace")
 	if err := FocusWorkspace(h, id, wsID); err != nil {
 		return id, label, fmt.Errorf("%s is saved in your herdr sidebar, but its workspace could not be prepared: %w", label, err)
 	}
