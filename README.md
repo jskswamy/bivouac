@@ -114,8 +114,8 @@ for why code moves as commits rather than a live file sync.
 
 Both build on a shared `common` home-manager module, which every instance
 gets: `git`, `age`, `devbox`, `herdr`, `mosh`, `moshi-hook`, `tailscale`,
-`tmux` (preconfigured via [gpakosz/.tmux](https://github.com/gpakosz/.tmux)),
-plus `fish` and `starship`. Template-specific modules only declare what's
+`tmux` (installed, not configured -- bring your own config through a flake
+module), plus `fish` and `starship`. Template-specific modules only declare what's
 actually different.
 
 A `template` value that isn't `python` or `docker` is passed through as a

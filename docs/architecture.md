@@ -202,9 +202,9 @@ Both templates import `modules/common.nix`, which every instance gets:
 - **Packages:** `git`, `age`, `devbox`, `herdr`, `mosh`, `moshi-hook`,
   `tailscale`, `tmux`.
 - **Programs:** `fish`, `starship`.
-- **tmux config:** [gpakosz/.tmux](https://github.com/gpakosz/.tmux), pinned
-  by revision and hash, symlinked as upstream ships it. `.tmux.conf.local`
-  is wrapped in `mkDefault` so a personal flake module can override it.
+- **tmux:** the binary only. bivouac ships no `~/.tmux.conf`, so a flake
+  module (for example `nix-modules`' `tools.tmux`) can own it without
+  clashing on `home.file.".tmux.conf"`.
 - **`bivouac.tailscale` option:** when true (set by the rendered wrapper
   flake from `bivouac.pkl`), installs a `tailscaled` `systemd --user` unit
   running under sudo. Off by default, because tailscaled starting during
