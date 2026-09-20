@@ -22,6 +22,17 @@ type Config struct {
 
 	Tailscale bool `pkl:"tailscale"`
 
+	// The instance user's login shell, set once by cloud-init when the
+	// instance is created. It cannot be changed afterwards -- destroy and
+	// recreate the instance to change it -- because nothing but that first
+	// boot applies it, so editing it later would claim a change that never
+	// happens.
+	//
+	// fish and zsh come from apt, which registers them in /etc/shells; if the
+	// install fails the instance stays on bash rather than pointing at a
+	// missing binary.
+	Shell string `pkl:"shell"`
+
 	// How the instance's beads issue database syncs.
 	//
 	// "session" (default): dolt data rides refs/dolt/data on the session's
