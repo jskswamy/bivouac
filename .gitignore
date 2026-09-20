@@ -11,3 +11,4 @@
 .env.*
 .claude/*.local.md
 .aide.yaml
+/.beads.gate.lock
