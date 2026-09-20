@@ -142,7 +142,13 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	// home.username/homeDirectory -- those vary per instance (see
 	// state.Record.User), so they can't be hardcoded in the shared,
 	// checked-in template.
-	innerCmd := "nix run home-manager -- switch --no-write-lock-file --refresh --impure --flake " + shellcmd.Quote(flakeArg)
+	//
+	// -b: a shell writes its own config the first time it starts (fish 4
+	// creates ~/.config/fish/config.fish when bivouac's first command runs
+	// through the login shell), and home-manager refuses to switch over a
+	// file it did not create. Backing it up beats aborting the whole
+	// provision on a file the user never touched.
+	innerCmd := "nix run home-manager -- switch -b bivouac-backup --no-write-lock-file --refresh --impure --flake " + shellcmd.Quote(flakeArg)
 	cmd := shellcmd.LoginShell(innerCmd)
 	// Streamed live (not buffered until exit): home-manager switch can
 	// run for minutes fetching/building packages, and silence until
