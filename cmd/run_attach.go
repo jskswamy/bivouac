@@ -48,20 +48,37 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir, forwardAgent)
 }
 
-// herdrTabsFor reads the tab layout the session's repository asks for.
+// herdrTabsFor reads the tab layout to lay the session's workspace out
+// with: the project's merged with the personal base's, or the base's
+// alone when the repository declares no config of its own.
 //
-// Best-effort, like beadsModeFor: `bivouac herdr` has never needed a
-// config to resolve, and the layout must not become the reason it fails.
-// A repository with no bivouac.pkl has nothing to lay out -- base.pkl's
-// tabs included, since Resolve is anchored on the project file.
+// The base is read separately rather than left to Resolve, which is
+// anchored on the project file and so never sees it without one. Tabs
+// declared once in base.pkl are meant to make every instance look the
+// same; a repository that happens to have no bivouac.pkl is not a
+// statement that the user wants a different layout there.
+//
+// Best-effort throughout, like beadsModeFor: `bivouac herdr` has never
+// needed a config to resolve, and the layout must not become the reason
+// it fails.
 func herdrTabsFor(ctx context.Context, localRepo string) []config.HerdrTab {
-	if localRepo == "" {
-		return nil
+	path := ""
+	if localRepo != "" {
+		candidate := filepath.Join(localRepo, "bivouac.pkl")
+		if _, err := os.Stat(candidate); err == nil {
+			path = candidate
+		}
 	}
-	path := filepath.Join(localRepo, "bivouac.pkl")
-	if _, err := os.Stat(path); err != nil {
-		return nil
+
+	if path == "" {
+		cfg, err := config.ResolveBase(ctx)
+		if err != nil {
+			provider.ReportWarning(ctx, "herdr: could not resolve your base config ("+err.Error()+"); attaching without its tabs")
+			return nil
+		}
+		return cfg.HerdrTabs
 	}
+
 	cfg, err := config.Resolve(ctx, path)
 	if err != nil {
 		provider.ReportWarning(ctx, "herdr: could not resolve "+path+" ("+err.Error()+"); attaching without its tabs")

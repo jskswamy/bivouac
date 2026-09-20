@@ -25,6 +25,51 @@ func TestHerdrTabsFor_NoConfigMeansNoLayout(t *testing.T) {
 	}
 }
 
+// Tabs declared once in base.pkl are meant to reach every instance. A
+// repository with no bivouac.pkl used to lose them, because Resolve is
+// anchored on the project file.
+func TestHerdrTabsFor_ReadsTheBasesTabsWithoutAProjectConfig(t *testing.T) {
+	cfgDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+	if err := os.MkdirAll(filepath.Join(cfgDir, "bivouac"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := "herdrTabs {\n  new HerdrTab {\n    label = \"agent\"\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "bivouac", "base.pkl"), []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	got := herdrTabsFor(ctx, t.TempDir())
+
+	if len(got) != 1 || got[0].Label != "agent" {
+		t.Errorf("herdrTabsFor() = %+v, want the base's agent tab", got)
+	}
+}
+
+// No repository at all is the same question with the same answer: herdr
+// can be run against an instance with no session resolved.
+func TestHerdrTabsFor_ReadsTheBasesTabsWithNoRepositoryAtAll(t *testing.T) {
+	cfgDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+	if err := os.MkdirAll(filepath.Join(cfgDir, "bivouac"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := "herdrTabs {\n  new HerdrTab {\n    label = \"agent\"\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "bivouac", "base.pkl"), []byte(base), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	ctx := provider.WithOutput(context.Background(), &out, &errOut)
+
+	got := herdrTabsFor(ctx, "")
+
+	if len(got) != 1 || got[0].Label != "agent" {
+		t.Errorf("herdrTabsFor(\"\") = %+v, want the base's agent tab", got)
+	}
+}
+
 func TestHerdrTabsFor_ReadsTheRepositorysTabs(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var out, errOut bytes.Buffer
