@@ -38,7 +38,7 @@ func printStatus(cmd *cobra.Command, st lifecycle.InstanceStatus) {
 	// take in at a glance; anything that can be long gets its own line
 	// rather than being truncated or wrapping into the next column.
 	printPair(out, s, "Provider", r.Provider, "Region", r.Region)
-	printPair(out, s, "Size", r.Size, "Template", r.Template)
+	printSize(out, s, st)
 	printPair(out, s, "User", r.User, "IP", r.IP)
 
 	if st.LiveErr != nil {
@@ -52,6 +52,26 @@ func printStatus(cmd *cobra.Command, st lifecycle.InstanceStatus) {
 		repoPath = "unknown (provisioned before this field existed)"
 	}
 	printField(out, s, "RepoPath", repoPath)
+}
+
+// printSize writes the Size line, and Template alongside it.
+//
+// The live size wins: cost on the line below comes off the droplet, and a
+// resize done outside bivouac leaves the record's slug behind at the new
+// price -- the two lines then disagree in the same report, which is the
+// bug this exists to prevent.
+//
+// Without a live size the record's is all there is, and it is still worth
+// printing; it just cannot be printed as the droplet's current size. That
+// marker is longer than the Size column, so the pair is given up and both
+// fields take a full line rather than shunting Template out of alignment.
+func printSize(out io.Writer, s styles, st lifecycle.InstanceStatus) {
+	if st.LiveSize != "" {
+		printPair(out, s, "Size", st.LiveSize, "Template", st.Record.Template)
+		return
+	}
+	printField(out, s, "Size", st.Record.Size+" (recorded; live size unavailable)")
+	printField(out, s, "Template", st.Record.Template)
 }
 
 // printField writes one full-width label/value line.

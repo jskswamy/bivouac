@@ -29,6 +29,7 @@ func TestPrintStatus_ShowsEveryRecordFieldAndTheCost(t *testing.T) {
 			IP: "139.59.12.44", RepoPath: "~/sessions/myrepo",
 		},
 		LiveStatus: "active",
+		LiveSize:   "s-2vcpu-4gb",
 		Cost: lifecycle.Cost{
 			Known: true, Uptime: 3*time.Hour + 12*time.Minute,
 			Accrued: 0.42, Hourly: 0.03571, Monthly: 24,
@@ -83,5 +84,52 @@ func TestPrintStatus_NamesAnAbsentRepoPath(t *testing.T) {
 
 	if !strings.Contains(out.String(), "unknown") {
 		t.Errorf("printStatus() = %q, want an absent RepoPath called out", out.String())
+	}
+}
+
+// The report has to agree with itself: cost comes off the live droplet,
+// so the size printed beside it must too. A droplet resized outside
+// bivouac leaves the record's slug behind at the new price.
+func TestPrintStatus_PrefersTheLiveSizeOverTheRecordedOne(t *testing.T) {
+	c, out := statusPrintCmd(t)
+	st := lifecycle.InstanceStatus{
+		Record:     state.Record{Name: "myrepo", Size: "s-2vcpu-2gb", Template: "python"},
+		LiveStatus: "active",
+		LiveSize:   "s-2vcpu-4gb",
+	}
+
+	printStatus(c, st)
+
+	got := out.String()
+	if !strings.Contains(got, "s-2vcpu-4gb") {
+		t.Errorf("printStatus() = %q, want the live size", got)
+	}
+	if strings.Contains(got, "s-2vcpu-2gb") {
+		t.Errorf("printStatus() = %q, want the stale recorded size left out", got)
+	}
+}
+
+// With no live read the recorded slug is all there is. It is still worth
+// printing -- but as a record, not as the droplet's current size.
+func TestPrintStatus_MarksTheRecordedSizeWhenNoLiveSizeIsAvailable(t *testing.T) {
+	c, out := statusPrintCmd(t)
+	st := lifecycle.InstanceStatus{
+		Record:  state.Record{Name: "myrepo", Size: "s-2vcpu-2gb", Template: "python"},
+		LiveErr: errors.New("no token found"),
+	}
+
+	printStatus(c, st)
+
+	got := out.String()
+	if !strings.Contains(got, "s-2vcpu-2gb") {
+		t.Errorf("printStatus() = %q, want the recorded size to survive", got)
+	}
+	if !strings.Contains(got, "recorded") {
+		t.Errorf("printStatus() = %q, want the size marked as the recorded one", got)
+	}
+	// The pair line is given up in this case, so Template must not go
+	// missing with it.
+	if !strings.Contains(got, "python") {
+		t.Errorf("printStatus() = %q, want the template still reported", got)
 	}
 }
