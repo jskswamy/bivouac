@@ -13,7 +13,14 @@ import (
 type InstanceStatus struct {
 	Record     state.Record
 	LiveStatus string
-	LiveErr    error
+	// LiveSize is the instance's size as the provider reports it now.
+	// The record's copy is only what bivouac asked for at creation and
+	// nothing updates it, so a resize done outside bivouac leaves it
+	// describing a machine that no longer exists. Empty when the live
+	// check failed or the provider does not report a size, which callers
+	// must read as "ask the record" rather than "no size".
+	LiveSize string
+	LiveErr  error
 	// Cost is only ever populated from the live check: creation time and
 	// price are the provider's facts, not ours. A failed check therefore
 	// leaves Cost.Known false, which reads as "unknown" rather than free.
@@ -39,6 +46,7 @@ func StatusAt(ctx context.Context, p provider.Provider, record state.Record, now
 	return InstanceStatus{
 		Record:     record,
 		LiveStatus: vm.Status,
+		LiveSize:   vm.Size,
 		Cost:       ComputeCost(vm, now),
 	}
 }

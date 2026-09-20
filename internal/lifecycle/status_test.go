@@ -75,3 +75,31 @@ func TestStatus_CostUnknownWhenLiveCheckFails(t *testing.T) {
 		t.Error("Cost.Known = true, want false when there is no live data to cost")
 	}
 }
+
+// A droplet resized outside bivouac keeps its old slug in state, so the
+// size the report prints has to come off the same live read that already
+// answers status and cost.
+func TestStatus_ReportsTheLiveSizeNotTheRecordedOne(t *testing.T) {
+	record := state.Record{Name: "myinstance", VMID: "vm-1", Size: "s-2vcpu-2gb"}
+	p := &fakeProvider{getVM: provider.VM{ID: "vm-1", Status: "active", Size: "s-2vcpu-4gb"}}
+
+	got := Status(context.Background(), p, record)
+
+	if got.LiveSize != "s-2vcpu-4gb" {
+		t.Errorf("LiveSize = %q, want %q", got.LiveSize, "s-2vcpu-4gb")
+	}
+	if got.Record.Size != "s-2vcpu-2gb" {
+		t.Errorf("Record.Size = %q, want the record left untouched", got.Record.Size)
+	}
+}
+
+func TestStatus_LiveSizeEmptyWhenLiveCheckFails(t *testing.T) {
+	record := state.Record{Name: "myinstance", VMID: "vm-1", Size: "s-2vcpu-2gb"}
+	p := &fakeProvider{getErr: errors.New("network error")}
+
+	got := Status(context.Background(), p, record)
+
+	if got.LiveSize != "" {
+		t.Errorf("LiveSize = %q, want empty -- there is no live data to report", got.LiveSize)
+	}
+}
