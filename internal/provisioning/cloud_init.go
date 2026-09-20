@@ -22,11 +22,21 @@ var cloudInitTemplate = template.Must(template.New("cloud-init.sh").Parse(cloudI
 
 // RenderCloudInit renders the instance's cloud-init boot script for
 // username: installs Nix, creates username as a passwordless-sudo
-// user with root's own authorized_keys, enables lingering for it (so
-// home-manager's systemd --user services persist), and disables root
-// SSH login as the last step -- only once username's key-based login
-// is confirmed in place.
-func RenderCloudInit(username string) (string, error) {
+// user with root's own authorized_keys and shell as its login shell,
+// enables lingering for it (so home-manager's systemd --user services
+// persist), and disables root SSH login as the last step -- only once
+// username's key-based login is confirmed in place.
+//
+// shell is fish, zsh or bash, and must be one of them: it is
+// interpolated into a root-run boot script, and an empty value is an
+// error rather than bash so a config that lost the field fails here
+// instead of quietly producing a bash instance.
+func RenderCloudInit(username, shell string) (string, error) {
+	switch shell {
+	case "fish", "zsh", "bash":
+	default:
+		return "", fmt.Errorf("invalid login shell %q: want fish, zsh or bash", shell)
+	}
 	// Re-checked rather than trusted, because username is interpolated
 	// directly into a root-run boot script -- identity.RemoteUser already
 	// sanitizes to this shape, and this is the trust boundary saying so
@@ -36,7 +46,7 @@ func RenderCloudInit(username string) (string, error) {
 		return "", fmt.Errorf("invalid remote username %q", username)
 	}
 	var b strings.Builder
-	if err := cloudInitTemplate.Execute(&b, struct{ Username string }{username}); err != nil {
+	if err := cloudInitTemplate.Execute(&b, struct{ Username, Shell string }{username, shell}); err != nil {
 		return "", err
 	}
 	return b.String(), nil

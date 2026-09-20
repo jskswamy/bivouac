@@ -105,7 +105,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, bivouacPath
 	if err != nil {
 		return fmt.Errorf("computing remote repo path: %w", err)
 	}
-	cloudInit, err := provisioning.RenderCloudInit(remoteUser)
+	cloudInit, err := provisioning.RenderCloudInit(remoteUser, cfg.Shell)
 	if err != nil {
 		return fmt.Errorf("rendering cloud-init: %w", err)
 	}
@@ -155,6 +155,7 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, bivouacPath
 		Template: cfg.Template,
 		User:     remoteUser,
 		RepoPath: remotePath,
+		Shell:    cfg.Shell,
 	}
 	if err := store.Put(record); err != nil {
 		if destroyErr := p.Destroy(ctx, vm.ID); destroyErr != nil {

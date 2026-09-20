@@ -138,6 +138,41 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	}
 }
 
+// The login shell is applied only by the boot script, so it has to reach
+// cloud-init and be remembered: a later config edit is checked against the
+// record, not against the instance.
+func TestUp_PassesTheShellToCloudInitAndRecordsIt(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) { return "", 0 })
+
+	repoRoot := t.TempDir()
+	bivouacPath := minimalBivouacPkl(t, repoRoot)
+	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: addr, Region: "nyc3", Size: "s-1vcpu-1gb"}}
+	steps := Steps{WaitReady: WaitReady, Reconcile: reconcile.Reconcile}
+
+	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+
+	// minimalBivouacPkl sets no shell, so this is the schema default.
+	if !strings.Contains(p.gotSpec.UserData, "install -y -qq fish") {
+		t.Errorf("UserData does not install fish, the default shell:\n%s", p.gotSpec.UserData)
+	}
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok, err := store.Get("myinstance")
+	if err != nil || !ok {
+		t.Fatalf("state.Get(myinstance) = %v, %v", ok, err)
+	}
+	if record.Shell != "fish" {
+		t.Errorf("record.Shell = %q, want fish", record.Shell)
+	}
+}
+
 func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
 	testenv.Isolate(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
