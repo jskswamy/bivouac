@@ -459,3 +459,27 @@ func TestReconcile_ANewInstanceAndAMatchingShellAreNotRefused(t *testing.T) {
 		})
 	}
 }
+
+// A shell creates its own config the first time it starts: fish 4 writes
+// ~/.config/fish/config.fish the moment bivouac runs its first command
+// through the login shell. home-manager then refuses to switch --
+// "Existing file would be clobbered" -- so the switch has to back such
+// files up instead of aborting.
+func TestReconcile_SwitchBacksUpFilesItWouldOtherwiseClobber(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	var gotCmd string
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		gotCmd = cmd
+		return "", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	if err := Reconcile(context.Background(), "myinstance", shellPkl(t, "")); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if !strings.Contains(gotCmd, "switch -b bivouac-backup ") {
+		t.Errorf("command = %q, want the switch to pass -b bivouac-backup", gotCmd)
+	}
+}
