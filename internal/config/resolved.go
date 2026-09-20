@@ -6,9 +6,9 @@ package config
 //
 // The embedded Config is the whole of what bivouac.pkl declares, so a field
 // added to the schema reaches callers without being restated here. Only the
-// three fields whose presence Resolve actually proves are lifted out, and
-// they deliberately shadow their pointer-shaped counterparts: cfg.Region is
-// the string, and cfg.Config.Region is the *string it came from.
+// fields whose value Resolve actually settles are lifted out, and they
+// deliberately shadow their pointer-shaped counterparts: cfg.Region is the
+// string, and cfg.Config.Region is the *string it came from.
 //
 // That shadowing is the point. Six call sites used to write *cfg.Region on
 // the strength of a guarantee that lived in a comment and in validate's
@@ -22,7 +22,14 @@ type Resolved struct {
 	Region   string
 	Size     string
 	Template string
+
+	// Shell is fish, zsh or bash: the project's value, else the base's,
+	// else fish. Never empty.
+	Shell string
 }
+
+// defaultShell applies when neither the project nor the base names one.
+const defaultShell = "fish"
 
 // resolved lifts a validated Config into a Resolved.
 //
@@ -30,10 +37,15 @@ type Resolved struct {
 // built any other way carries no guarantee, so there is deliberately no
 // exported way to make one out of an unchecked Config.
 func resolved(c Config) Resolved {
+	shell := defaultShell
+	if c.Shell != nil {
+		shell = *c.Shell
+	}
 	return Resolved{
 		Config:   c,
 		Region:   *c.Region,
 		Size:     *c.Size,
 		Template: *c.Template,
+		Shell:    shell,
 	}
 }

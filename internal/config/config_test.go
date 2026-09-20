@@ -702,9 +702,11 @@ func TestResolve_ShellRejectsAnUnknownShell(t *testing.T) {
 	}
 }
 
-// Like arch, image, tailscale and beads, shell carries a schema default, so
-// a base value cannot be told from an unset one and is never consulted.
-func TestResolve_ShellIgnoresTheBase(t *testing.T) {
+// shell is a personal preference, so it can live in the base rather than
+// being repeated in every project. It has no schema default -- fish is
+// applied only once neither file sets it -- so an unset project value can
+// be told from a set one, as with region and size.
+func TestResolve_ShellComesFromTheBase(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, filepath.Join(dir, "base.pkl"), `shell = "zsh"`+"\n")
 	path := filepath.Join(dir, "bivouac.pkl")
@@ -714,7 +716,50 @@ func TestResolve_ShellIgnoresTheBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	if cfg.Shell != "zsh" {
+		t.Errorf("Shell = %q, want %q (from the base)", cfg.Shell, "zsh")
+	}
+}
+
+func TestResolve_AProjectShellOverridesTheBase(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "base.pkl"), `shell = "zsh"`+"\n")
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, `basePath = "./base.pkl"`+"\n"+shellFixtureHead+`shell = "bash"`+"\n")
+
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Shell != "bash" {
+		t.Errorf("Shell = %q, want %q (the project wins)", cfg.Shell, "bash")
+	}
+}
+
+// A base with other settings but no shell must still leave the default, or
+// having a base at all would change which shell an instance gets.
+func TestResolve_ABaseWithoutAShellStillDefaultsToFish(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "base.pkl"), `packages { "ripgrep" }`+"\n")
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, `basePath = "./base.pkl"`+"\n"+shellFixtureHead)
+
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
 	if cfg.Shell != "fish" {
-		t.Errorf("Shell = %q, want %q (the base's value is not consulted)", cfg.Shell, "fish")
+		t.Errorf("Shell = %q, want %q", cfg.Shell, "fish")
+	}
+}
+
+func TestResolve_ShellInTheBaseIsTypeChecked(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "base.pkl"), `shell = "tcsh"`+"\n")
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, `basePath = "./base.pkl"`+"\n"+shellFixtureHead)
+
+	if _, err := Resolve(t.Context(), path); err == nil {
+		t.Fatal("Resolve() error = nil, want a type error for a base shell that is not fish, zsh or bash")
 	}
 }
