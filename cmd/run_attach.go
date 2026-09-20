@@ -208,10 +208,33 @@ func choosePairHost(cmd *cobra.Command, record state.Record) (string, error) {
 		// fall back to the address that always works.
 		return record.IP, nil
 	}
+	return askPairHost(cmd, tsIP, record.IP, isInteractive())
+}
+
+// askPairHost asks which of the two addresses the QR should advertise.
+//
+// Without a terminal it takes the default rather than reading: a prompt
+// nobody can answer is a hang, not a question (see isInteractive), and
+// this one is the last in the package still missing that guard. Unlike
+// the port pickers, which refuse because no candidate is more right than
+// another, pair has a default worth defending -- the tailnet address
+// keeps the session off the public internet -- so the unattended run
+// completes instead of failing. It says which address it took, because a
+// choice made on the user's behalf should not be a silent one. --host
+// overrides it either way.
+//
+// interactive is a parameter rather than an isInteractive() call so the
+// prompt can be exercised against a buffer, the same split the listener
+// pickers use.
+func askPairHost(cmd *cobra.Command, tsIP, publicIP string, interactive bool) (string, error) {
+	if !interactive {
+		cmd.Printf("Advertising %s in the QR (Tailscale; no terminal to ask on — pass --host to choose)\n", tsIP)
+		return tsIP, nil
+	}
 
 	cmd.Printf("Which address should the QR advertise to the phone?\n")
 	cmd.Printf("  1) %s  (Tailscale -- private, needs the phone on your tailnet)\n", tsIP)
-	cmd.Printf("  2) %s  (public IP -- reachable anywhere)\n", record.IP)
+	cmd.Printf("  2) %s  (public IP -- reachable anywhere)\n", publicIP)
 	cmd.Print("Choose [1]: ")
 
 	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
@@ -219,7 +242,7 @@ func choosePairHost(cmd *cobra.Command, record state.Record) (string, error) {
 		return "", err
 	}
 	if strings.TrimSpace(line) == "2" {
-		return record.IP, nil
+		return publicIP, nil
 	}
 	return tsIP, nil
 }
