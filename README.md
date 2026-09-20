@@ -74,7 +74,10 @@ start a session:
   branch **with your signature**, verifies every one of them verifies
   (`%G?` = `G`), and only then deletes the session from both machines.
   Deletion is strictly downstream of verification, so nothing is removed from
-  the instance before its commits are provably in your local object store.
+  the instance before its commits are provably in your local object store. A
+  conflict stops the replay; resolve it, `git cherry-pick --continue`, and
+  run merge again — it resumes where it stopped instead of replaying what
+  has already landed.
 - `session list` shows every session on every instance — name, branch,
   unmerged commit count, worktree state — for when you've lost track of
   what's running where. `status` shows the same detail scoped to one

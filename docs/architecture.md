@@ -376,20 +376,36 @@ safety property:
 2. Rescue (checkpoint + fetch + verify) as above, then pull beads issues home
    the same way `session pull` does — before the replay, since merge is about
    to delete the session repository the issue database rides in.
-3. `git cherry-pick --empty=drop -S HEAD..<ref>` onto the current branch.
+3. `git cherry-pick --empty=drop -S HEAD..<ref>` onto the current branch, one
+   commit at a time so a conflict names the commit it happened on and each
+   message can be stripped of agent attribution once its commit exists.
    Cherry-pick rather than rebase because the session ref lives outside
    `refs/heads`, where `rebase --onto` reports "up to date", re-signs
    nothing, and detaches HEAD. `--empty=drop` makes a re-run after a
    conflict work, since cherry-pick has no patch-id dedup.
-4. Verify every replayed commit reports `G` from `%G?`. A failed
-   verification **rewinds the branch** — leaving unverified commits behind
-   would let the next merge drop them as empty, see an unmoved HEAD, skip
-   verification, and silently pass.
-5. Re-checkpoint and re-read the instance-side tip. The agent keeps running
+4. Record how far the replay got, in `<git-dir>/bivouac/replay-<session>.json`.
+   `--empty=drop` covers a re-run only while one run replays the whole range
+   in order: a replayed commit gets a new SHA, so nothing about it is
+   recognisable in `HEAD..<ref>` next time, and git can drop it only while
+   its diff is still a no-op against the tree. Once a commit lands out of
+   band — a conflict the user resolved and continued — the tree has moved
+   past what the earlier diffs assume and they conflict instead of dropping,
+   on every retry. The record is what lets a re-run start where the last one
+   stopped. A branch that no longer holds what it describes invalidates it,
+   and the replay starts over.
+5. Verify every replayed commit reports `G` from `%G?`, anchored on the
+   commit the replay *started* from — an earlier run's, when resuming, so
+   commits it landed are checked rather than skipped for predating this
+   run's HEAD. `git cherry-pick --continue` does not carry the interrupted
+   pick's `-S`, so a conflict the user finished by hand is re-signed before
+   the check. A failed verification **rewinds this run's own picks** —
+   leaving unverified commits behind would let the next merge drop them as
+   empty, see an unmoved HEAD, skip verification, and silently pass.
+6. Re-checkpoint and re-read the instance-side tip. The agent keeps running
    while the replay happens, and signing can block for minutes on a hardware
    key touch; if the tip moved, nothing is deleted and re-running merge
    takes the new work too.
-6. Only then: delete the session repo on the instance, remove the local
+7. Only then: delete the session repo on the instance, remove the local
    worktree and remote, and clear the session from state.
 
 **`session delete [session]`** rescues (checkpoint + fetch) before it
