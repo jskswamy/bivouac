@@ -137,24 +137,28 @@ anyway.
 
 A freshly booted VM doesn't start with Nix installed, so cloud-init's job is
 reduced to the minimum needed to hand off to Nix. The payload
-(`internal/provisioning/cloud-init.sh`, rendered with the remote username)
-does exactly five things:
+(`internal/provisioning/cloud-init.sh`, rendered with the remote username and
+the configured login shell) does exactly six things:
 
 1. Install Nix (Determinate Systems installer — non-interactive, flakes
    enabled by default).
-2. Create the instance's non-root user with `useradd --create-home`, seeded
+2. Install the configured login shell (`fish` or `zsh`) from apt and pick it
+   only if it lands in `/etc/shells` and runs; otherwise the account stays on
+   bash. This is the one place the login shell is ever set, which is why the
+   `shell` field is fixed at creation.
+3. Create the instance's non-root user with `useradd --create-home`, seeded
    with root's own `authorized_keys` (DigitalOcean puts the account's
-   registered SSH keys there at boot).
-3. Grant that user passwordless sudo — bivouac is fully automated with no
+   registered SSH keys there at boot), and with that login shell.
+4. Grant that user passwordless sudo — bivouac is fully automated with no
    interactive terminal on the remote side.
-4. `loginctl enable-linger` for it, so home-manager's declared
+5. `loginctl enable-linger` for it, so home-manager's declared
    `systemd --user` services (the docker template's `dockerd`, the
    `tailscaled` unit) survive the SSH session that started them.
-5. Disable root SSH login — last, and only once the new user's key-based
+6. Disable root SSH login — last, and only once the new user's key-based
    login is confirmed in place, so a failure anywhere above never locks the
    instance out entirely.
 
-That's the entire payload, and it's identical across templates. Notably it
+That's the entire payload, and it differs across templates only by the shell. Notably it
 does **not** run home-manager: bivouac does that itself over SSH once the
 instance is reachable, so it can ship a per-instance flake first and stream
 the output back live. See [ADR-0004](adr/0004-nix-home-manager-provisioning.md).
