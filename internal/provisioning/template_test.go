@@ -42,9 +42,9 @@ func TestNixSystem_Arm64(t *testing.T) {
 }
 
 func TestSplitFlakeRef_SplitsOnLastHash(t *testing.T) {
-	url, name := splitFlakeRef("github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
-	if url != "github:jskswamy/cloudlab?dir=templates" {
-		t.Errorf("url = %q, want %q", url, "github:jskswamy/cloudlab?dir=templates")
+	url, name := splitFlakeRef("github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
+	if url != "github:jskswamy/bivouac?dir=templates" {
+		t.Errorf("url = %q, want %q", url, "github:jskswamy/bivouac?dir=templates")
 	}
 	if name != "python-x86_64-linux" {
 		t.Errorf("name = %q, want %q", name, "python-x86_64-linux")

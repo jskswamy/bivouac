@@ -34,11 +34,11 @@ func TestNeedsRender_NonEmptyFlakes_True(t *testing.T) {
 
 func TestRender_TemplateOnly_ImportsTemplateModule(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64"}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	if !strings.Contains(out, `template.url = "github:jskswamy/cloudlab?dir=templates"`) {
+	if !strings.Contains(out, `template.url = "github:jskswamy/bivouac?dir=templates"`) {
 		t.Errorf("output does not reference the template flake url:\n%s", out)
 	}
 	if !strings.Contains(out, "template.homeManagerModules.\"python\"") {
@@ -48,7 +48,7 @@ func TestRender_TemplateOnly_ImportsTemplateModule(t *testing.T) {
 
 func TestRender_WithPackages_AddsSyntheticModule(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Packages: []string{"ripgrep", "jq"}}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -100,7 +100,7 @@ func TestRender_FlakeWithoutModules_OmitsModuleReference(t *testing.T) {
 
 func TestRender_PackageWithEmbeddedQuote_Rejected(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Packages: []string{`ripgrep"; malicious = true; "`}}
-	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	_, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err == nil {
 		t.Fatal("Render() error = nil, want error for package name with embedded quote")
 	}
@@ -108,7 +108,7 @@ func TestRender_PackageWithEmbeddedQuote_Rejected(t *testing.T) {
 
 func TestRender_PackageWithNixInterpolation_Rejected(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Packages: []string{"${builtins.trace \"pwned\" null}"}}
-	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	_, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err == nil {
 		t.Fatal("Render() error = nil, want error for package name with Nix string interpolation")
 	}
@@ -119,7 +119,7 @@ func TestRender_FlakeURLWithEmbeddedQuote_Rejected(t *testing.T) {
 		Arch:   "x86_64",
 		Flakes: []config.Flake{{Url: `github:someorg/tool"; malicious = true; "`}},
 	}
-	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	_, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err == nil {
 		t.Fatal("Render() error = nil, want error for flake url with embedded quote")
 	}
@@ -132,7 +132,7 @@ func TestRender_FlakePackageWithEmbeddedQuote_Rejected(t *testing.T) {
 			{Url: "github:someorg/custom-tool", Packages: []string{`cli"; malicious = true; "`}},
 		},
 	}
-	_, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	_, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err == nil {
 		t.Fatal("Render() error = nil, want error for flake package name with embedded quote")
 	}
@@ -140,7 +140,7 @@ func TestRender_FlakePackageWithEmbeddedQuote_Rejected(t *testing.T) {
 
 func TestRender_TemplateNameWithEmbeddedQuote_Rejected(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64"}
-	_, err := Render(cfg, `github:jskswamy/cloudlab?dir=templates#python"; malicious = true; "`)
+	_, err := Render(cfg, `github:jskswamy/bivouac?dir=templates#python"; malicious = true; "`)
 	if err == nil {
 		t.Fatal("Render() error = nil, want error for template name with embedded quote")
 	}
@@ -154,7 +154,7 @@ func TestRender_ValidValues_StillRender(t *testing.T) {
 			{Url: "github:someorg/custom-tool?ref=main", Packages: []string{"cli"}, Modules: []string{"tools.git"}},
 		},
 	}
-	if _, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux"); err != nil {
+	if _, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux"); err != nil {
 		t.Fatalf("Render() error = %v, want nil for legitimate values", err)
 	}
 }
@@ -267,7 +267,7 @@ func TestNeedsRender_TrueForTailscaleAlone(t *testing.T) {
 // stands. This pins the rendered output to the new namespace.
 func TestRender_SetsTailscaleOptionUnderBivouacNamespace(t *testing.T) {
 	cfg := config.Config{Tailscale: true}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#python-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#python-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -290,7 +290,7 @@ func TestNeedsRender_TrueForAgentsAlone(t *testing.T) {
 // agents is a curated list rather than free-form packages entries.
 func TestRender_Agents_MapToNixpkgsAttributeNames(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "codex", "copilot", "cursor", "opencode", "pi"}}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -309,7 +309,7 @@ func TestRender_Agents_MapToNixpkgsAttributeNames(t *testing.T) {
 // happened to list in packages, which they never asked for.
 func TestRender_UnfreeAgent_PermitsOnlyThatPackage(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "codex"}}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -323,7 +323,7 @@ func TestRender_UnfreeAgent_PermitsOnlyThatPackage(t *testing.T) {
 
 func TestRender_NoUnfreeAgent_PermitsNothingUnfree(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Agents: []string{"codex", "opencode"}}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -337,7 +337,7 @@ func TestRender_NoUnfreeAgent_PermitsNothingUnfree(t *testing.T) {
 // than installing nothing while reporting success.
 func TestRender_UnknownAgent_Rejected(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Agents: []string{"definitely-not-an-agent"}}
-	if _, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux"); err == nil {
+	if _, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux"); err == nil {
 		t.Fatal("Render() error = nil, want an error for an unknown agent")
 	}
 }
@@ -347,7 +347,7 @@ func TestRender_UnknownAgent_Rejected(t *testing.T) {
 // reached, long after render looked fine.
 func TestRender_MultipleUnfreeAgents_AllPermitted(t *testing.T) {
 	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "cursor", "copilot", "codex"}}
-	out, err := Render(cfg, "github:jskswamy/cloudlab?dir=templates#docker-x86_64-linux")
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
