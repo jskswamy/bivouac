@@ -142,9 +142,9 @@ the configured login shell) does exactly six things:
 
 1. Install Nix (Determinate Systems installer — non-interactive, flakes
    enabled by default).
-2. Install the configured login shell (`fish` or `zsh`) from apt and pick it
-   only if it lands in `/etc/shells` and runs; otherwise the account stays on
-   bash. This is the one place the login shell is ever set, which is why the
+2. Install the configured login shell (`fish` or `zsh`) with apt, fish from
+   its release-4 PPA, and pick it only if it lands in `/etc/shells` and runs;
+   otherwise the account stays on bash. This is the one place the login shell is ever set, which is why the
    `shell` field is fixed at creation.
 3. Create the instance's non-root user with `useradd --create-home`, seeded
    with root's own `authorized_keys` (DigitalOcean puts the account's

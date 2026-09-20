@@ -217,3 +217,56 @@ func TestRenderCloudInit_AFailedInstallLeavesTheAccountOnBash(t *testing.T) {
 		t.Errorf("output = %q, want the account left on /bin/bash", out)
 	}
 }
+
+// Ubuntu 24.04 ships fish 3.7, while the config that runs under it targets
+// fish 4, so fish comes from the release-4 PPA -- which tracks upstream and
+// is the same 4.x the Nix profile carries. Only fish: zsh has no such gap.
+func TestRenderCloudInit_FishComesFromTheFish4PPA(t *testing.T) {
+	got, err := RenderCloudInit("devuser", "fish")
+	if err != nil {
+		t.Fatalf("RenderCloudInit() error = %v", err)
+	}
+	ppa := strings.Index(got, "ppa:fish-shell/release-4")
+	install := strings.Index(got, "install -y -qq fish")
+	if ppa < 0 || install < 0 || ppa > install {
+		t.Errorf("PPA at %d, install at %d; want the PPA added before fish is installed", ppa, install)
+	}
+	for _, shell := range []string{"zsh", "bash"} {
+		other, err := RenderCloudInit("devuser", shell)
+		if err != nil {
+			t.Fatalf("RenderCloudInit(%s) error = %v", shell, err)
+		}
+		if strings.Contains(other, "ppa:") {
+			t.Errorf("RenderCloudInit(%s) adds a PPA, want it only for fish", shell)
+		}
+	}
+}
+
+// A PPA that cannot be added must not cost the instance fish altogether or
+// abort the script: fall back to the distribution's fish, and never let the
+// failure escape set -e.
+func TestRenderCloudInit_AFailedPPAFallsBackWithoutAbortingTheScript(t *testing.T) {
+	got, err := RenderCloudInit("devuser", "fish")
+	if err != nil {
+		t.Fatalf("RenderCloudInit() error = %v", err)
+	}
+	start := strings.Index(got, "# --- login shell")
+	end := strings.Index(got, "# --- end login shell")
+	block := got[start:end]
+
+	bin := t.TempDir()
+	for _, name := range []string{"add-apt-repository", "apt-get"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 100\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+block+"\necho \"LOGIN_SHELL=$LOGIN_SHELL\"\n")
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the block aborted under set -e when the PPA and apt failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "LOGIN_SHELL=/bin/bash") {
+		t.Errorf("output = %q, want the account left on /bin/bash", out)
+	}
+}
