@@ -830,3 +830,42 @@ func TestClient_EnableAgentForwarding_ReturnsNilWhenAgentUnreachable(t *testing.
 		t.Errorf("EnableAgentForwarding() error = %v, want nil when agent socket is unreachable", err)
 	}
 }
+
+// sshd runs an exec request through the account's login shell, so a bare
+// `cat` or `install` is whatever that shell makes of it. Under fish with an
+// alias file that turns cat into bat, `mkdir -p d && cat > f` exited 127
+// and nothing could be written. Both writers name bash explicitly, the same
+// way every other remote command bivouac sends does.
+func TestClient_FileWriters_RunUnderBashNotTheLoginShell(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	var got sessionResult
+	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		got = sessionResult{Command: cmd, Stdin: stdin}
+		return "", 0
+	})
+	client, err := Connect(context.Background(), addr, "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	for name, write := range map[string]func() error{
+		"WriteFile":       func() error { return client.WriteFile("/home/devuser/.claude/CLAUDE.md", "x") },
+		"WriteSecretFile": func() error { return client.WriteSecretFile("/run/user/1000/key", []byte("x")) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			got = sessionResult{}
+			if err := write(); err != nil {
+				t.Fatalf("%s() error = %v", name, err)
+			}
+			if !strings.HasPrefix(got.Command, "bash -lc ") {
+				t.Errorf("command = %q, want it wrapped in bash -lc", got.Command)
+			}
+			if string(got.Stdin) != "x" {
+				t.Errorf("stdin = %q, want the content to still arrive on stdin", got.Stdin)
+			}
+		})
+	}
+}
