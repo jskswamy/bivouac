@@ -28,10 +28,15 @@ type Config struct {
 	// boot applies it, so editing it later would claim a change that never
 	// happens.
 	//
+	// May be set in the personal base config so it is not repeated in every
+	// project; a project's own value wins. Unset in both, it is fish -- applied
+	// after the merge rather than as a default here, so an unset value can be
+	// told from a set one.
+	//
 	// fish and zsh come from apt, which registers them in /etc/shells; if the
 	// install fails the instance stays on bash rather than pointing at a
 	// missing binary.
-	Shell string `pkl:"shell"`
+	Shell *string `pkl:"shell"`
 
 	// How the instance's beads issue database syncs.
 	//
