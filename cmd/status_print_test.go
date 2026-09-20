@@ -12,7 +12,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func statusPrintCmd(t *testing.T) (*cobra.Command, *bytes.Buffer) {
+// bufferedCmd is a command whose output is a buffer rather than a
+// terminal, for the print and prompt helpers that take one.
+func bufferedCmd(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 	t.Helper()
 	c := &cobra.Command{}
 	var out bytes.Buffer
@@ -21,7 +23,7 @@ func statusPrintCmd(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 }
 
 func TestPrintStatus_ShowsEveryRecordFieldAndTheCost(t *testing.T) {
-	c, out := statusPrintCmd(t)
+	c, out := bufferedCmd(t)
 	st := lifecycle.InstanceStatus{
 		Record: state.Record{
 			Name: "myrepo", Provider: "digitalocean", Region: "blr1",
@@ -54,7 +56,7 @@ func TestPrintStatus_ShowsEveryRecordFieldAndTheCost(t *testing.T) {
 // failure has to take out both -- and say why, rather than showing a
 // plausible-looking zero.
 func TestPrintStatus_LiveFailureLeavesStatusAndCostUnknown(t *testing.T) {
-	c, out := statusPrintCmd(t)
+	c, out := bufferedCmd(t)
 	st := lifecycle.InstanceStatus{
 		Record:  state.Record{Name: "myrepo", IP: "139.59.12.44"},
 		LiveErr: errors.New("no token found"),
@@ -78,7 +80,7 @@ func TestPrintStatus_LiveFailureLeavesStatusAndCostUnknown(t *testing.T) {
 // Records written before RepoPath existed have an empty one; that must
 // read as an explained gap rather than a blank line.
 func TestPrintStatus_NamesAnAbsentRepoPath(t *testing.T) {
-	c, out := statusPrintCmd(t)
+	c, out := bufferedCmd(t)
 
 	printStatus(c, lifecycle.InstanceStatus{Record: state.Record{Name: "myrepo"}, LiveStatus: "active"})
 
@@ -91,7 +93,7 @@ func TestPrintStatus_NamesAnAbsentRepoPath(t *testing.T) {
 // so the size printed beside it must too. A droplet resized outside
 // bivouac leaves the record's slug behind at the new price.
 func TestPrintStatus_PrefersTheLiveSizeOverTheRecordedOne(t *testing.T) {
-	c, out := statusPrintCmd(t)
+	c, out := bufferedCmd(t)
 	st := lifecycle.InstanceStatus{
 		Record:     state.Record{Name: "myrepo", Size: "s-2vcpu-2gb", Template: "python"},
 		LiveStatus: "active",
@@ -112,7 +114,7 @@ func TestPrintStatus_PrefersTheLiveSizeOverTheRecordedOne(t *testing.T) {
 // With no live read the recorded slug is all there is. It is still worth
 // printing -- but as a record, not as the droplet's current size.
 func TestPrintStatus_MarksTheRecordedSizeWhenNoLiveSizeIsAvailable(t *testing.T) {
-	c, out := statusPrintCmd(t)
+	c, out := bufferedCmd(t)
 	st := lifecycle.InstanceStatus{
 		Record:  state.Record{Name: "myrepo", Size: "s-2vcpu-2gb", Template: "python"},
 		LiveErr: errors.New("no token found"),

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,5 +57,56 @@ func TestHerdrTabsFor_BrokenConfigDegradesToNoLayout(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "bivouac.pkl") {
 		t.Errorf("errOut = %q, want a warning naming bivouac.pkl so the degrade is visible", errOut.String())
+	}
+}
+
+// The prompt is the only thing between `pair` and a QR code, so without a
+// terminal it has to resolve itself. Reading stdin there blocks forever on
+// input that will never arrive, which is the bug this guards.
+func TestAskPairHost_TakesTheTailnetAddressWithoutATerminal(t *testing.T) {
+	c, out := bufferedCmd(t)
+	// Open, and readable, and not a terminal: the shape a script or an
+	// agent hands the command. A read here would block, not fail.
+	pr, pw := io.Pipe()
+	defer func() { _ = pw.Close() }()
+	c.SetIn(pr)
+
+	got, err := askPairHost(c, "100.64.0.1", "139.59.12.44", false)
+
+	if err != nil {
+		t.Fatalf("askPairHost() error = %v, want nil", err)
+	}
+	if got != "100.64.0.1" {
+		t.Errorf("askPairHost() = %q, want the tailnet address taken as the default", got)
+	}
+	if !strings.Contains(out.String(), "100.64.0.1") {
+		t.Errorf("out = %q, want the address it chose named", out.String())
+	}
+	if strings.Contains(out.String(), "Choose [1]") {
+		t.Errorf("out = %q, want no prompt with no terminal to answer it", out.String())
+	}
+}
+
+func TestAskPairHost_AsksWithATerminal(t *testing.T) {
+	for _, tc := range []struct{ answer, want string }{
+		{"2\n", "139.59.12.44"},
+		{"1\n", "100.64.0.1"},
+		{"\n", "100.64.0.1"},
+		{"", "100.64.0.1"}, // EOF: the default, not an error
+	} {
+		c, out := bufferedCmd(t)
+		c.SetIn(strings.NewReader(tc.answer))
+
+		got, err := askPairHost(c, "100.64.0.1", "139.59.12.44", true)
+
+		if err != nil {
+			t.Fatalf("askPairHost(%q) error = %v, want nil", tc.answer, err)
+		}
+		if got != tc.want {
+			t.Errorf("askPairHost(%q) = %q, want %q", tc.answer, got, tc.want)
+		}
+		if !strings.Contains(out.String(), "Choose [1]") {
+			t.Errorf("out = %q, want the prompt", out.String())
+		}
 	}
 }
