@@ -119,6 +119,14 @@ func tabCreateCmd(session, workspace, label, cwd string) string {
 		"--label", label, "--cwd", cwd, "--no-focus")
 }
 
+func tabRenameCmd(session, id, label string) string {
+	return remoteHerdrCmd(session, "tab", "rename", id, label)
+}
+
+func tabCloseCmd(session, id string) string {
+	return remoteHerdrCmd(session, "tab", "close", id)
+}
+
 func paneListCmd(session, workspace string) string {
 	return remoteHerdrCmd(session, "pane", "list", "--workspace", workspace)
 }
@@ -169,13 +177,18 @@ func paneDir(root string, p config.HerdrPane) string {
 // second attach finds every label present and runs nothing, which is what
 // keeps `npm run dev` from being typed into a pane already running it.
 //
-// herdr's own default tab ("1") is left alone; configured tabs follow it.
+// herdr's own default tab ("1") is left alone here; LayOutTabs is what removes
+// it, and only from a workspace this attach created.
 //
 // Runs over r, one already-open SSH connection, rather than herdr's own
 // --machine routing -- see remoteHerdrCmd for why: --machine's per-call
 // cost is fixed and paid on every invocation, and this makes one call per
 // tab plus one more per pane beyond a tab's first.
 func EnsureTabs(r remoteRunner, session, workspaceID, root string, tabs []config.HerdrTab) error {
+	return ensureTabs(r, session, workspaceID, root, tabs, nil)
+}
+
+func ensureTabs(r remoteRunner, session, workspaceID, root string, tabs []config.HerdrTab, spare *spareTab) error {
 	if len(tabs) == 0 {
 		return nil
 	}
@@ -209,11 +222,94 @@ func EnsureTabs(r remoteRunner, session, workspaceID, root string, tabs []config
 		// instance, say) must not silently skip every tab after it on every
 		// attach. errors.Join reports every failure this pass found; nil
 		// when there were none.
-		if err := ensureTab(r, session, workspaceID, root, t, existing, panes); err != nil {
+		if err := ensureTab(r, session, workspaceID, root, t, existing, panes, spare); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// LayOutTabs is EnsureTabs plus dealing with herdr's own default tab.
+//
+// herdr gives every new workspace an empty tab "1" with a root pane, and
+// creating the configured tabs beside it left it as clutter in front. In a
+// workspace this attach just created, the first configured tab takes it over
+// instead: renamed, with its root pane as the tab's first pane, so nothing
+// is created only to be closed. A root pane starts in the checkout and cannot
+// be moved, so when the first pane needs its own directory the tabs are
+// created as usual and the default tab closed once they exist.
+//
+// Only when fresh: a re-attach cannot tell an untouched tab 1 from one the
+// user works in, and renaming or closing that would take their shell away.
+// It is also left alone when it was not the workspace's only tab, when it
+// holds more than one pane, and when a configured tab has its label, since
+// EnsureTabs would reuse it as it stands. When nothing is configured tab 1 is
+// the only tab and there is nothing to do.
+//
+// Closing is tidying, not laying out: a failure to close is returned so the
+// user hears about it, with the layout already done.
+func LayOutTabs(r remoteRunner, session, workspaceID, root string, tabs []config.HerdrTab, fresh bool) error {
+	if len(tabs) == 0 {
+		return nil
+	}
+	var spare *spareTab
+	if fresh {
+		spare = pristineDefaultTab(r, session, workspaceID, tabs)
+	}
+	if err := ensureTabs(r, session, workspaceID, root, tabs, spare); err != nil {
+		return err
+	}
+	if spare == nil || spare.used {
+		return nil
+	}
+	if out, err := r.Run(tabCloseCmd(session, spare.tabID)); err != nil {
+		return fmt.Errorf("closing herdr's default tab: %w\n%s", err, out)
+	}
+	return nil
+}
+
+// spareTab is herdr's own default tab and its root pane, offered to the
+// first configured tab that has to be created. used says it was taken.
+type spareTab struct {
+	tabID    string
+	rootPane string
+	used     bool
+}
+
+// pristineDefaultTab returns the workspace's default tab when it is provably
+// the one herdr just made: the workspace's only tab, holding a single pane.
+// Anything less certain returns nil, and then nothing is touched.
+func pristineDefaultTab(r remoteRunner, session, workspaceID string, tabs []config.HerdrTab) *spareTab {
+	out, err := r.Run(tabListCmd(session, workspaceID))
+	if err != nil {
+		return nil
+	}
+	existing, err := parseTabList(out)
+	if err != nil || len(existing) != 1 || usesLabel(tabs, existing[0].Label) {
+		return nil
+	}
+	out, err = r.Run(paneListCmd(session, workspaceID))
+	if err != nil {
+		return nil
+	}
+	panes, err := parsePaneList(out)
+	if err != nil {
+		return nil
+	}
+	inTab := panesInTab(panes, existing[0].ID)
+	if len(inTab) != 1 {
+		return nil
+	}
+	return &spareTab{tabID: existing[0].ID, rootPane: inTab[0].ID}
+}
+
+func usesLabel(tabs []config.HerdrTab, label string) bool {
+	for _, t := range tabs {
+		if t.Label == label {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureTab brings one tab up to its configuration.
@@ -222,7 +318,7 @@ func EnsureTabs(r remoteRunner, session, workspaceID, root string, tabs []config
 // each later one splits off the pane before it. When a pane is already
 // there it becomes the next split's anchor, so restoring one closed pane
 // puts it back beside its neighbour rather than at the end.
-func ensureTab(r remoteRunner, session, workspaceID, root string, t config.HerdrTab, existing []herdrTab, panes []herdrPane) error {
+func ensureTab(r remoteRunner, session, workspaceID, root string, t config.HerdrTab, existing []herdrTab, panes []herdrPane, spare *spareTab) error {
 	var tabID, fresh string
 	if found, ok := findTab(existing, t.Label); ok {
 		tabID = found.ID
@@ -231,12 +327,21 @@ func ensureTab(r remoteRunner, session, workspaceID, root string, t config.Herdr
 		if len(t.Panes) > 0 {
 			dir = paneDir(root, t.Panes[0])
 		}
-		out, err := r.Run(tabCreateCmd(session, workspaceID, t.Label, dir))
-		if err != nil {
-			return fmt.Errorf("creating the %s tab: %w\n%s", t.Label, err, out)
-		}
-		if tabID, fresh, err = parseTabCreated(out); err != nil {
-			return err
+		if spare != nil && !spare.used && dir == root {
+			// Takes herdr's default tab over rather than adding one beside it.
+			if out, err := r.Run(tabRenameCmd(session, spare.tabID, t.Label)); err != nil {
+				return fmt.Errorf("naming herdr's default tab %s: %w\n%s", t.Label, err, out)
+			}
+			spare.used = true
+			tabID, fresh = spare.tabID, spare.rootPane
+		} else {
+			out, err := r.Run(tabCreateCmd(session, workspaceID, t.Label, dir))
+			if err != nil {
+				return fmt.Errorf("creating the %s tab: %w\n%s", t.Label, err, out)
+			}
+			if tabID, fresh, err = parseTabCreated(out); err != nil {
+				return err
+			}
 		}
 	}
 

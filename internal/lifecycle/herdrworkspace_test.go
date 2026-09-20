@@ -78,12 +78,15 @@ func TestEnsureWorkspace_CreatesOneRootedInTheCheckout(t *testing.T) {
 			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
 	}}}
 
-	id, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
+	id, made, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
 	if err != nil {
 		t.Fatalf("EnsureWorkspace() error = %v", err)
 	}
 	if id != "w9" {
 		t.Errorf("id = %q, want w9 read back from the listing", id)
+	}
+	if !made {
+		t.Error("created = false, want true: this call made the workspace")
 	}
 	created := h.ran("workspace create")
 	if len(created) != 1 {
@@ -110,12 +113,15 @@ func TestEnsureWorkspace_ReusesTheExistingOne(t *testing.T) {
 			`{"workspace_id":"w2","label":"auth","pane_count":1}]}}`,
 	}}}
 
-	id, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
+	id, made, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
 	if err != nil {
 		t.Fatalf("EnsureWorkspace() error = %v", err)
 	}
 	if id != "w2" {
 		t.Errorf("id = %q, want the existing w2", id)
+	}
+	if made {
+		t.Error("created = true, want false: the workspace was already there")
 	}
 	if len(h.ran("workspace create")) != 0 {
 		t.Error("created a second workspace for a session that already had one")
@@ -135,7 +141,7 @@ func TestEnsureWorkspace_ClosesHerdrsEmptyDefault(t *testing.T) {
 			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
 	}}}
 
-	if _, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth"); err != nil {
+	if _, _, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth"); err != nil {
 		t.Fatalf("EnsureWorkspace() error = %v", err)
 	}
 	closed := h.ran("workspace close")
@@ -152,7 +158,7 @@ func TestEnsureWorkspace_LeavesADefaultThatIsInUse(t *testing.T) {
 			`{"workspace_id":"w9","label":"auth","pane_count":1}]}}`,
 	}}}
 
-	if _, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth"); err != nil {
+	if _, _, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth"); err != nil {
 		t.Fatalf("EnsureWorkspace() error = %v", err)
 	}
 	if len(h.ran("workspace close")) != 0 {
@@ -166,7 +172,7 @@ func TestEnsureWorkspace_LeavesADefaultThatIsInUse(t *testing.T) {
 func TestEnsureWorkspace_NamesProvisionWhenTheMachineCannotBeDriven(t *testing.T) {
 	h := &fakeRouted{fail: "workspace list"}
 
-	_, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
+	_, _, err := EnsureWorkspace(h, "mid", "/home/u/sessions/auth/repo", "auth")
 	if err == nil {
 		t.Fatal("EnsureWorkspace() error = nil when the machine could not be reached")
 	}
