@@ -96,10 +96,12 @@ func workspaceCloseArgs(machine, id string) []string {
 //
 // Reused when it already exists. Reconnecting to a session is the common
 // case, and creating unconditionally would stack up a workspace per attach.
-func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (string, error) {
+// created says which happened, because only a workspace this call made is
+// known to be untouched -- see LayOutTabs.
+func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, created bool, err error) {
 	out, err := h.Run(workspaceListArgs(machine)...)
 	if err != nil {
-		return "", fmt.Errorf("reaching the instance's herdr through saved machine %s: %w\n%s\n"+
+		return "", false, fmt.Errorf("reaching the instance's herdr through saved machine %s: %w\n%s\n"+
 			"machine forwarding needs herdr 0.9.1 on both ends, and forwarding never starts a "+
 			"session server that isn't already running -- possible causes: this machine's herdr "+
 			"predates 0.9.1 (upgrade it); the instance's herdr predates 0.9.1 (run `bivouac "+
@@ -109,28 +111,28 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (string, error) 
 	}
 	workspaces, err := parseWorkspaceList(out)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if existing, found := findWorkspace(workspaces, label); found {
-		return existing.ID, nil
+		return existing.ID, false, nil
 	}
 
 	if out, err := h.Run(workspaceCreateArgs(machine, cwd, label)...); err != nil {
-		return "", fmt.Errorf("creating the %s workspace on the instance: %w\n%s", label, err, out)
+		return "", false, fmt.Errorf("creating the %s workspace on the instance: %w\n%s", label, err, out)
 	}
 	// Read the id back rather than parsing the create reply: one shape to
 	// know instead of two, and the listing is authoritative either way.
 	out, err = h.Run(workspaceListArgs(machine)...)
 	if err != nil {
-		return "", fmt.Errorf("listing workspaces after creating %s: %w\n%s", label, err, out)
+		return "", false, fmt.Errorf("listing workspaces after creating %s: %w\n%s", label, err, out)
 	}
 	workspaces, err = parseWorkspaceList(out)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	created, found := findWorkspace(workspaces, label)
+	made, found := findWorkspace(workspaces, label)
 	if !found {
-		return "", fmt.Errorf("created the %s workspace on the instance but it is not in the listing", label)
+		return "", false, fmt.Errorf("created the %s workspace on the instance but it is not in the listing", label)
 	}
 
 	// Starting a named session gives it a default "~" workspace rooted at
@@ -150,7 +152,7 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (string, error) 
 	if def, ok := findWorkspace(workspaces, herdrDefaultWorkspaceLabel); ok && def.Panes <= 1 {
 		_, _ = h.Run(workspaceCloseArgs(machine, def.ID)...)
 	}
-	return created.ID, nil
+	return made.ID, true, nil
 }
 
 // FocusWorkspace switches the instance's herdr to the session's workspace.

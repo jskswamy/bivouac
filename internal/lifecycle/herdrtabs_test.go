@@ -453,3 +453,248 @@ func TestEnsureTabs_ReportsRunFailureButKeepsRename(t *testing.T) {
 		t.Error("pane was not renamed before run failed (order violation)")
 	}
 }
+
+// herdr gives every new workspace an empty tab "1" with a root pane, and
+// creating the configured tabs beside it leaves it as clutter in front. In
+// a workspace this attach just made, the first configured tab takes it over
+// instead -- renamed, its root pane becoming the tab's first pane -- so
+// nothing is created only to be closed, and nothing is left behind.
+func TestLayOutTabs_TheFirstTabTakesOverHerdrsDefaultTab(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":   {onlyDefaultTab},
+		"pane list":  {onlyRootPane},
+		"tab create": {tabCreated},
+		"pane split": {paneSplit},
+	}}
+
+	if err := LayOutTabs(h, "auth", "w3", checkout, []config.HerdrTab{runTab}, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	renames := h.ran("tab rename")
+	if len(renames) != 1 || strings.Join(renames[0], " ") != "w3:t1 run" {
+		t.Fatalf("tab renames = %v, want herdr's default tab w3:t1 renamed run", renames)
+	}
+	if got := h.ran("tab create"); len(got) != 0 {
+		t.Errorf("tab creates = %v, want none: the default tab is the first one", got)
+	}
+	if got := h.ran("tab close"); len(got) != 0 {
+		t.Errorf("tab closes = %v, want none: nothing was left to close", got)
+	}
+	// The default tab's root pane w3:p1 is the tab's first pane.
+	panes := h.ran("pane rename")
+	if len(panes) != 2 || strings.Join(panes[0], " ") != "w3:p1 server" {
+		t.Errorf("pane renames = %v, want the root pane w3:p1 labelled server first", panes)
+	}
+	runs := h.ran("pane run")
+	if len(runs) == 0 || strings.Join(runs[0], " ") != "w3:p1 npm run dev" {
+		t.Errorf("runs = %v, want the first command in the root pane", runs)
+	}
+	splits := h.ran("pane split")
+	if len(splits) != 1 || splits[0][0] != "w3:p1" {
+		t.Errorf("splits = %v, want the second pane split off the root pane", splits)
+	}
+}
+
+func TestLayOutTabs_LaterTabsAreStillCreated(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":   {onlyDefaultTab},
+		"pane list":  {onlyRootPane},
+		"tab create": {tabCreated},
+		"pane split": {paneSplit},
+	}}
+	tabs := []config.HerdrTab{runTab, {Label: "edit", Panes: []config.HerdrPane{{Label: "code"}}}}
+
+	if err := LayOutTabs(h, "auth", "w3", checkout, tabs, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	if got := h.ran("tab rename"); len(got) != 1 {
+		t.Errorf("tab renames = %v, want exactly the default tab", got)
+	}
+	created := h.ran("tab create")
+	if len(created) != 1 || !strings.Contains(strings.Join(created[0], " "), "--label edit") {
+		t.Errorf("tab creates = %v, want only the second tab, edit", created)
+	}
+}
+
+// A root pane starts in the checkout and cannot be moved, so a first pane
+// that needs its own directory cannot take the default tab over. It is
+// created as usual and the default closed once the layout exists.
+func TestLayOutTabs_ClosesTheDefaultTabWhenTheFirstPaneNeedsItsOwnDirectory(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":   {onlyDefaultTab},
+		"pane list":  {onlyRootPane},
+		"tab create": {tabCreated},
+	}}
+	tabs := []config.HerdrTab{{Label: "run", Panes: []config.HerdrPane{{Label: "server", Cwd: strp("logs")}}}}
+
+	if err := LayOutTabs(h, "auth", "w3", checkout, tabs, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	if got := h.ran("tab rename"); len(got) != 0 {
+		t.Errorf("tab renames = %v, want none: the default tab cannot start in logs", got)
+	}
+	created := h.ran("tab create")
+	if len(created) != 1 || !strings.Contains(strings.Join(created[0], " "), "--cwd "+checkout+"/logs") {
+		t.Fatalf("tab creates = %v, want one started in logs", created)
+	}
+	closed := h.ran("tab close")
+	if len(closed) != 1 || closed[0][0] != "w3:t1" {
+		t.Fatalf("tab closes = %v, want exactly herdr's default tab w3:t1", closed)
+	}
+	create, closeAt := -1, -1
+	for i, c := range h.calls {
+		switch c[0] + " " + c[1] {
+		case "tab create":
+			create = i
+		case "tab close":
+			closeAt = i
+		}
+	}
+	if create < 0 || closeAt < create {
+		t.Errorf("tab create at call %d, tab close at %d; want the default closed only after the configured tab exists", create, closeAt)
+	}
+}
+
+// A re-attach cannot tell an untouched tab 1 from one the user works in, so
+// only the run that made the workspace may touch it.
+func TestLayOutTabs_NeverTouchesTheDefaultTabOnAReattach(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":   {onlyDefaultTab},
+		"pane list":  {onlyRootPane},
+		"tab create": {tabCreated},
+		"pane split": {paneSplit},
+	}}
+	if err := LayOutTabs(h, "auth", "w3", checkout, []config.HerdrTab{runTab}, false); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	for _, verb := range []string{"tab close", "tab rename"} {
+		if got := h.ran(verb); len(got) != 0 {
+			t.Errorf("%s ran %v on a workspace this run did not create", verb, got)
+		}
+	}
+}
+
+func TestLayOutTabs_KeepsTheDefaultTabWhenAFallbackLayoutStepFailed(t *testing.T) {
+	h := &fakeSSH{
+		replies: map[string][]string{
+			"tab list":  {onlyDefaultTab},
+			"pane list": {onlyRootPane},
+		},
+		fail: "tab create",
+	}
+	tabs := []config.HerdrTab{{Label: "run", Panes: []config.HerdrPane{{Label: "server", Cwd: strp("logs")}}}}
+	if err := LayOutTabs(h, "auth", "w3", checkout, tabs, true); err == nil {
+		t.Fatal("LayOutTabs() error = nil, want the failed create reported")
+	}
+	if got := h.ran("tab close"); len(got) != 0 {
+		t.Errorf("closed %v although the layout did not finish", got)
+	}
+}
+
+// With nothing configured, tab 1 is the workspace's only tab.
+func TestLayOutTabs_LeavesTheOnlyTabAloneWhenNothingIsConfigured(t *testing.T) {
+	h := &fakeSSH{}
+	if err := LayOutTabs(h, "auth", "w3", checkout, nil, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	if len(h.calls) != 0 {
+		t.Errorf("ran %v with no layout configured", h.calls)
+	}
+}
+
+// A workspace that already has more than one tab is not the pristine one
+// herdr just made, whatever the caller believes.
+func TestLayOutTabs_OnlyTakesOverWhenTheDefaultWasTheSoleTab(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":   {`{"result":{"tabs":[{"label":"1","tab_id":"w3:t1"},{"label":"mine","tab_id":"w3:t9"}]}}`},
+		"pane list":  {onlyRootPane},
+		"tab create": {tabCreated},
+		"pane split": {paneSplit},
+	}}
+	if err := LayOutTabs(h, "auth", "w3", checkout, []config.HerdrTab{runTab}, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	for _, verb := range []string{"tab close", "tab rename"} {
+		if got := h.ran(verb); len(got) != 0 {
+			t.Errorf("%s ran %v in a workspace that already had two tabs", verb, got)
+		}
+	}
+}
+
+// One pane is the cheapest evidence a tab is untouched; more than one means
+// someone has been working in it, so it is neither taken over nor closed.
+func TestLayOutTabs_LeavesADefaultTabThatHasMoreThanOnePane(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list": {onlyDefaultTab},
+		"pane list": {`{"result":{"panes":[{"pane_id":"w3:p1","tab_id":"w3:t1"},` +
+			`{"pane_id":"w3:p7","tab_id":"w3:t1"}]}}`},
+		"tab create": {tabCreated},
+		"pane split": {paneSplit},
+	}}
+	if err := LayOutTabs(h, "auth", "w3", checkout, []config.HerdrTab{runTab}, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	for _, verb := range []string{"tab close", "tab rename"} {
+		if got := h.ran(verb); len(got) != 0 {
+			t.Errorf("%s ran %v on a default tab with two panes", verb, got)
+		}
+	}
+}
+
+// EnsureTabs matches by label, so a configured tab named "1" reuses the
+// default tab as it stands; renaming or closing it would break that.
+func TestLayOutTabs_DoesNotTouchTheDefaultTabWhenAConfiguredTabHasItsLabel(t *testing.T) {
+	h := &fakeSSH{replies: map[string][]string{
+		"tab list":  {onlyDefaultTab},
+		"pane list": {onlyRootPane},
+	}}
+	tabs := []config.HerdrTab{{Label: "1"}}
+	if err := LayOutTabs(h, "auth", "w3", checkout, tabs, true); err != nil {
+		t.Fatalf("LayOutTabs() error = %v", err)
+	}
+	for _, verb := range []string{"tab close", "tab rename"} {
+		if got := h.ran(verb); len(got) != 0 {
+			t.Errorf("%s ran %v, the tab a configured tab reuses", verb, got)
+		}
+	}
+}
+
+// Closing is tidying: a failure is reported so the user hears about it, but
+// the layout itself is already in place.
+func TestLayOutTabs_ReportsAFailedCloseAfterLayingOutTheTabs(t *testing.T) {
+	h := &fakeSSH{
+		replies: map[string][]string{
+			"tab list":   {onlyDefaultTab},
+			"pane list":  {onlyRootPane},
+			"tab create": {tabCreated},
+		},
+		fail: "tab close",
+	}
+	tabs := []config.HerdrTab{{Label: "run", Panes: []config.HerdrPane{{Label: "server", Cwd: strp("logs")}}}}
+	err := LayOutTabs(h, "auth", "w3", checkout, tabs, true)
+	if err == nil || !strings.Contains(err.Error(), "default tab") {
+		t.Errorf("error = %v, want one naming herdr's default tab", err)
+	}
+	if got := h.ran("tab create"); len(got) != 1 {
+		t.Errorf("tab creates = %v, want the layout still done", got)
+	}
+}
+
+// A failure to rename the default tab means nothing was taken over, so it is
+// reported rather than papered over by creating a second tab.
+func TestLayOutTabs_ReportsAFailedTakeover(t *testing.T) {
+	h := &fakeSSH{
+		replies: map[string][]string{
+			"tab list":  {onlyDefaultTab},
+			"pane list": {onlyRootPane},
+		},
+		fail: "tab rename",
+	}
+	err := LayOutTabs(h, "auth", "w3", checkout, []config.HerdrTab{runTab}, true)
+	if err == nil || !strings.Contains(err.Error(), "run") {
+		t.Errorf("error = %v, want one naming the run tab", err)
+	}
+	if got := h.ran("tab close"); len(got) != 0 {
+		t.Errorf("closed %v after a failed takeover", got)
+	}
+}

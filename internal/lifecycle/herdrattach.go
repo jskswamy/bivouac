@@ -98,7 +98,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 	}
 
 	provider.ReportProgress(ctx, "preparing herdr workspace")
-	wsID, err := EnsureWorkspace(h, id, root, session)
+	wsID, created, err := EnsureWorkspace(h, id, root, session)
 	if err != nil {
 		// EnsureMachine already succeeded, so the sidebar entry exists even
 		// though the rest of the attach did not -- say so, and name it by
@@ -116,7 +116,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 		if client, err := reconcile.Connect(ctx, ip, user); err != nil {
 			provider.ReportWarning(ctx, "herdr: laying out tabs: connecting to the instance: "+err.Error())
 		} else {
-			err := EnsureTabs(client, session, wsID, root, tabs)
+			err := LayOutTabs(client, session, wsID, root, tabs, created)
 			_ = client.Close()
 			if err != nil {
 				provider.ReportWarning(ctx, "herdr: laying out tabs: "+err.Error())
