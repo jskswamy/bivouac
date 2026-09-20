@@ -113,7 +113,9 @@ remote survives a reboot that reassigns the public IP.
 `"fish"` (default) | `"zsh"` | `"bash"`
 
 The login shell of the instance user, so `ssh`, tmux panes and herdr panes
-all start it. It is installed from apt and chosen by the cloud-init script
+all start it. It is installed with apt (fish from its release-4 PPA, so it
+is fish 4.x like the one in your Nix profile rather than Ubuntu's 3.7) and
+chosen by the cloud-init script
 that runs once at first boot, which is the only thing that ever sets it.
 That is why it cannot be changed later: editing `shell` for an existing
 instance makes `provision` fail, before it connects, with a message saying
@@ -121,8 +123,8 @@ so, rather than claim a change that never happens. An instance created
 before this field existed is not held to it. Destroy and recreate the instance to
 change it.
 
-If the shell fails to install or to run, the instance stays on bash and
-remains reachable.
+If the PPA cannot be added, Ubuntu's own fish is used. If the shell fails to
+install or to run, the instance stays on bash and remains reachable.
 
 ### `beads`
 
