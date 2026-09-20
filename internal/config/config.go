@@ -58,6 +58,40 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 	return resolved(merged), nil
 }
 
+// ResolveBase loads the personal base config on its own, for the one
+// caller that has no project file to anchor on.
+//
+// Returns the zero Config when there is no base file -- a machine
+// without one is the ordinary case, not an error.
+//
+// Config, not Resolved, and deliberately unvalidated: a base config is
+// half of an instance spec by design, so requiring region/size/template
+// of it would reject exactly the personal-defaults files this exists to
+// read. Callers get what the file declares and nothing more, which is
+// why this is only safe for fields that mean something on their own --
+// herdrTabs is the one, and anything that decides how an instance is
+// built must keep going through Resolve.
+//
+// Only the default path is consulted. An override lives in basePath on
+// a project file, and with no project file there is nothing to read one
+// from.
+func ResolveBase(ctx context.Context) (Config, error) {
+	basePath, err := DefaultBasePath()
+	if err != nil {
+		return Config{}, err
+	}
+	if _, err := os.Stat(basePath); err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, nil
+		}
+		return Config{}, fmt.Errorf("checking base config %s: %w", basePath, err)
+	}
+	if _, err := tool.Require("pkl"); err != nil {
+		return Config{}, err
+	}
+	return loadResolved(ctx, basePath)
+}
+
 // loadResolved reads path's raw content, injects bivouac's own
 // embedded schema as its amends target (path itself must not declare
 // one), and evaluates the result with an evaluator pointed at
