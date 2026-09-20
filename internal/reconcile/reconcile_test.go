@@ -398,3 +398,64 @@ func TestReconcile_ForwardsAgentDuringSwitch(t *testing.T) {
 		t.Fatal("home-manager switch's session never requested a forwarded agent channel")
 	}
 }
+
+// seedInstanceWithShell is seedInstance for a record that remembers the
+// login shell it was created with. The address is a closed local port, so
+// a run that gets as far as connecting fails with a connection error --
+// which is how these tests tell "refused up front" from "went ahead".
+func seedInstanceWithShell(t *testing.T, name, shell string) {
+	t.Helper()
+	testenv.Isolate(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "no-such-config"))
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(state.Record{Name: name, IP: "127.0.0.1:1", User: "devuser", Shell: shell}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func shellPkl(t *testing.T, shellLine string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "bivouac.pkl")
+	writeFixture(t, path, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\n"+shellLine)
+	return path
+}
+
+// The boot script is the only thing that ever sets the login shell, so
+// editing the field afterwards changes nothing on the instance. Refusing
+// is the alternative to a config that claims otherwise -- and it has to
+// happen before anything is shipped or run.
+func TestReconcile_RefusesAShellChangedSinceCreation(t *testing.T) {
+	seedInstanceWithShell(t, "myinstance", "fish")
+
+	err := Reconcile(context.Background(), "myinstance", shellPkl(t, `shell = "zsh"`+"\n"))
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want a refusal for a changed shell")
+	}
+	for _, want := range []string{"fixed at creation", `"fish"`, `"zsh"`, "destroy and recreate"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
+func TestReconcile_ANewInstanceAndAMatchingShellAreNotRefused(t *testing.T) {
+	for name, recorded := range map[string]string{
+		"legacy":   "", // created before the field existed
+		"matching": "fish",
+	} {
+		t.Run(name, func(t *testing.T) {
+			seedInstanceWithShell(t, "myinstance", recorded)
+
+			err := Reconcile(context.Background(), "myinstance", shellPkl(t, ""))
+			if err == nil {
+				t.Fatal("Reconcile() error = nil, want a connection error from the closed port")
+			}
+			if strings.Contains(err.Error(), "fixed at creation") {
+				t.Errorf("error = %q, want no shell refusal for a %s record", err, name)
+			}
+		})
+	}
+}
