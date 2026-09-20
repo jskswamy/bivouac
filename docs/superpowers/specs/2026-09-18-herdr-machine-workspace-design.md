@@ -244,7 +244,13 @@ herdr 0.9.1 while planning:
   `EnsureWorkspace`/`FocusWorkspace` rather than gaining a `ViaMachine`
   suffix.
 - Tab and pane failures warn rather than fail the attach.
-- herdr's default tab ("1") is left in place; configured tabs follow it.
+- herdr's default tab ("1") is taken over by the first configured tab -- renamed,
+  its root pane becoming the tab's first pane -- so no empty tab sits in front of
+  the configured ones. If the first pane needs its own directory (a root pane
+  cannot be moved), the tabs are created as usual and the default tab is closed
+  once they exist. Only in the attach that created the workspace, and only if
+  it was the workspace's sole tab holding one pane; a re-attach never touches a
+  tab. (It was first left in place, which put an empty tab in front.)
 - `herdrTabs` is read from the session's local `bivouac.pkl`; a repository
   without one gets no layout, including base.pkl's tabs.
 - Two tabs with the same label, or two panes with the same label inside

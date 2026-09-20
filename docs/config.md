@@ -271,8 +271,14 @@ command again.
 `cwd` is relative to the session's checkout on the instance, unless it
 is one of the two forms herdr resolves on the instance itself: an
 absolute path, or one starting `~`. Either of those passes through
-unchanged; anything else starts a pane in the checkout itself. herdr's
-own default tab is left alone, and configured tabs follow it. Laying
+unchanged; anything else starts a pane in the checkout itself. herdr gives
+every new workspace an empty tab `1`; the first configured tab takes it over
+(renamed, its root pane becoming the tab's first pane), so nothing is left
+in front of your tabs. A root pane starts in the checkout, so if the first
+pane needs its own directory the tabs are created as usual and tab `1` is
+closed once they exist. Either way this happens only in the attach that
+created the workspace; a re-attach never renames or closes a tab you may be
+working in. Laying
 out tabs needs `bivouac herdr` to be run from inside herdr, and the
 repository to have a `bivouac.pkl` — a repository without one gets no
 layout, including any tabs a personal `base.pkl` declares.
