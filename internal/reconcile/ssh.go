@@ -279,7 +279,9 @@ func (c *Client) WriteFile(remotePath, content string) error {
 
 	session.Stdin = strings.NewReader(content)
 	dir := filepath.Dir(remotePath)
-	cmd := fmt.Sprintf("mkdir -p %s && cat > %s", shellcmd.Quote(dir), shellcmd.Quote(remotePath))
+	// Under bash explicitly: sshd runs an exec request through the login
+	// shell, and a login shell's config can redefine cat or mkdir.
+	cmd := shellcmd.LoginShell(fmt.Sprintf("mkdir -p %s && cat > %s", shellcmd.Quote(dir), shellcmd.Quote(remotePath)))
 	if out, err := session.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("writing %s: %w\n%s", remotePath, err, out)
 	}
@@ -302,7 +304,7 @@ func (c *Client) WriteSecretFile(remotePath string, content []byte) error {
 	defer func() { _ = session.Close() }()
 
 	session.Stdin = bytes.NewReader(content)
-	cmd := fmt.Sprintf("install -m 600 /dev/stdin %s", shellcmd.Quote(remotePath))
+	cmd := shellcmd.LoginShell(fmt.Sprintf("install -m 600 /dev/stdin %s", shellcmd.Quote(remotePath)))
 	if out, err := session.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("writing %s: %w\n%s", remotePath, err, out)
 	}
