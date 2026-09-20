@@ -30,6 +30,7 @@ see "A note on trust" near the end of this doc.
 | `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
+| `shell` | `"fish"\|"zsh"\|"bash"` | No | `"fish"` | The instance user's login shell, set once by cloud-init at creation and never changed afterwards — see [below](#shell). |
 | `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `bivouac init` finds and fills these in — see [below](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
@@ -106,6 +107,22 @@ Instances on the tailnet also get a practical benefit beyond privacy:
 `session start` points a session's git remote at the tailnet address when
 one is available, so git traffic never crosses the public internet and the
 remote survives a reboot that reassigns the public IP.
+
+### `shell`
+
+`"fish"` (default) | `"zsh"` | `"bash"`
+
+The login shell of the instance user, so `ssh`, tmux panes and herdr panes
+all start it. It is installed from apt and chosen by the cloud-init script
+that runs once at first boot, which is the only thing that ever sets it.
+That is why it cannot be changed later: editing `shell` for an existing
+instance makes `provision` fail, before it connects, with a message saying
+so, rather than claim a change that never happens. An instance created
+before this field existed is not held to it. Destroy and recreate the instance to
+change it.
+
+If the shell fails to install or to run, the instance stays on bash and
+remains reachable.
 
 ### `beads`
 
@@ -352,10 +369,11 @@ base config. If one exists, the two are merged:
 
 - **Scalars** (`region`, `size`, `template`): the project's value wins
   if it set one; otherwise the base's value is used.
-- **`arch`, `image`, `tailscale`, and `beads`**: always the project's
-  resolved value (each has its own schema-level default) -- unlike the
-  scalars above, a personal base config's value for any of these four
-  is never consulted, even if the project doesn't set one explicitly.
+- **`arch`, `image`, `tailscale`, `beads`, and `shell`**: always the
+  project's resolved value (each has its own schema-level default) --
+  unlike the scalars above, a personal base config's value for any of
+  these five is never consulted, even if the project doesn't set one
+  explicitly.
 - **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`,
   `herdrTabs`): additive — your base's entries first, then the
   project's. Nothing is dropped from either side of the merge itself.
