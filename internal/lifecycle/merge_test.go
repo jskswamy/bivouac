@@ -606,3 +606,176 @@ func TestMergeSession_RemovesTheSessionsDoltRemote(t *testing.T) {
 			"alongside its git remote")
 	}
 }
+
+// conflictingSessionFixture is a session whose middle commit cannot replay
+// cleanly: the user's branch has changed the same file underneath it. The
+// commits either side are independent, so only the middle one stops the
+// replay -- which is the shape the resume path has to survive.
+func conflictingSessionFixture(t *testing.T) *sessionFixture {
+	t.Helper()
+	f := newSessionFixture(t, 0)
+
+	writeAndCommit(t, f.agent, "first.txt", "session", "session: add first")
+	writeAndCommit(t, f.agent, "README", "session rewrote this", "session: rewrite README")
+	writeAndCommit(t, f.agent, "last.txt", "session", "session: add last")
+	mustGit(t, f.repo, fetchRemoteArgs(sessionRemote(f.session))...)
+
+	// The user's branch moves the same file the middle commit rewrites, so
+	// that commit -- and only that commit -- conflicts.
+	writeAndCommit(t, f.repo, "README", "main rewrote this", "main: rewrite README")
+	return f
+}
+
+// resolveByHand finishes a stopped cherry-pick the way the error message
+// tells the user to, and the way it was actually done on the session this
+// bug came from: fix the file, stage it, `git cherry-pick --continue`.
+func resolveByHand(t *testing.T, repo, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, path), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", path)
+	mustGit(t, repo, "cherry-pick", "--continue", "--no-edit")
+}
+
+// The bug, end to end. A 26-commit session conflicted on #22, was resolved
+// by hand, and every re-run then replayed all 26 from the original base --
+// re-conflicting on work already merged, forever, until a rebase --onto by
+// hand realigned the tail.
+//
+// The replay range is SHA reachability, and a cherry-picked commit gets a
+// new SHA, so nothing about an already-landed one is recognisable on a
+// re-run. --empty=drop covers for that only while one run replays the whole
+// range in order; the hand-resolved commit moves the tree past what the
+// earlier diffs assume, and they conflict instead of dropping.
+func TestMergeSession_ResumesAfterAConflictResolvedByHand(t *testing.T) {
+	f := conflictingSessionFixture(t)
+
+	_, err := f.merge(t)
+	if err == nil {
+		t.Fatal("first MergeSession() = nil, want the middle commit to stop the replay")
+	}
+	if !strings.Contains(err.Error(), "session merge "+f.session) {
+		t.Errorf("error = %q, want it to say re-running merge picks up from here", err.Error())
+	}
+	if f.sessionRemoved() {
+		t.Fatal("the session was retired despite the replay stopping")
+	}
+
+	resolveByHand(t, f.repo, "README", "both rewrote this")
+
+	signed, err := f.merge(t)
+	if err != nil {
+		t.Fatalf("re-run MergeSession() error = %v, want it to finish the remaining commits", err)
+	}
+	if !f.sessionRemoved() {
+		t.Error("the session was not retired after the replay finished")
+	}
+
+	// Everything the session held is on the branch exactly once, and the
+	// resolution the user made is still the resolution.
+	subjects := gitOut(t, f.repo, "log", "--format=%s", f.base+"..HEAD")
+	for _, want := range []string{"session: add first", "session: rewrite README", "session: add last"} {
+		if strings.Count(subjects, want) != 1 {
+			t.Errorf("log = %q, want %q exactly once", subjects, want)
+		}
+	}
+	if got := readFile(t, f.repo, "README"); got != "both rewrote this" {
+		t.Errorf("README = %q, want the hand-made resolution kept", got)
+	}
+
+	// The commit the user finished by hand is signed like every other one
+	// the replay landed. `git cherry-pick --continue` does not carry the
+	// interrupted pick's -S, so without merge re-signing it the gate would
+	// refuse the very recovery it told the user to perform.
+	//
+	// Only the session's own commits: the user's "main: rewrite README" is
+	// theirs, made outside any replay, and merge has no business signing it.
+	replayed := 0
+	for _, line := range nonEmptyLines(gitOut(t, f.repo, "log", "--pretty=%G? %s", f.base+"..HEAD")) {
+		if !strings.Contains(line, "session: ") {
+			continue
+		}
+		replayed++
+		if !strings.HasPrefix(line, "G ") {
+			t.Errorf("replayed commit %q is not one git vouches for", line)
+		}
+	}
+	if replayed != 3 {
+		t.Errorf("found %d replayed commits on the branch, want 3", replayed)
+	}
+	if len(signed) == 0 {
+		t.Error("the re-run reported no signed commits, want the ones it replayed")
+	}
+}
+
+// Ctrl-C or a crash between two picks is the same question without the
+// conflict: the commits that landed are on the branch, and starting over
+// must not be the only way forward.
+func TestMergeSession_ResumesAfterAnInterruptedReplay(t *testing.T) {
+	f := conflictingSessionFixture(t)
+
+	if _, err := f.merge(t); err == nil {
+		t.Fatal("first MergeSession() = nil, want the middle commit to stop the replay")
+	}
+	stopped := gitOut(t, f.repo, "rev-parse", "HEAD")
+
+	// Back out of the conflict rather than resolving it, which is the other
+	// half of what the error offers. The commit before it stays landed.
+	mustGit(t, f.repo, "cherry-pick", "--abort")
+	if got := gitOut(t, f.repo, "rev-parse", "HEAD"); got != stopped {
+		t.Fatalf("abort left HEAD at %s, want %s — the fixture is not testing what it claims", got, stopped)
+	}
+	if got := readFile(t, f.repo, "first.txt"); got != "session" {
+		t.Fatalf("first.txt = %q, want the commit before the conflict still landed", got)
+	}
+
+	// Resolve it on the branch instead, so the re-run has somewhere to go:
+	// the user takes main's version by reverting their own change.
+	writeAndCommit(t, f.repo, "README", "session rewrote this", "main: take the session's README")
+
+	if _, err := f.merge(t); err != nil {
+		t.Fatalf("re-run MergeSession() error = %v", err)
+	}
+	if !f.sessionRemoved() {
+		t.Error("the session was not retired after the replay finished")
+	}
+	subjects := gitOut(t, f.repo, "log", "--format=%s", f.base+"..HEAD")
+	if strings.Count(subjects, "session: add first") != 1 {
+		t.Errorf("log = %q, want the pre-conflict commit replayed exactly once", subjects)
+	}
+	if strings.Count(subjects, "session: add last") != 1 {
+		t.Errorf("log = %q, want the post-conflict commit replayed", subjects)
+	}
+}
+
+// An open cherry-pick has to say so. It trips the dirty-tree gate as well,
+// and "commit or stash them" is advice nobody can follow mid-pick.
+func TestMergeSession_NamesAnOpenCherryPick(t *testing.T) {
+	f := conflictingSessionFixture(t)
+
+	if _, err := f.merge(t); err == nil {
+		t.Fatal("first MergeSession() = nil, want the middle commit to stop the replay")
+	}
+
+	_, err := f.merge(t)
+	if err == nil {
+		t.Fatal("MergeSession() = nil, want a refusal while a cherry-pick is open")
+	}
+	if !strings.Contains(err.Error(), "cherry-pick") {
+		t.Errorf("error = %q, want it to name the open cherry-pick", err.Error())
+	}
+	if strings.Contains(err.Error(), "stash") {
+		t.Errorf("error = %q, want the dirty-tree advice replaced by advice that can be followed", err.Error())
+	}
+}
+
+func readFile(t *testing.T, repo, name string) string {
+	t.Helper()
+	// #nosec G304 -- test-only, paths come from t.TempDir().
+	raw, err := os.ReadFile(filepath.Join(repo, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}

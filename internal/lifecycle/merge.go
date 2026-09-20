@@ -37,6 +37,14 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 	// content made merge unusable in any repository holding a stray file:
 	// bivouac's own bivouac.pkl is untracked and not gitignored, so bivouac
 	// shipped a file that broke bivouac merge.
+	//
+	// An open cherry-pick is checked first, because it trips that gate too
+	// and "commit or stash them" is advice nobody can follow mid-pick --
+	// it hides the one fact that explains the state.
+	if cherryPickInProgress(ctx, localRepo) {
+		return nil, fmt.Errorf("a cherry-pick from an earlier `bivouac session merge %s` is still open in %s — resolve it and `git cherry-pick --continue`, or `git cherry-pick --abort` to back out, then run merge again; it picks up from there rather than replaying what has already landed", session, localRepo)
+	}
+
 	status, err := runLocalGit(ctx, localRepo, "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return nil, fmt.Errorf("checking working tree: %w\n%s", err, status)
@@ -93,12 +101,23 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 		return nil, fmt.Errorf("counting session commits: %w\n%s", err, count)
 	}
 
+	// Snapshotted before the replay so a rollback can put it back. The
+	// rewind undoes this run's picks, and a record pointing past them
+	// would send the next run to the top of the range -- re-conflicting
+	// on whatever an earlier run landed by hand.
+	resume, resuming := loadReplayProgress(ctx, localRepo, session)
+
 	var signed []string
 	// An agent that produced nothing, or a session already merged, still has
 	// to be retirable -- cherry-pick on an empty range exits 128.
 	if trimLine(count) != "0" {
 		provider.ReportProgress(ctx, "replaying and signing "+session)
-		if err := replaySigned(ctx, localRepo, ref, session, onto); err != nil {
+		// replayBase, not base: a resumed replay is anchored where the run
+		// that started it was, so the commits an interrupted run landed are
+		// verified by the run that finishes the job instead of going
+		// unchecked because they predate its own HEAD.
+		replayBase, err := replaySigned(ctx, localRepo, ref, session, onto)
+		if err != nil {
 			return nil, err
 		}
 		// Re-read HEAD rather than trusting the count above. rev-list has no
@@ -117,8 +136,8 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 		if err != nil {
 			return nil, fmt.Errorf("reading replayed commit: %w\n%s", err, after)
 		}
-		if trimLine(after) != base {
-			signed, err = verifySignatures(ctx, localRepo, base+"..HEAD")
+		if trimLine(after) != replayBase {
+			signed, err = verifySignatures(ctx, localRepo, replayBase+"..HEAD")
 			if err != nil {
 				// Undo the replay. Leaving unverified commits on the branch
 				// is the exact outcome the gate exists to prevent, and it is
@@ -127,13 +146,26 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 				// unmoved HEAD, skip verification and retire the session --
 				// turning a refusal into a silent pass. The work is not at
 				// risk, since nothing on the instance has been touched yet.
+				//
+				// Only this run's own picks are rewound, even though the
+				// verified range may be wider. Commits an earlier run landed
+				// are not this run's to discard -- one of them may be a
+				// conflict the user resolved by hand -- and they stay
+				// covered, because the restored record makes the next run
+				// verify from the same anchor again.
 				if out, resetErr := runLocalGit(ctx, localRepo, "reset", "--hard", base); resetErr != nil {
 					return nil, fmt.Errorf("%w\n\nthe replayed commits could not be rolled back either (%v)\n%s\nyour branch is at %s and holds unverified commits — reset to %s by hand before merging again", err, resetErr, out, trimLine(after), base)
 				}
+				restoreReplayProgress(ctx, localRepo, session, resume, resuming)
 				return nil, err
 			}
 		}
 	}
+	// The replay is done with, verified, and about to be retired: nothing
+	// is left for a later run to pick up. Cleared here rather than at the
+	// end of replaySigned so that a verification failure above still has a
+	// record to put back.
+	clearReplayProgress(ctx, localRepo, session)
 
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
@@ -197,7 +229,10 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 }
 
 // replaySigned replays every commit the session added onto the current branch,
-// signing each one and stripping the attribution trailers an agent wrote.
+// signing each one and stripping the attribution trailers an agent wrote. It
+// returns the local commit the whole replay is anchored on -- this run's HEAD
+// for a fresh replay, the earlier run's for a resumed one -- which is the
+// range the caller verifies.
 //
 // One commit at a time rather than one cherry-pick of the whole range, because
 // a message can only be corrected once its commit exists. That also makes a
@@ -205,31 +240,108 @@ func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Ses
 //
 // --empty=drop still does the work that makes a re-run safe: commits already
 // present are dropped rather than stopping the pick, so HEAD simply does not
-// move and the caller reads that as "already landed".
-func replaySigned(ctx context.Context, localRepo, ref, session, onto string) error {
+// move and the caller reads that as "already landed". That is enough on its
+// own only while one run replays the whole range in order; once a commit lands
+// out of band -- a conflict resolved by hand -- the tree has moved past what
+// the earlier diffs assume and they conflict instead of dropping. The progress
+// record is what carries a replay across runs through that; see
+// replayProgress.
+func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (string, error) {
 	list, err := runLocalGit(ctx, localRepo, "rev-list", "--reverse", "HEAD.."+ref)
 	if err != nil {
-		return fmt.Errorf("listing session commits: %w\n%s", err, list)
+		return "", fmt.Errorf("listing session commits: %w\n%s", err, list)
+	}
+	commits := nonEmptyLines(list)
+
+	head, err := HeadCommit(ctx, localRepo)
+	if err != nil {
+		return "", err
+	}
+	start, base, handFinished := resumeAt(ctx, localRepo, session, ref, head, commits)
+	if start > 0 {
+		provider.ReportProgress(ctx, fmt.Sprintf("resuming %s at commit %d of %d", session, start+1, len(commits)))
+	}
+	if handFinished {
+		if err := resignHandFinished(ctx, localRepo); err != nil {
+			return "", err
+		}
+		if head, err = HeadCommit(ctx, localRepo); err != nil {
+			return "", err
+		}
 	}
 
-	for _, sha := range nonEmptyLines(list) {
+	progress := replayProgress{Ref: ref, Base: base, Onto: head}
+	if start > 0 {
+		progress.Done = commits[start-1]
+	}
+	if handFinished {
+		// Saved before the loop, not left to the first pick: the amend
+		// moved HEAD past the Onto the record was matched against, and a
+		// merge that fails after this point for some unrelated reason
+		// would otherwise see the same mismatch next time and amend an
+		// already-signed commit, churning the branch on every run.
+		_ = saveReplayProgress(ctx, localRepo, session, progress)
+	}
+
+	for _, sha := range commits[start:] {
 		before, err := HeadCommit(ctx, localRepo)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if out, err := runLocalGit(ctx, localRepo, cherryPickSignArgs(sha)...); err != nil {
-			return fmt.Errorf("replaying %s from session %s onto %s: %w\n%s\nresolve the conflict then `git cherry-pick --continue`, or `git cherry-pick --abort` to back out", sha[:min(len(sha), 8)], session, onto, err, out)
+			// Written before the error is returned, and naming the commit
+			// that stopped rather than one that landed: the next run reads
+			// it to find out whether the conflict was resolved and
+			// continued, or aborted, which is the difference between
+			// carrying on and picking this commit up again.
+			progress.Stopped = sha
+			progress.Onto = before
+			_ = saveReplayProgress(ctx, localRepo, session, progress)
+			return "", fmt.Errorf("replaying %s from session %s onto %s: %w\n%s\nresolve the conflict then `git cherry-pick --continue`, or `git cherry-pick --abort` to back out\nthen `bivouac session merge %s` again -- it picks up from here rather than replaying what has already landed", sha[:min(len(sha), 8)], session, onto, err, out, session)
 		}
 		after, err := HeadCommit(ctx, localRepo)
 		if err != nil {
-			return err
+			return "", err
 		}
-		if after == before {
-			continue // dropped as already applied
+		if after != before {
+			if err := cleanReplayedMessage(ctx, localRepo); err != nil {
+				return "", err
+			}
+			after, err = HeadCommit(ctx, localRepo)
+			if err != nil {
+				return "", err
+			}
 		}
-		if err := cleanReplayedMessage(ctx, localRepo); err != nil {
-			return err
-		}
+		// Recorded per commit, not per run: a crash or a Ctrl-C between
+		// two picks is exactly the interruption this has to survive, and
+		// the only thing that makes it survivable is that the record was
+		// already on disk.
+		progress.Done, progress.Stopped, progress.Onto = sha, "", after
+		_ = saveReplayProgress(ctx, localRepo, session, progress)
+	}
+	return base, nil
+}
+
+// resignHandFinished signs and cleans the commit a user made to finish a
+// conflict the replay stopped on.
+//
+// `git cherry-pick --continue` does not carry the -S the interrupted
+// pick was given: measured, not assumed -- the commit it writes reports
+// %G? = N. The signature is the entire reason merge cherry-picks rather
+// than squashes, so a commit that arrived through the documented
+// conflict-recovery path cannot be the one exception to it, and the
+// alternative is a merge that refuses at the gate for doing exactly what
+// it was told to do.
+//
+// Amending unconditionally, unlike cleanReplayedMessage: there is no
+// message change to key off, and the thing being fixed is the signature.
+func resignHandFinished(ctx context.Context, localRepo string) error {
+	msg, err := runLocalGit(ctx, localRepo, "log", "-1", "--format=%B")
+	if err != nil {
+		return fmt.Errorf("reading the resolved commit's message: %w\n%s", err, msg)
+	}
+	if out, err := runLocalGit(ctx, localRepo, "commit", "--amend", "--quiet", "-S", "-m", stripAgentTrailers(msg)); err != nil {
+		return fmt.Errorf("signing the conflict you resolved by hand: %w\n%s", err, out)
 	}
 	return nil
 }
