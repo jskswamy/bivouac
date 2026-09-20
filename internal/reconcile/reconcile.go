@@ -41,6 +41,23 @@ func remoteFlakePath(user string) string {
 	return remoteFlakeDir(user) + "/flake.nix"
 }
 
+// checkLoginShell refuses a config whose shell differs from the one the
+// instance was created with. The login shell is set only by the boot
+// script, which runs once, so editing the field afterwards would change
+// nothing on the instance while the config claimed otherwise. It could be
+// re-applied over SSH; it is refused instead so exactly one place, the boot
+// script, ever decides it and no re-provision can leave an instance
+// half-switched.
+//
+// A record with no shell was created before the field existed, so there is
+// nothing to hold the config to.
+func checkLoginShell(name string, record state.Record, want string) error {
+	if record.Shell == "" || record.Shell == want {
+		return nil
+	}
+	return fmt.Errorf("instance %q was created with shell %q but bivouac.pkl now says %q -- the login shell is fixed at creation; destroy and recreate the instance to change it", name, record.Shell, want)
+}
+
 // Reconcile brings name's home-manager environment up to date with its
 // local bivouac.pkl at bivouacPath: resolves the config, renders a
 // per-instance wrapper flake if packages/flakes require one, ships it to
@@ -61,6 +78,11 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 
 	cfg, err := config.Resolve(ctx, bivouacPath)
 	if err != nil {
+		return err
+	}
+	// Before connecting: nothing past this point can act on a shell the
+	// instance was not created with.
+	if err := checkLoginShell(name, record, cfg.Shell); err != nil {
 		return err
 	}
 
