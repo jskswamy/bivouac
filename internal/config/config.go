@@ -120,6 +120,7 @@ func mergeConfig(base, project Config) Config {
 		Arch:      project.Arch,
 		Image:     project.Image,
 		Tailscale: project.Tailscale,
+		Shell:     project.Shell,
 		Beads:     project.Beads,
 		SshKeys:   mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
 		Packages:  append(append([]string{}, base.Packages...), project.Packages...),

@@ -648,3 +648,73 @@ func TestMergeConfig_SettingsProjectAddsNewKey(t *testing.T) {
 		t.Errorf("Settings = %v, want exactly 2 keys", got.Settings)
 	}
 }
+
+const shellFixtureHead = `region = "blr1"
+size = "s-2vcpu-4gb"
+template = "python"
+`
+
+func TestResolve_ShellDefaultsToFish(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, shellFixtureHead)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Shell != "fish" {
+		t.Errorf("Shell = %q, want %q", cfg.Shell, "fish")
+	}
+}
+
+func TestResolve_ShellAcceptsZshAndBash(t *testing.T) {
+	for _, want := range []string{"zsh", "bash"} {
+		t.Run(want, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "bivouac.pkl")
+			writeFixture(t, path, shellFixtureHead+`shell = "`+want+"\"\n")
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+			cfg, err := Resolve(t.Context(), path)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			if cfg.Shell != want {
+				t.Errorf("Shell = %q, want %q", cfg.Shell, want)
+			}
+		})
+	}
+}
+
+// The value is interpolated into a root-run boot script, so an unknown
+// shell has to be refused when the config is evaluated, not discovered on
+// the instance.
+func TestResolve_ShellRejectsAnUnknownShell(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, shellFixtureHead+`shell = "tcsh"`+"\n")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	if _, err := Resolve(t.Context(), path); err == nil {
+		t.Fatal("Resolve() error = nil, want a type error for a shell that is not fish, zsh or bash")
+	}
+}
+
+// Like arch, image, tailscale and beads, shell carries a schema default, so
+// a base value cannot be told from an unset one and is never consulted.
+func TestResolve_ShellIgnoresTheBase(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "base.pkl"), `shell = "zsh"`+"\n")
+	path := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, path, `basePath = "./base.pkl"`+"\n"+shellFixtureHead)
+
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Shell != "fish" {
+		t.Errorf("Shell = %q, want %q (the base's value is not consulted)", cfg.Shell, "fish")
+	}
+}
