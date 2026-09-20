@@ -21,6 +21,11 @@ func newProvisionCmd() *cobra.Command {
 
 			ctx := progressCtx(cmd)
 			bivouacPath := filepath.Join(root, "bivouac.pkl")
+			// Named for the same reason up names it in its prompt: root is
+			// the main checkout, so a bivouac.pkl beside a caller standing
+			// in a linked worktree is not the one being applied. provision
+			// has no confirmation to carry the path, so it says it here.
+			cmd.Printf("Reconciling %s from %s\n", name, bivouacPath)
 			// The same step `up` runs, called rather than rebuilt: it was
 			// a second copy of the label and the closure, and the only
 			// reason this file reached for tui and reconcile directly.

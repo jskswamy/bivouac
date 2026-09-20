@@ -46,7 +46,7 @@ func newUpCmd() *cobra.Command {
 				return fmt.Errorf("%w (needed to create instance %q)", err, name)
 			}
 
-			ok, err := confirm(cmd, upSummary(name, cfg))
+			ok, err := confirm(cmd, upSummary(name, bivouacPath, cfg))
 			if err != nil {
 				return err
 			}
@@ -154,9 +154,20 @@ func ensureSSHKeysWith(cmd *cobra.Command, bivouacPath string, p prompter, keys 
 
 // upSummary describes the instance up is about to create, for
 // confirmation before anything billable happens.
-func upSummary(name string, cfg config.Resolved) string {
+//
+// The config path is named, not just the values read from it, because
+// the file being read is not always the one the user is standing next
+// to. An instance is identified by its repository, so RepoRoot resolves
+// through .git to the main checkout -- run from a linked worktree, up
+// reads the main checkout's bivouac.pkl and ignores one sitting beside
+// the caller. That is the consistent behaviour (one instance, one
+// config) but it is invisible, and it cost a live-fire run that died at
+// a sops step the worktree's config had switched off. Printing the path
+// makes the surprise cost one glance instead of a debugging session.
+func upSummary(name, bivouacPath string, cfg config.Resolved) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "This will create instance %q:\n", name)
+	fmt.Fprintf(&b, "  Config:   %s\n", bivouacPath)
 	fmt.Fprintf(&b, "  Region:   %s\n", cfg.Region)
 	fmt.Fprintf(&b, "  Size:     %s\n", cfg.Size)
 	fmt.Fprintf(&b, "  Template: %s\n", cfg.Template)

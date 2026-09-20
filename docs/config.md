@@ -367,6 +367,32 @@ Status:   unknown (no live check: no DigitalOcean token: DIGITALOCEAN_TOKEN is u
 
 This is the same way `status` already renders an instance it cannot reach.
 
+## Which `bivouac.pkl` gets read
+
+Always the one in the repository's **main checkout** — the directory
+holding the real `.git`, not a linked worktree.
+
+An instance is identified by its repository, so every worktree of a repo
+shares one instance, and one instance has one config. A `bivouac.pkl`
+sitting beside you in a worktree is therefore *not* read when you run
+`bivouac up` from there; the main checkout's is. This is deliberate —
+two worktrees able to disagree about the same droplet would be worse —
+but it is not what the file next to you suggests.
+
+`up` prints the path it resolved in its confirmation prompt for exactly
+this reason:
+
+```
+This will create instance "myrepo":
+  Config:   /Users/you/src/myrepo/bivouac.pkl
+  Region:   nyc3
+  ...
+Proceed? [y/N]:
+```
+
+If that path is not the file you have been editing, that is why. Edit
+the one it names, or run `bivouac up` from the main checkout.
+
 ## Personal base config and reuse across projects
 
 Most of your `bivouac.pkl` settings — your SSH key, your usual droplet
