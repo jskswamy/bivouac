@@ -13,17 +13,22 @@ import (
 // Record is one instance's state: which provider created it and its VM
 // and network details.
 type Record struct {
-	Name            string    `json:"name"`
-	Provider        string    `json:"provider"`
-	VMID            string    `json:"vm_id"`
-	IP              string    `json:"ip"`
-	Region          string    `json:"region"`
-	Size            string    `json:"size"`
-	Template        string    `json:"template"`
-	User            string    `json:"user"`
-	RepoPath        string    `json:"repo_path"`
-	TailscaleJoined bool      `json:"tailscale_joined"`
-	Sessions        []Session `json:"sessions"`
+	Name            string `json:"name"`
+	Provider        string `json:"provider"`
+	VMID            string `json:"vm_id"`
+	IP              string `json:"ip"`
+	Region          string `json:"region"`
+	Size            string `json:"size"`
+	Template        string `json:"template"`
+	User            string `json:"user"`
+	RepoPath        string `json:"repo_path"`
+	TailscaleJoined bool   `json:"tailscale_joined"`
+	// Shell is the login shell cloud-init was asked to set at creation.
+	// Recorded because nothing applies it afterwards, so a later config
+	// edit can be checked against what the instance actually got. Empty
+	// means the instance predates the field.
+	Shell    string    `json:"shell,omitempty"`
+	Sessions []Session `json:"sessions"`
 }
 
 // Session is one agent session on an instance. Name, LocalRepo and Base

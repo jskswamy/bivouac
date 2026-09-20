@@ -210,3 +210,22 @@ func TestOpen_NoXDGStateHome_FallsBackToLocalState(t *testing.T) {
 		t.Errorf("store path = %q, want %q", s.path, want)
 	}
 }
+
+// A record that predates the shell field must read back with it empty,
+// and one written now must keep it -- the field is what a later config
+// edit is checked against.
+func TestRecord_ShellRoundTripsAndLegacyRecordsReadBackEmpty(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.Put(Record{Name: "new", Shell: "fish"}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if err := s.Put(Record{Name: "old"}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got, _, _ := s.Get("new"); got.Shell != "fish" {
+		t.Errorf("Get(new).Shell = %q, want fish", got.Shell)
+	}
+	if got, _, _ := s.Get("old"); got.Shell != "" {
+		t.Errorf("Get(old).Shell = %q, want empty for a record with no shell", got.Shell)
+	}
+}
