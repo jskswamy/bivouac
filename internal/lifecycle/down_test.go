@@ -28,6 +28,21 @@ func setupDownTest(t *testing.T) *state.Store {
 	return store
 }
 
+func TestDown_RemovesInstanceHerdrMachine(t *testing.T) {
+	var removed []string
+	old := removeHerdrMachine
+	removeHerdrMachine = func(_ herdrRunner, id string) error {
+		removed = append(removed, id)
+		return nil
+	}
+	defer func() { removeHerdrMachine = old }()
+
+	forgetHerdrMachines(context.Background(), state.Record{Name: "inst", HerdrMachineID: "mid"})
+	if len(removed) != 1 || removed[0] != "mid" {
+		t.Fatalf("removed %v, want [mid]", removed)
+	}
+}
+
 func TestDown_DestroysAndClearsState(t *testing.T) {
 	store := setupDownTest(t)
 	record := state.Record{Name: "myinstance", VMID: "vm-1", IP: "127.0.0.1"}

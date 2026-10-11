@@ -126,6 +126,10 @@ func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
 // first -- but the entries in the user's sidebar would otherwise point at a
 // host that no longer exists.
 func forgetHerdrMachines(ctx context.Context, record state.Record) {
+	if err := removeHerdrMachine(localHerdr{ctx: ctx}, record.HerdrMachineID); err != nil {
+		provider.ReportWarning(ctx, "herdr: "+err.Error()+
+			"\nremove it by hand: herdr machine remove "+record.HerdrMachineID)
+	}
 	for _, s := range record.Sessions {
 		CleanupHerdr(ctx, s.HerdrMachineID, "", nil)
 	}

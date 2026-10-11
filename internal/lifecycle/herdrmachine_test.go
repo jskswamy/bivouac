@@ -398,3 +398,37 @@ func TestCleanupHerdr_StopsAndDeletesTheRemoteSession(t *testing.T) {
 		t.Errorf("want the remote session stopped and deleted, got %v", r.cmds)
 	}
 }
+
+func TestCleanupHerdr_RemovesLegacySessionMachine(t *testing.T) {
+	var removed []string
+	old := removeHerdrMachine
+	removeHerdrMachine = func(_ herdrRunner, id string) error {
+		removed = append(removed, id)
+		return nil
+	}
+	defer func() { removeHerdrMachine = old }()
+
+	r := &fakeRemote{}
+	CleanupHerdr(context.Background(), "legacy", "auth", r)
+	if len(removed) != 1 || removed[0] != "legacy" {
+		t.Fatalf("removed %v, want [legacy]", removed)
+	}
+	if !r.ran("session stop") || !r.ran("session delete") {
+		t.Errorf("want the remote session stopped and deleted, got %v", r.cmds)
+	}
+}
+
+func TestDeleteSession_DoesNotRemoveSharedHerdrMachine(t *testing.T) {
+	var removed []string
+	old := removeHerdrMachine
+	removeHerdrMachine = func(_ herdrRunner, id string) error {
+		removed = append(removed, id)
+		return nil
+	}
+	defer func() { removeHerdrMachine = old }()
+
+	CleanupHerdr(context.Background(), "", "auth", &fakeRemote{})
+	if len(removed) != 0 {
+		t.Fatalf("removed %v with no legacy session machine id", removed)
+	}
+}

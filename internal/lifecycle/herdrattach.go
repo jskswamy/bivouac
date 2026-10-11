@@ -149,8 +149,10 @@ type remoteRunner interface {
 	Run(cmd string) (output string, err error)
 }
 
-// CleanupHerdr removes what `bivouac herdr` left behind for a session: the
-// saved machine on this side, and the session server on the instance.
+var removeHerdrMachine = RemoveMachine
+
+// CleanupHerdr removes what legacy `bivouac herdr` left behind for a session:
+// the saved session-scoped machine on this side, and the session server on the instance.
 //
 // The two halves are independent on purpose. Forgetting the profile is a
 // local operation and must still happen when the instance is unreachable --
@@ -173,7 +175,7 @@ func CleanupHerdr(ctx context.Context, machineID, session string, client remoteR
 	if machineID == "" {
 		return
 	}
-	if err := RemoveMachine(localHerdr{ctx: ctx}, machineID); err != nil {
+	if err := removeHerdrMachine(localHerdr{ctx: ctx}, machineID); err != nil {
 		provider.ReportWarning(ctx, "herdr: "+err.Error()+
 			"\nremove it by hand: herdr machine remove "+machineID)
 	}
