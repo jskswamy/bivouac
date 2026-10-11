@@ -189,6 +189,26 @@ func TestStore_RoundTripsSessions(t *testing.T) {
 	}
 }
 
+func TestRecord_HerdrMachineIDRoundTrips(t *testing.T) {
+	s := openTestStore(t)
+	r := Record{Name: "inst", HerdrMachineID: "mid"}
+	r.PutSession(Session{Name: "auth", HerdrMachineID: "legacy"})
+	if err := s.Put(r); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := s.Get("inst")
+	if err != nil || !ok {
+		t.Fatalf("Get() = %v, %v", ok, err)
+	}
+	if got.HerdrMachineID != "mid" {
+		t.Errorf("HerdrMachineID = %q, want mid", got.HerdrMachineID)
+	}
+	if len(got.Sessions) != 1 || got.Sessions[0].HerdrMachineID != "legacy" {
+		t.Errorf("legacy session HerdrMachineID = %+v, want legacy preserved", got.Sessions)
+	}
+}
+
 // The fallback branch, which every other test in this package steps over by
 // setting XDG_STATE_HOME to a temp dir. It is the only one of bivouac's XDG
 // resolvers whose fallback is two path segments rather than a single dotted

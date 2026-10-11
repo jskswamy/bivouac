@@ -123,7 +123,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 		// saved profile's id even when a later step failed, and teardown
 		// removes this exact profile -- one bivouac created but did not
 		// record is one nothing will ever clean up.
-		if rerr := recordHerdrMachine(store, record.Name, session, id); rerr != nil {
+		if rerr := recordHerdrMachine(store, record.Name, id); rerr != nil {
 			return errors.Join(err, rerr)
 		}
 		if err != nil {
@@ -161,9 +161,9 @@ func ownedMachines(store *state.Store) lifecycle.OwnedMachines {
 	return owned
 }
 
-// recordHerdrMachine remembers which profile belongs to a session, so
-// teardown can remove exactly that one.
-func recordHerdrMachine(store *state.Store, instance, session, id string) error {
+// recordHerdrMachine remembers which profile belongs to an instance, so
+// teardown can remove the shared machine once the instance goes away.
+func recordHerdrMachine(store *state.Store, instance, id string) error {
 	if id == "" {
 		return nil
 	}
@@ -171,16 +171,11 @@ func recordHerdrMachine(store *state.Store, instance, session, id string) error 
 	if err != nil || !ok {
 		return err
 	}
-	for i := range record.Sessions {
-		if record.Sessions[i].Name == session {
-			if record.Sessions[i].HerdrMachineID == id {
-				return nil
-			}
-			record.Sessions[i].HerdrMachineID = id
-			return store.Put(record)
-		}
+	if record.HerdrMachineID == id {
+		return nil
 	}
-	return nil
+	record.HerdrMachineID = id
+	return store.Put(record)
 }
 
 func runPair(cmd *cobra.Command, name string, args []string) error {

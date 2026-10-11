@@ -325,6 +325,24 @@ func TestRunSession_RejectsANameThatCannotBeABranchOrPath(t *testing.T) {
 // a session whose local remote no longer exists, which nothing can ever rescue
 // again: every later `bivouac down` refuses on it and recommends the --force
 // that skips the rescue for every other session on the instance too.
+func TestRecordHerdrMachine_RecordsOnInstance(t *testing.T) {
+	record := state.Record{Name: "myinstance"}
+	record.PutSession(state.Session{Name: "auth"})
+	store := sessionTestStore(t, record)
+
+	if err := recordHerdrMachine(store, "myinstance", "mid"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, _ := store.Get("myinstance")
+	if got.HerdrMachineID != "mid" {
+		t.Errorf("HerdrMachineID = %q, want mid", got.HerdrMachineID)
+	}
+	if got.Sessions[0].HerdrMachineID != "" {
+		t.Errorf("session HerdrMachineID = %q, want it left for legacy-only cleanup", got.Sessions[0].HerdrMachineID)
+	}
+}
+
 func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testing.T) {
 	localRepo := t.TempDir()
 	mustGitCmd(t, localRepo, "init", "--quiet")

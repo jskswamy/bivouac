@@ -23,6 +23,7 @@ type Record struct {
 	User            string `json:"user"`
 	RepoPath        string `json:"repo_path"`
 	TailscaleJoined bool   `json:"tailscale_joined"`
+	HerdrMachineID  string `json:"herdr_machine_id,omitempty"`
 	// Shell is the login shell cloud-init was asked to set at creation.
 	// Recorded because nothing applies it afterwards, so a later config
 	// edit can be checked against what the instance actually got. Empty
