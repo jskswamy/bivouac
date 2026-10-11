@@ -92,36 +92,18 @@ func TestFindMachine_MatchesOnTargetAndSessionNotLabel(t *testing.T) {
 	}
 }
 
-// The session name is what the user thinks in, and the sidebar is narrow.
-// Qualifying every label put the instance first and truncated to
-// "jskswamy-bivouac/su...", cutting the only part that identifies which
-// session it is.
-func TestMachineLabel_IsJustTheSessionName(t *testing.T) {
-	if got := MachineLabel("auth"); got != "auth" {
-		t.Errorf("MachineLabel() = %q, want the bare session name", got)
+func TestMachineLabel_IsTheInstanceName(t *testing.T) {
+	if got := MachineLabel("jskswamy-bivouac"); got != "jskswamy-bivouac" {
+		t.Fatalf("MachineLabel() = %q, want the instance name", got)
 	}
 }
 
-// Two instances can each hold a session called "auth". The disambiguator is
-// a suffix so that truncation eats the instance rather than the name.
-func TestQualifiedMachineLabel_SuffixesTheInstance(t *testing.T) {
-	got := qualifiedMachineLabel("jskswamy-bivouac", "auth")
-	if !strings.HasPrefix(got, "auth") {
-		t.Errorf("qualifiedMachineLabel() = %q, want the session name first so a "+
-			"truncated label still identifies the session", got)
+func TestMachineAddArgs_OmitsRemoteSessionForSharedMachine(t *testing.T) {
+	got := strings.Join(machineAddArgs("ssh://u@1.2.3.4", "jskswamy-bivouac"), " ")
+	if strings.Contains(got, "--remote-session") {
+		t.Fatalf("machineAddArgs() = %q, want no --remote-session for a shared instance machine", got)
 	}
-	if !strings.Contains(got, "jskswamy-bivouac") {
-		t.Errorf("qualifiedMachineLabel() = %q, want it to name the instance", got)
-	}
-	if got == qualifiedMachineLabel("ulai-ai-ulai", "auth") {
-		t.Error("both instances produced the same qualified label")
-	}
-}
-
-func TestMachineAddArgs_CarriesLabelAndRemoteSession(t *testing.T) {
-	got := strings.Join(machineAddArgs("ssh://u@1.2.3.4", "inst/auth", "auth"), " ")
-
-	for _, want := range []string{"machine", "add", "--label", "inst/auth", "--remote-session", "auth", "ssh://u@1.2.3.4"} {
+	for _, want := range []string{"machine", "add", "ssh://u@1.2.3.4", "--label", "jskswamy-bivouac"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("machineAddArgs() = %q, want it to contain %q", got, want)
 		}
@@ -134,7 +116,7 @@ func TestMachineAddArgs_CarriesLabelAndRemoteSession(t *testing.T) {
 // verb. Containment assertions passed happily while the real command could
 // not run at all.
 func TestMachineAddArgs_PutsTheTargetFirst(t *testing.T) {
-	args := machineAddArgs("ssh://u@1.2.3.4", "inst/auth", "auth")
+	args := machineAddArgs("ssh://u@1.2.3.4", "jskswamy-bivouac")
 	if len(args) < 3 {
 		t.Fatalf("machineAddArgs() = %v, too short", args)
 	}
@@ -143,15 +125,6 @@ func TestMachineAddArgs_PutsTheTargetFirst(t *testing.T) {
 	}
 	if args[2] != "ssh://u@1.2.3.4" {
 		t.Errorf("args[2] = %q, want the ssh target -- herdr exits 2 when it comes after the flags", args[2])
-	}
-}
-
-// The default session is herdr's own, and passing --remote-session for it
-// would name a session that need not exist.
-func TestMachineAddArgs_OmitsRemoteSessionWhenThereIsNoBivouacSession(t *testing.T) {
-	got := strings.Join(machineAddArgs("ssh://u@1.2.3.4", "inst", ""), " ")
-	if strings.Contains(got, "--remote-session") {
-		t.Errorf("machineAddArgs() = %q, want no --remote-session when the session is empty", got)
 	}
 }
 
@@ -242,118 +215,76 @@ func (f *fakeHerdr) ran(verb string) bool {
 	return false
 }
 
-func TestEnsureMachine_AddsWithTheBareSessionNameAndReturnsItsID(t *testing.T) {
+func TestEnsureMachine_AddsWithInstanceLabelWhenNoRecordedID(t *testing.T) {
 	h := &fakeHerdr{
 		listJSON: "[]",
-		afterAddJSON: `[{"id":"newid00","label":"auth","target":"ssh://u@1.2.3.4",` +
-			`"session":"auth","enabled":true}]`,
+		afterAddJSON: `[{"id":"newid00","label":"jskswamy-bivouac","target":"ssh://u@1.2.3.4",` +
+			`"session":"default","enabled":true}]`,
 	}
 
-	id, label, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
+	id, label, err := EnsureMachine(h, "jskswamy-bivouac", "ssh://u@1.2.3.4", "")
 	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
-	if label != "auth" {
-		t.Errorf("label = %q, want the bare session name", label)
+	if label != "jskswamy-bivouac" {
+		t.Errorf("label = %q, want the instance name", label)
 	}
 	if id != "newid00" {
-		t.Errorf("id = %q, want the id read back from the listing -- teardown removes by "+
-			"exactly this and nothing else", id)
+		t.Errorf("id = %q, want the id read back from the listing", id)
 	}
 }
 
-// Running bivouac herdr twice must not leave two profiles for one session:
-// machine add does not deduplicate, and nothing else would.
-func TestEnsureMachine_IsIdempotentAndStillReportsTheID(t *testing.T) {
-	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"auth",` +
-		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":true}]`}
+func TestEnsureMachine_ReusesUnrecordedInstanceMachineByTargetAndLabel(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"mid","label":"jskswamy-bivouac",` +
+		`"target":"ssh://u@1.2.3.4","session":"default","enabled":true}]`}
 
-	id, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
+	id, label, err := EnsureMachine(h, "jskswamy-bivouac", "ssh://u@1.2.3.4", "")
 	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
 	if h.ran("add") {
-		t.Error("machine add ran for a profile that already exists -- that is a duplicate")
+		t.Error("machine add ran for an instance machine that already exists")
 	}
-	// Recording on the reuse path is what stops a session attached before this
-	// existed from leaking at teardown.
-	if id != "abc" {
-		t.Errorf("id = %q, want abc even though nothing was added", id)
+	if id != "mid" || label != "jskswamy-bivouac" {
+		t.Errorf("EnsureMachine() = %q, %q; want mid/jskswamy-bivouac", id, label)
 	}
 }
 
-func TestEnsureMachine_EnablesADisabledProfileAndReportsTheID(t *testing.T) {
-	h := &fakeHerdr{listJSON: `[{"id":"abc","label":"auth",` +
-		`"target":"ssh://u@1.2.3.4","session":"auth","enabled":false}]`}
+func TestEnsureMachine_ReusesRecordedInstanceMachineID(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"mid","label":"renamed by user",` +
+		`"target":"ssh://u@1.2.3.4","session":"default","enabled":true}]`}
 
-	id, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil)
+	id, label, err := EnsureMachine(h, "jskswamy-bivouac", "ssh://u@1.2.3.4", "mid")
+	if err != nil {
+		t.Fatalf("EnsureMachine() error = %v", err)
+	}
+	if h.ran("add") {
+		t.Error("machine add ran for a recorded profile that already exists")
+	}
+	if id != "mid" {
+		t.Errorf("id = %q, want mid", id)
+	}
+	if label != "renamed by user" {
+		t.Errorf("label = %q, want the user's current label", label)
+	}
+}
+
+func TestEnsureMachine_EnablesADisabledRecordedProfileAndReportsTheID(t *testing.T) {
+	h := &fakeHerdr{listJSON: `[{"id":"mid","label":"jskswamy-bivouac",` +
+		`"target":"ssh://u@1.2.3.4","session":"default","enabled":false}]`}
+
+	id, _, err := EnsureMachine(h, "jskswamy-bivouac", "ssh://u@1.2.3.4", "mid")
 	if err != nil {
 		t.Fatalf("EnsureMachine() error = %v", err)
 	}
 	if !h.ran("enable") {
-		t.Error("want machine enable for a disabled profile")
+		t.Error("want machine enable for a disabled recorded profile")
 	}
 	if h.ran("add") {
 		t.Error("machine add ran for a profile that exists but is disabled")
 	}
-	if id != "abc" {
-		t.Errorf("id = %q, want abc", id)
-	}
-}
-
-// Two instances holding a session of the same name: both labels gain the
-// instance, so a bare name always means there is only one.
-func TestEnsureMachine_QualifiesBothSidesOfANameClash(t *testing.T) {
-	h := &fakeHerdr{
-		listJSON: `[{"id":"other","label":"auth","target":"ssh://u@9.9.9.9",` +
-			`"session":"auth","enabled":true}]`,
-		afterAddJSON: `[{"id":"other","label":"auth","target":"ssh://u@9.9.9.9",` +
-			`"session":"auth","enabled":true},` +
-			`{"id":"newid00","label":"auth (inst-b)","target":"ssh://u@1.2.3.4",` +
-			`"session":"auth","enabled":true}]`,
-	}
-	owned := OwnedMachines{"other": "inst-a"}
-
-	_, label, err := EnsureMachine(h, "inst-b", "ssh://u@1.2.3.4", "auth", owned)
-	if err != nil {
-		t.Fatalf("EnsureMachine() error = %v", err)
-	}
-	if !strings.Contains(label, "inst-b") {
-		t.Errorf("our label = %q, want it qualified by the instance", label)
-	}
-	renamed := false
-	for _, c := range h.calls {
-		if len(c) > 2 && c[1] == "rename" && c[2] == "other" {
-			renamed = true
-		}
-	}
-	if !renamed {
-		t.Error("want the existing bivouac profile renamed too -- otherwise a bare " +
-			"\"auth\" silently means whichever was registered first")
-	}
-}
-
-// A profile the user added by hand is not bivouac's to rename, even when it
-// takes the name bivouac wanted. Ours is qualified; theirs is left alone.
-func TestEnsureMachine_NeverRenamesAProfileItDidNotRegister(t *testing.T) {
-	h := &fakeHerdr{
-		listJSON: `[{"id":"theirs","label":"auth","target":"ssh://u@9.9.9.9",` +
-			`"session":"auth","enabled":true}]`,
-		afterAddJSON: `[{"id":"theirs","label":"auth","target":"ssh://u@9.9.9.9",` +
-			`"session":"auth","enabled":true},` +
-			`{"id":"newid00","label":"auth (inst-b)","target":"ssh://u@1.2.3.4",` +
-			`"session":"auth","enabled":true}]`,
-	}
-
-	_, label, err := EnsureMachine(h, "inst-b", "ssh://u@1.2.3.4", "auth", OwnedMachines{})
-	if err != nil {
-		t.Fatalf("EnsureMachine() error = %v", err)
-	}
-	if !strings.Contains(label, "inst-b") {
-		t.Errorf("our label = %q, want it qualified", label)
-	}
-	if h.ran("rename") {
-		t.Error("renamed a profile bivouac never registered")
+	if id != "mid" {
+		t.Errorf("id = %q, want mid", id)
 	}
 }
 
@@ -361,7 +292,7 @@ func TestEnsureMachine_NeverRenamesAProfileItDidNotRegister(t *testing.T) {
 // looking for a sidebar entry that was never created.
 func TestEnsureMachine_ReportsAFailedAdd(t *testing.T) {
 	h := &fakeHerdr{listJSON: "[]", failOn: "add"}
-	if _, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", "auth", nil); err == nil {
+	if _, _, err := EnsureMachine(h, "inst", "ssh://u@1.2.3.4", ""); err == nil {
 		t.Error("EnsureMachine() error = nil after machine add failed")
 	}
 }

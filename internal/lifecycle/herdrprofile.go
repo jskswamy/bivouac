@@ -52,18 +52,11 @@ func findMachine(profiles []machineProfile, target, session string) (machineProf
 	return machineProfile{}, false
 }
 
-// MachineLabel is what the machine is called in herdr's sidebar: the bare
-// session name.
-//
-// The session is what the user thinks in, and the sidebar is narrow. An
-// earlier scheme qualified every label with the instance and truncated to
-// "jskswamy-bivouac/su...", cutting the only part that says which session
-// it is -- the disambiguator survived and the name did not.
-//
-// Cosmetic only. Identity is the recorded machine id, and matching is on
-// target and session, so this can change again without touching cleanup.
-func MachineLabel(session string) string {
-	return session
+// MachineLabel is what the machine is called in herdr's sidebar: the
+// bivouac instance name. Sessions are workspaces nested underneath it, so
+// the machine itself provides their namespace.
+func MachineLabel(instance string) string {
+	return instance
 }
 
 // qualifiedMachineLabel disambiguates two instances that both hold a session
@@ -88,15 +81,10 @@ func machineListArgs() []string {
 // but the binary rejects that with a usage error and exit 2, so the runtime
 // usage string is the one to trust.
 //
-// session empty means herdr's own default session on that host, and then
-// --remote-session is omitted rather than passed empty: naming a session
-// would ask herdr to start one that need not exist.
-func machineAddArgs(target, label, session string) []string {
-	args := []string{"machine", "add", target, "--label", label}
-	if session != "" {
-		args = append(args, "--remote-session", session)
-	}
-	return args
+// No --remote-session: the profile represents the bivouac instance, and
+// sessions are workspaces beneath it rather than separate saved machines.
+func machineAddArgs(target, label string) []string {
+	return []string{"machine", "add", target, "--label", label}
 }
 
 func machineEnableArgs(id string) []string {
@@ -142,25 +130,35 @@ type OwnedMachines map[string]string
 //
 // A disabled profile is enabled rather than re-added: adding would create a
 // second profile and strand the first, still disabled, under the same label.
-func EnsureMachine(h herdrRunner, instance, target, session string, owned OwnedMachines) (string, string, error) {
+func EnsureMachine(h herdrRunner, instance, target, recordedID string) (string, string, error) {
 	profiles, err := listMachines(h)
 	if err != nil {
 		return "", "", err
 	}
 
-	if existing, found := findMachine(profiles, target, session); found {
+	if recordedID != "" {
+		if existing, found := findMachineByID(profiles, recordedID); found {
+			if !existing.Enabled {
+				if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
+					return "", "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
+				}
+			}
+			// Keep whatever the user last called it: that is what they will be
+			// looking for in the sidebar.
+			return existing.ID, existing.Label, nil
+		}
+	}
+
+	label := MachineLabel(instance)
+	if existing, found := findMachineByTargetAndLabel(profiles, target, label); found {
 		if !existing.Enabled {
 			if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
 				return "", "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
 			}
 		}
-		// Keep whatever the user last called it: that is what they will be
-		// looking for in the sidebar.
 		return existing.ID, existing.Label, nil
 	}
-
-	label := resolveLabel(h, profiles, owned, instance, session)
-	if out, err := h.Run(machineAddArgs(target, label, session)...); err != nil {
+	if out, err := h.Run(machineAddArgs(target, label)...); err != nil {
 		return "", "", fmt.Errorf("saving herdr machine %s: %w\n%s", label, err, out)
 	}
 
@@ -171,8 +169,8 @@ func EnsureMachine(h herdrRunner, instance, target, session string, owned OwnedM
 	if err != nil {
 		return "", label, err
 	}
-	created, found := findMachine(profiles, target, session)
-	if !found {
+	created, found := findMachineByLabel(profiles, label)
+	if !found || created.Target != target {
 		return "", label, fmt.Errorf("saved herdr machine %s but it is not in the listing", label)
 	}
 	return created.ID, created.Label, nil
@@ -212,6 +210,24 @@ func listMachines(h herdrRunner) ([]machineProfile, error) {
 func findMachineByLabel(profiles []machineProfile, label string) (machineProfile, bool) {
 	for _, p := range profiles {
 		if p.Label == label {
+			return p, true
+		}
+	}
+	return machineProfile{}, false
+}
+
+func findMachineByID(profiles []machineProfile, id string) (machineProfile, bool) {
+	for _, p := range profiles {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return machineProfile{}, false
+}
+
+func findMachineByTargetAndLabel(profiles []machineProfile, target, label string) (machineProfile, bool) {
+	for _, p := range profiles {
+		if p.Target == target && p.Label == label {
 			return p, true
 		}
 	}

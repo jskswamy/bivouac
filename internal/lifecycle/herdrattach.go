@@ -67,7 +67,7 @@ func (l localHerdr) Run(args ...string) (string, error) {
 // It stops short of selecting the machine. That is client state with no CLI,
 // no API operation and no keybinding -- verified against herdr 0.9.0 -- so
 // the label comes back for the caller to name, and the user picks it.
-func AttachMachine(ctx context.Context, instance, ip, user, session, repoName string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
+func AttachMachine(ctx context.Context, instance, ip, user, session, repoName, machineID string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
 	// No bivouac session means there is nowhere to record the id, and a
 	// machine standing for "the instance in general" is not what this is
 	// for: it could never be cleaned up, because nothing would remember it.
@@ -81,7 +81,7 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 	target := MachineTarget(user, ip)
 	root := RemoteRepoPath(user, session, repoName)
 
-	return attachMachine(ctx, localHerdr{ctx: ctx}, instance, ip, user, target, session, root, tabs, owned)
+	return attachMachine(ctx, localHerdr{ctx: ctx}, instance, ip, user, target, session, root, machineID, tabs, owned)
 }
 
 // attachMachine is AttachMachine's logic, seamed on herdrRunner the same way
@@ -90,9 +90,9 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName st
 // public entry point: it is where the session-name check, the `herdr`
 // on-PATH check and the live localHerdr belong, none of which this needs to
 // run against a fake.
-func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, target, session, root string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
+func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, target, session, root, machineID string, tabs []config.HerdrTab, owned OwnedMachines) (string, string, error) {
 	provider.ReportProgress(ctx, "registering herdr machine")
-	id, label, err := EnsureMachine(h, instance, target, session, owned)
+	id, label, err := EnsureMachine(h, instance, target, machineID)
 	if err != nil {
 		return "", "", err
 	}

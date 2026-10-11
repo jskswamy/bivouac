@@ -118,7 +118,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
 		id, label, err := lifecycle.AttachMachine(ctx, record.Name, record.IP,
-			record.User, session, repoName, herdrTabsFor(ctx, localRepo), ownedMachines(store))
+			record.User, session, repoName, record.HerdrMachineID, herdrTabsFor(ctx, localRepo), ownedMachines(store))
 		// Recorded before the error is looked at: AttachMachine hands back a
 		// saved profile's id even when a later step failed, and teardown
 		// removes this exact profile -- one bivouac created but did not
