@@ -86,24 +86,56 @@ func TestRunSessionStart_RefusesBothTaskAndIssue(t *testing.T) {
 	}
 }
 
-// The resolved instance identity is recorded on the session itself, not
+// The resolved repository path is recorded on the session itself, not
 // re-derived from the record later: seeding names the remote directory
 // after whatever this call resolved, and only the session's own copy of
 // that stays correct if the record's name ever changes afterward.
-func TestRunSessionStart_RecordsTheResolvedNameAsRepoName(t *testing.T) {
+func TestRunSessionStart_RecordsTheResolvedRepoPath(t *testing.T) {
+	repo := newTestRepo(t)
 	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
 	store := sessionTestStore(t, record)
+	cmd := sessionTestCmd()
+	if err := cmd.Flags().Set("repo", repo); err != nil {
+		t.Fatal(err)
+	}
 
 	// Fails at the connection; what matters is what got recorded first.
-	_ = runSessionStart(sessionTestCmd(), "myinstance", []string{"alpha"})
+	_ = runSessionStart(cmd, "myinstance", []string{"alpha"})
 
 	got, _, _ := store.Get("myinstance")
 	sess, ok := got.FindSession("alpha")
 	if !ok {
 		t.Fatal("alpha was not recorded")
 	}
-	if sess.RepoName != "myinstance" {
-		t.Errorf("RepoName = %q, want %q", sess.RepoName, "myinstance")
+	if want := filepath.Base(repo); sess.RepoName != want {
+		t.Errorf("RepoName = %q, want %q", sess.RepoName, want)
+	}
+}
+
+func TestRunSessionStart_RecordsNestedRepoPath(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGitCmd(t, repo, "remote", "add", "origin", "git@github.com:jskswamy/bivouac.git")
+	record := state.Record{Name: "jskswamy-bivouac", IP: "127.0.0.1:1", User: "devuser"}
+	store := sessionTestStore(t, record)
+	cmd := sessionTestCmd()
+	if err := cmd.Flags().Set("repo", repo); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runSessionStart(cmd, "jskswamy-bivouac", []string{"auth"}); err == nil {
+		t.Fatal("runSessionStart() = nil, want the start to fail against a refused connection")
+	}
+
+	got, _, _ := store.Get("jskswamy-bivouac")
+	if got.Name != "jskswamy-bivouac" {
+		t.Fatalf("record name = %q, want flattened instance name", got.Name)
+	}
+	sess, ok := got.FindSession("auth")
+	if !ok {
+		t.Fatal("session not recorded")
+	}
+	if sess.RepoName != "jskswamy/bivouac" {
+		t.Fatalf("RepoName = %q", sess.RepoName)
 	}
 }
 

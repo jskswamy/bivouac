@@ -102,6 +102,14 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
+	repoPath, err := identity.DeriveRepoPath(ctx, root)
+	if err != nil {
+		return err
+	}
+	if err := lifecycle.CheckRemoteRepoPath(repoPath); err != nil {
+		return err
+	}
+
 	// All three recorded before the session is created, not after: StartSession
 	// makes the branch and repository on the instance before the local fetch
 	// that can fail, and a session `down` cannot see is a session `down`
@@ -109,20 +117,20 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	// instance by name and may run from anywhere, so none of this is derivable
 	// from the caller's working directory.
 	// RepoName travels with the session rather than being re-derived from
-	// record.Name later: seedSession names the remote directory after
-	// whatever instance identity resolved here, and that identity can
-	// later stop matching the record's own name -- an instance renamed or
-	// consolidated after this session was seeded must not silently point
-	// every later pull/merge/delete at a directory that was never seeded.
-	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base, RepoName: name})
+	// record.Name later: seedSession names the remote directory after the
+	// repository identity resolved here, and that identity can later stop
+	// matching the record's own name -- an instance renamed or consolidated
+	// after this session was seeded must not silently point every later
+	// pull/merge/delete at a directory that was never seeded.
+	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base, RepoName: repoPath})
 	if err := store.Put(record); err != nil {
 		return err
 	}
-	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, name, session, beadsModeFor(ctx, root), taskText); err != nil {
+	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, repoPath, session, beadsModeFor(ctx, root), taskText); err != nil {
 		return err
 	}
 	if issue != "" {
-		markIssueStarted(ctx, record.IP, record.User, root, lifecycle.RemoteRepoPath(record.User, session, name), session, issue)
+		markIssueStarted(ctx, record.IP, record.User, root, lifecycle.RemoteRepoPath(record.User, session, repoPath), session, issue)
 	}
 	cmd.Printf("Session %s started on %s\n", session, name)
 	cmd.Printf("\nLocal   %s\n", lifecycle.LocalWorktreePath(root, session))
