@@ -62,8 +62,8 @@ environment reproducible also keeps your ephemeral cloud boxes reproducible.
 start a session:
 
 - `session start <name>` pushes your current commit into a fresh git
-  repository at `~/sessions/<name>/<repo>` on the instance, checks it out on
-  branch `bivouac/<name>`, and creates a matching local worktree at
+  repository at `~/sessions/<name>/<owner>/<repo>` on the instance, checks it
+  out on branch `bivouac/<name>`, and creates a matching local worktree at
   `<repo>/.worktrees/<name>` tracking it. An instance can run several named
   sessions at once.
 - `session pull [name]` checkpoints whatever the agent left uncommitted,

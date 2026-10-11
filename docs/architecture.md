@@ -27,7 +27,7 @@ boundary is deliberately not DO-specific — see
        │     run `home-manager switch`                │
        │                                              ▼
        │                                 ┌────────────────────────────┐
-       └──── session start <name> ─────▶ │ ~/sessions/<name>/<repo>   │
+       └──── session start <name> ─────▶ │ ~/sessions/<name>/<org>/<repo> │
              git push HEAD               │ on branch bivouac/<name>   │
                                          └────────────┬───────────────┘
        ◀──── pull / merge (git fetch) ────────────────┘
@@ -315,8 +315,8 @@ instance — not a worktree of a shared bare store. One session, one clone.
 2. Records the session name and local repo path in state **before** creating
    anything, so a start that fails halfway still leaves a session `down` can
    see and rescue.
-3. `git init` at `~/sessions/<name>/<repo>` on the instance, pushes local
-   `HEAD` to `refs/heads/bivouac/<name>`, *then* checks that branch out.
+3. `git init` at `~/sessions/<name>/<owner>/<repo>` on the instance, pushes
+   local `HEAD` to `refs/heads/bivouac/<name>`, *then* checks that branch out.
    The order matters: a fresh `git init` leaves HEAD unborn, so the pushed
    branch isn't the checked-out one and the push is legal without
    `receive.denyCurrentBranch=updateInstead`.
@@ -507,7 +507,7 @@ anything already there that is not bivouac's own link.
 | `up [name]` | per-instance | Create the VM, run cloud-init, wait for SSH, reconcile home-manager, optionally join the tailnet. Confirms before anything billable. Seeds no repository — see `session start` |
 | `provision [name]` | per-instance | Reconcile home-manager with the current `bivouac.pkl`, nothing else |
 | `ssh [name]` | per-instance | Interactive **remote** shell on the VM. `--dir` picks the directory to land in; without it, the resolved session's repository on the instance. Where several sessions are live and none is implied, it asks — connecting is not destructive, so with no session at all it still connects and lands in `$HOME` |
-| `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) — a background session that survives disconnects. Names its herdr session after the resolved bivouac session, so reconnecting returns to the same one. It cannot start in the session's directory: `herdr --remote` takes no working directory, only `herdr workspace create --cwd` does. Refuses to nest inside an existing herdr session |
+| `herdr [name]` | per-instance | Interactive **remote** session via [herdr](https://herdr.dev/) — a background session that survives disconnects. Outside Herdr, names its herdr session after the resolved bivouac session, so reconnecting returns to the same one. Inside Herdr, registers one saved machine named for the bivouac instance and nests session workspaces beneath it, each rooted in that session's checkout. It cannot start a `--remote` session in a directory directly; workspace `--cwd` supplies that when attaching inside Herdr |
 | `tmux [session-name]` | per-instance | Remote tmux session, create-or-attach (`new-session -A`). Named after the resolved bivouac session so reconnecting returns to the same one; the positional overrides that, and the default is `main` when no session resolves. It does not start in the session's directory — `tmuxArgs` passes no `-c` |
 | `pair [name]` | per-instance | Pair the getmoshi.app mobile app with the instance via its QR flow. Prompts for which address the QR advertises (tailnet vs public) when both are available; `--host` sets it directly |
 | `tailscale [name]` | per-instance | Join the instance to your tailnet. Also runs as part of `up` when `bivouac.pkl` sets `tailscale = true` |
@@ -567,8 +567,11 @@ already provisioned. cloud-init creates the user with a plain
 `useradd --create-home`, so its home is always exactly `/home/<user>`.
 
 This is the path shape `up` records as `RepoPath`, and the same shape `sync`
-derives for its remote side. Session repositories use their own:
-`/home/<user>/sessions/<session>/<repo>`.
+derives for its remote side. Session repositories use their own path that
+preserves the repository identity as path segments:
+`/home/<user>/sessions/<session>/<owner>/<repo>` for repositories with a
+host owner/repo remote, falling back to one final repository segment when
+there is no origin remote.
 
 `RepoPath` is no longer where `ssh` lands. rsync used to create that mirrored
 directory during `up`; since the git transport replaced it, nothing does, so
@@ -587,11 +590,13 @@ by name — not a single global record, which is necessary once more than one
 instance can be alive at a time. `list` reads across all entries.
 
 Each record holds: name, provider, VM id, IP, region, size, template, remote
-user, remote repo path, tunnel PID, whether it joined the tailnet, and
+user, remote repo path, tunnel PID, whether it joined the tailnet, the saved
+Herdr machine id for the instance when one has been registered, and
 `Sessions []Session` — one entry per live session, each holding the
-session's name, the local repository it belongs to, and the commit it
-branched from (`Base`). A list rather than a single session, because an
-instance can run several at once; `PutSession`/`RemoveSession` add, replace
+session's name, the local repository it belongs to, the remote repository path
+identity it was seeded under, and the commit it branched from (`Base`). A list
+rather than a single session, because an instance can run several at once;
+`PutSession`/`RemoveSession` add, replace
 and drop entries by name without disturbing the rest.
 
 The record is written **immediately** after `Create` returns and before
