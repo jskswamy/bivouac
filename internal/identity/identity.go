@@ -63,22 +63,36 @@ func DeriveName(ctx context.Context, root string) (string, error) {
 	if err != nil {
 		return filepath.Base(root), nil
 	}
-	return slugify(string(out)), nil
+	return strings.Join(remoteIdentitySegments(string(out)), "-"), nil
 }
 
-// slugify turns a git remote URL (https://host/owner/repo.git,
-// git@host:owner/repo.git, or ssh://git@host/owner/repo.git) into
-// "owner-repo" by taking the last two path segments.
-func slugify(remoteURL string) string {
+// DeriveRepoPath derives the path segment(s) a session repository should use
+// on the instance. Unlike DeriveName, this keeps owner and repo separated so
+// the remote checkout mirrors the host's owner/repo shape.
+func DeriveRepoPath(ctx context.Context, root string) (string, error) {
+	// Stdout only: the result becomes a relative path after the same token
+	// extraction DeriveName uses. root is a resolved local repo path, never
+	// attacker-controlled.
+	out, err := tool.Run(ctx, root, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return filepath.Base(root), nil
+	}
+	return strings.Join(remoteIdentitySegments(string(out)), "/"), nil
+}
+
+// remoteIdentitySegments takes the last two path-like components of a git
+// remote URL (https://host/owner/repo.git, git@host:owner/repo.git, or
+// ssh://git@host/owner/repo.git), lowercased for stable identity strings.
+func remoteIdentitySegments(remoteURL string) []string {
 	url := strings.TrimSuffix(strings.TrimSpace(remoteURL), ".git")
 	tokens := strings.FieldsFunc(url, func(r rune) bool {
 		return r == '/' || r == ':'
 	})
 	if len(tokens) < 2 {
-		return strings.ToLower(strings.Join(tokens, "-"))
+		return []string{strings.ToLower(strings.Join(tokens, "-"))}
 	}
 	last := tokens[len(tokens)-2:]
-	return strings.ToLower(strings.Join(last, "-"))
+	return []string{strings.ToLower(last[0]), strings.ToLower(last[1])}
 }
 
 // InstanceName resolves a name for lookup-only commands (everything

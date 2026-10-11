@@ -1,6 +1,11 @@
 package lifecycle
 
-import "path/filepath"
+import (
+	"fmt"
+	"path"
+	"path/filepath"
+	"strings"
+)
 
 // SessionBranch is the branch an agent commits to for a session. Namespaced
 // under bivouac/ so it can never collide with a branch a human made, and
@@ -30,7 +35,27 @@ func SessionDir(user, session string) string {
 // side now, and a clone each still buys the isolation for less: the extra
 // objects are copied once, on a link that is already moving the whole repo.
 func RemoteRepoPath(user, session, repo string) string {
+	if err := CheckRemoteRepoPath(repo); err != nil {
+		panic(err)
+	}
 	return SessionDir(user, session) + "/" + repo
+}
+
+// CheckRemoteRepoPath rejects repository path identities that could escape a
+// session directory or address an ambiguous place inside it.
+func CheckRemoteRepoPath(repo string) error {
+	if repo == "" {
+		return fmt.Errorf("remote repo path is empty")
+	}
+	if path.IsAbs(repo) {
+		return fmt.Errorf("remote repo path %q must be relative", repo)
+	}
+	for _, part := range strings.Split(repo, "/") {
+		if part == "" || part == "." || part == ".." {
+			return fmt.Errorf("remote repo path %q contains invalid segment %q", repo, part)
+		}
+	}
+	return nil
 }
 
 // LocalWorktreePath is the Mac-side worktree for reviewing and running a

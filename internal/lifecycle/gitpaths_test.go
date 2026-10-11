@@ -31,6 +31,22 @@ func TestRemoteRepoPath_IsPerSession(t *testing.T) {
 	}
 }
 
+func TestRemoteRepoPath_AllowsNestedRepoPath(t *testing.T) {
+	got := RemoteRepoPath("devuser", "auth", "jskswamy/bivouac")
+	want := "/home/devuser/sessions/auth/jskswamy/bivouac"
+	if got != want {
+		t.Fatalf("RemoteRepoPath() = %q, want %q", got, want)
+	}
+}
+
+func TestCheckRemoteRepoPathRejectsEscapes(t *testing.T) {
+	for _, repo := range []string{"", "/abs", "../repo", "owner/../repo", "owner//repo"} {
+		if err := CheckRemoteRepoPath(repo); err == nil {
+			t.Errorf("%q accepted", repo)
+		}
+	}
+}
+
 // The local worktree must live inside the user's repository: sandboxing
 // tools scope themselves to the project directory and cannot reach a
 // worktree created anywhere else, the home directory included.

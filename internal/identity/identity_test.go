@@ -175,6 +175,44 @@ func TestDeriveName_NoOriginFallsBackToFolderName(t *testing.T) {
 	}
 }
 
+func TestDeriveRepoPath_FromHTTPSOrigin(t *testing.T) {
+	root := initRepo(t)
+	runGit(t, root, "remote", "add", "origin", "https://github.com/jskswamy/bivouac.git")
+
+	got, err := DeriveRepoPath(context.Background(), root)
+	if err != nil {
+		t.Fatalf("DeriveRepoPath() error = %v", err)
+	}
+	if got != "jskswamy/bivouac" {
+		t.Errorf("DeriveRepoPath() = %q, want %q", got, "jskswamy/bivouac")
+	}
+}
+
+func TestDeriveRepoPath_FromSSHOrigin(t *testing.T) {
+	root := initRepo(t)
+	runGit(t, root, "remote", "add", "origin", "git@github.com:jskswamy/bivouac.git")
+
+	got, err := DeriveRepoPath(context.Background(), root)
+	if err != nil {
+		t.Fatalf("DeriveRepoPath() error = %v", err)
+	}
+	if got != "jskswamy/bivouac" {
+		t.Errorf("DeriveRepoPath() = %q, want %q", got, "jskswamy/bivouac")
+	}
+}
+
+func TestDeriveRepoPath_NoOriginFallsBackToFolder(t *testing.T) {
+	root := initRepo(t)
+
+	got, err := DeriveRepoPath(context.Background(), root)
+	if err != nil {
+		t.Fatalf("DeriveRepoPath() error = %v", err)
+	}
+	if want := filepath.Base(root); got != want {
+		t.Errorf("DeriveRepoPath() = %q, want %q", got, want)
+	}
+}
+
 func TestInstanceName_PositionalWins(t *testing.T) {
 	got, err := InstanceName(context.Background(), t.TempDir(), "", "explicit-name", "flag-name")
 	if err != nil {
