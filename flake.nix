@@ -58,10 +58,57 @@
             chmod +x $out/bin/pkl
           '';
         };
+
+      # nixpkgs is currently behind the Go point release that fixes the
+      # standard-library CVEs govulncheck reports against bivouac's HTTP/TLS
+      # call paths. Use the official binary toolchain until nixpkgs catches up.
+      goVersion = "1.26.9";
+      goAssetName = {
+        aarch64-darwin = "go${goVersion}.darwin-arm64.tar.gz";
+        x86_64-darwin = "go${goVersion}.darwin-amd64.tar.gz";
+        aarch64-linux = "go${goVersion}.linux-arm64.tar.gz";
+        x86_64-linux = "go${goVersion}.linux-amd64.tar.gz";
+      };
+      goHash = {
+        aarch64-darwin = "sha256-+bt8CgJQbF2b8NHrH37mx2hPhErklVgwigQnuDDgIsw=";
+        x86_64-darwin = "sha256-AMKePUyFYvVHQQ2qGNKVm2Qb1pGrAMSlJeqBegJT1L0=";
+        aarch64-linux = "sha256-Spc3PUn8rNzzaU/qNopQCwDuPpY5dPPnUUEycXYy8FI=";
+        x86_64-linux = "sha256-QtFYtNj3thrAqDBWfJQKhgmPt6rFLkZ6Xr7APvXML40=";
+      };
+      goOS = {
+        aarch64-darwin = "darwin";
+        x86_64-darwin = "darwin";
+        aarch64-linux = "linux";
+        x86_64-linux = "linux";
+      };
+      goArch = {
+        aarch64-darwin = "arm64";
+        x86_64-darwin = "amd64";
+        aarch64-linux = "arm64";
+        x86_64-linux = "amd64";
+      };
+      goFor =
+        system: pkgs:
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "go";
+          version = goVersion;
+          GOOS = goOS.${system};
+          GOARCH = goArch.${system};
+          CGO_ENABLED = 0;
+          src = pkgs.fetchurl {
+            url = "https://go.dev/dl/${goAssetName.${system}}";
+            hash = goHash.${system};
+          };
+          installPhase = ''
+            mkdir -p $out
+            cp -R . $out
+          '';
+        };
       perSystem = forAllSystems (
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          goTool = goFor system pkgs;
           pre-commit-check = git-hooks.lib.${system}.run {
             src = ./.;
             hooks = {
@@ -83,9 +130,10 @@
               gofmt.enable = true;
               golangci-lint = {
                 enable = true;
-                # golangci-lint shells out to go; nix flake check's sandbox
-                # has no PATH go otherwise.
-                extraPackages = [ pkgs.go ];
+                # golangci-lint shells out to go; the official Go toolchain
+                # also needs Nix's CA bundle to fetch modules inside checks.
+                entry = "env SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.golangci-lint}/bin/golangci-lint run";
+                pass_filenames = false;
               };
 
               # Security
@@ -97,7 +145,7 @@
                 # gosec shells out to go for package loading (same PATH gap
                 # as golangci-lint above); .gocache is our own local GOPATH,
                 # not project source, and inflates results if scanned.
-                entry = "env PATH=${pkgs.go}/bin:$PATH ${pkgs.gosec}/bin/gosec -exclude-dir=.gocache ./...";
+                entry = "env SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.gosec}/bin/gosec -exclude-dir=.gocache ./...";
                 files = "\\.go$";
                 pass_filenames = false;
               };
@@ -116,7 +164,7 @@
                 # the scan died with `cgo: C compiler "gcc" not found` on
                 # ubuntu while passing on macOS. bivouac imports no cgo,
                 # so turning it off scans exactly the same code.
-                entry = "env CGO_ENABLED=0 PATH=${pkgs.go}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
+                entry = "env CGO_ENABLED=0 SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.govulncheck}/bin/govulncheck ./...";
                 files = "\\.go$";
                 pass_filenames = false;
               };
@@ -131,9 +179,29 @@
         in
         {
           inherit pre-commit-check;
+          package = pkgs.buildGoModule.override { go = goTool; } {
+            pname = "bivouac";
+            version = self.shortRev or self.dirtyShortRev or "dev";
+            src = self;
+            vendorHash = "sha256-NfjYNNlyqsKGdXPSiu+YSQrbZhtkEEubqwcODWtpyr0=";
+            doCheck = false;
+
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=${self.shortRev or self.dirtyShortRev or "dev"}"
+              "-X main.commit=${self.shortRev or self.dirtyShortRev or "none"}"
+            ];
+
+            meta = {
+              description = "Disposable remote workspaces for coding agents";
+              homepage = "https://github.com/jskswamy/bivouac";
+              mainProgram = "bivouac";
+            };
+          };
           devShell = pkgs.mkShell {
             packages = [
-              pkgs.go
+              goTool
               pkgs.gopls
               pkgs.rsync
               pkgs.mutagen
@@ -168,6 +236,7 @@
             # under .gocache/ is gitignored.
             shellHook = ''
               ${pre-commit-check.shellHook}
+              export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
               export GOPATH="$PWD/.gocache/gopath"
               export GOMODCACHE="$GOPATH/pkg/mod"
               export XDG_CACHE_HOME="$PWD/.gocache/xdg-cache"
@@ -179,6 +248,7 @@
       );
     in
     {
+      packages = nixpkgs.lib.mapAttrs (_: v: { default = v.package; }) perSystem;
       devShells = nixpkgs.lib.mapAttrs (_: v: { default = v.devShell; }) perSystem;
       checks = nixpkgs.lib.mapAttrs (_: v: { inherit (v) pre-commit-check; }) perSystem;
     };

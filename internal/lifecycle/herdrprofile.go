@@ -59,15 +59,6 @@ func MachineLabel(instance string) string {
 	return instance
 }
 
-// qualifiedMachineLabel disambiguates two instances that both hold a session
-// of this name.
-//
-// A suffix, not a prefix, for the reason above: when it truncates, the
-// instance is what gets cut and the session name survives.
-func qualifiedMachineLabel(instance, session string) string {
-	return session + " (" + instance + ")"
-}
-
 // machineListArgs reads the saved machines. --json because the human format
 // is a table this would have to parse by column.
 func machineListArgs() []string {
@@ -93,10 +84,6 @@ func machineEnableArgs(id string) []string {
 
 func machineRemoveArgs(id string) []string {
 	return []string{"machine", "remove", id}
-}
-
-func machineRenameArgs(id, label string) []string {
-	return []string{"machine", "rename", id, "--label", label}
 }
 
 // herdrRunner runs a herdr command on this machine.
@@ -174,29 +161,6 @@ func EnsureMachine(h herdrRunner, instance, target, recordedID string) (string, 
 		return "", label, fmt.Errorf("saved herdr machine %s but it is not in the listing", label)
 	}
 	return created.ID, created.Label, nil
-}
-
-// resolveLabel picks the sidebar name, qualifying both sides when another
-// session already holds the bare one.
-//
-// Symmetric on purpose: if only the newcomer were qualified, a bare name
-// would silently mean whichever session was registered first. Renaming is
-// limited to profiles bivouac recorded -- one the user added by hand keeps
-// its name even when it is the thing in the way, because it is not
-// bivouac's to rename.
-//
-// Best-effort on the rename: a label that will not change is cosmetic, and
-// no reason to refuse the attach the user asked for.
-func resolveLabel(h herdrRunner, profiles []machineProfile, owned OwnedMachines, instance, session string) string {
-	bare := MachineLabel(session)
-	clash, found := findMachineByLabel(profiles, bare)
-	if !found {
-		return bare
-	}
-	if ownerInstance, ours := owned[clash.ID]; ours {
-		_, _ = h.Run(machineRenameArgs(clash.ID, qualifiedMachineLabel(ownerInstance, clash.Session))...)
-	}
-	return qualifiedMachineLabel(instance, session)
 }
 
 func listMachines(h herdrRunner) ([]machineProfile, error) {
