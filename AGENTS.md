@@ -39,6 +39,16 @@ Design specs live in `docs/superpowers/specs/`. A spec is the implementation
 contract; if the code and the spec disagree, say so rather than silently
 diverging.
 
+## Release Notes
+
+User-facing changes are tracked in `RELEASE_NOTES.md` at the repo root.
+GoReleaser reads it as the GitHub release header at tag time.
+
+When a spec describes a user-facing change, the same commit that adds the spec
+also appends a matching entry to `RELEASE_NOTES.md`. At release time, replace
+`## Unreleased` with the version being tagged, commit that stamp, tag and
+publish, then reset `RELEASE_NOTES.md` for the next release.
+
 ## If you are working inside a bivouac session
 
 You are on an ephemeral cloud VM, in a checkout at
