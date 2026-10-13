@@ -1,6 +1,7 @@
 # bivouac
 
 [![CI](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jskswamy/bivouac)](https://github.com/jskswamy/bivouac/releases/latest)
 
 A bivouac is a shelter improvised for one stay: no built infrastructure,
 struck completely afterward. This is that, for coding agents — a
@@ -21,6 +22,22 @@ to add others without touching the rest of the tool — see
 > `shell` is still a stub — it parses, resolves an instance, and exits
 > with "not implemented yet". See [`docs/architecture.md`](docs/architecture.md)
 > and [`docs/adr/`](docs/adr/) for the full design.
+
+## Install
+
+```bash
+# Install latest release to ./bin
+curl -sSfL https://raw.githubusercontent.com/jskswamy/bivouac/main/install.sh | sh
+
+# Install latest release system-wide
+curl -sSfL https://raw.githubusercontent.com/jskswamy/bivouac/main/install.sh | sudo INSTALL_DIR=/usr/local/bin sh
+
+# Install a specific release
+curl -sSfL https://raw.githubusercontent.com/jskswamy/bivouac/main/install.sh | VERSION=v0.1.0 sh
+
+# Or build from source with Go
+go install github.com/jskswamy/bivouac@latest
+```
 
 ## What it does
 
