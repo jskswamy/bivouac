@@ -108,7 +108,10 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := progressCtx(cmd)
+	ctx := cmd.Context()
+	if !jsonFlag(cmd) {
+		ctx = progressCtx(cmd)
+	}
 
 	// status uses the API for the live status field and for cost, which
 	// is derived from the droplet's creation time and price; every other
@@ -124,6 +127,9 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 		st.LiveErr = provErr
 	} else {
 		st = lifecycle.Status(ctx, p, record)
+	}
+	if jsonFlag(cmd) {
+		return printStatusJSON(cmd, st, record)
 	}
 	printStatus(cmd, st)
 	printSessions(cmd, record)

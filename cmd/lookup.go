@@ -18,9 +18,11 @@ type lookupCommandSpec struct {
 	// of short. Left empty for every command whose flags speak for
 	// themselves; start's flags need the extra explanation of how --task and
 	// --issue relate.
-	long  string
-	args  cobra.PositionalArgs
-	named bool
+	long     string
+	example  string
+	metadata commandMetadata
+	args     cobra.PositionalArgs
+	named    bool
 	// parent groups this command under a noun instead of putting it at the
 	// top level. Session verbs live under "session" so bivouac's top level
 	// stays about the instance -- up, down, ssh, status, provision -- and a
@@ -58,6 +60,40 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	{
 		use:   "herdr [name]",
 		short: "Open an interactive herdr session on the instance (background session that survives disconnects)",
+		long: "Open an interactive Herdr session on the instance.\n\n" +
+			"The optional [name] is an instance name, not a session name. Bivouac\n" +
+			"resolves the session from the current worktree, from the single live\n" +
+			"session on the instance, or by asking you to choose when a terminal is\n" +
+			"available.\n\n" +
+			"When run outside Herdr, bivouac launches Herdr against the instance's\n" +
+			"SSH endpoint and passes the resolved bivouac session as Herdr's session\n" +
+			"name when one can be found. When run inside Herdr, bivouac registers or\n" +
+			"focuses a saved machine for the instance, then creates or focuses a\n" +
+			"workspace named for the bivouac session.\n\n" +
+			"If no bivouac session exists, run `bivouac session start <name>` first\n" +
+			"or run Herdr outside Herdr to attach to its default remote session.",
+		example: "bivouac herdr\n" +
+			"bivouac --name jskswamy-bivouac herdr\n" +
+			"bivouac session list\n" +
+			"bivouac session start auth",
+		metadata: commandMetadata{
+			Title:            "Attach Herdr to a bivouac instance/session",
+			Interactive:      true,
+			Network:          true,
+			Destructive:      false,
+			RequiresInstance: true,
+			MayPrompt:        true,
+			Arguments: []argumentMetadata{{
+				Name:        "name",
+				Description: "Optional bivouac instance name, not session name",
+				Schema:      map[string]any{"type": "string"},
+			}},
+			SideEffects: []string{
+				"may register a Herdr saved machine",
+				"may create or focus a Herdr workspace",
+			},
+			Related: []string{"session list", "session start", "ssh", "tmux"},
+		},
 		verb:  "herdr",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
@@ -106,6 +142,18 @@ var lookupCommandSpecs = []lookupCommandSpec{
 			"session started before you have decided what it is for is still a\n" +
 			"normal session. Re-running start without either leaves an existing\n" +
 			"TASK.md untouched.",
+		metadata: commandMetadata{
+			Title:            "Start a named agent session on the instance",
+			Network:          true,
+			RequiresInstance: true,
+			RequiresRepo:     true,
+			Arguments: []argumentMetadata{{
+				Name:        "name",
+				Required:    true,
+				Description: "Session name to create",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
 		verb:   "session start",
 		args:   cobra.ExactArgs(1),
 		named:  false,
@@ -117,8 +165,12 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run: runSessionStart,
 	},
 	{
-		use:            "list",
-		short:          "List agent sessions across all instances",
+		use:   "list",
+		short: "List agent sessions across all instances",
+		metadata: commandMetadata{
+			Title:        "List agent sessions across all instances",
+			SupportsJSON: true,
+		},
 		verb:           "session list",
 		args:           cobra.NoArgs,
 		named:          false,
@@ -161,6 +213,17 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	{
 		use:   "status [name]",
 		short: "Show instance detail: IP, uptime, cost, live status",
+		metadata: commandMetadata{
+			Title:            "Show instance status",
+			Network:          true,
+			RequiresInstance: true,
+			SupportsJSON:     true,
+			Arguments: []argumentMetadata{{
+				Name:        "name",
+				Description: "Optional bivouac instance name",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
 		verb:  "status",
 		args:  cobra.MaximumNArgs(1),
 		named: true,
@@ -239,10 +302,11 @@ func newLookupCommands() []*cobra.Command {
 
 	for _, spec := range lookupCommandSpecs {
 		c := &cobra.Command{
-			Use:   spec.use,
-			Short: spec.short,
-			Long:  spec.long,
-			Args:  spec.args,
+			Use:     spec.use,
+			Short:   spec.short,
+			Long:    spec.long,
+			Example: spec.example,
+			Args:    spec.args,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if spec.spansInstances {
 					if spec.run != nil {
@@ -267,6 +331,10 @@ func newLookupCommands() []*cobra.Command {
 		if spec.flags != nil {
 			spec.flags(c)
 		}
+		if spec.metadata.SupportsJSON {
+			c.Flags().Bool("json", false, "print machine-readable JSON")
+		}
+		setCommandMetadata(c, spec.metadata)
 
 		if spec.parent == "" {
 			cmds = append(cmds, c)

@@ -16,6 +16,9 @@ func newRootCmd() *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	if runningUnderAgent() {
+		root.Long = agentJSONHint()
+	}
 	root.PersistentFlags().String("repo", "", "path to the repo to resolve identity from (overrides cwd-based resolution)")
 	root.PersistentFlags().String("name", "", "instance name override")
 	root.SilenceUsage = true
@@ -26,6 +29,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newPresetCmd())
 	root.AddCommand(newProvisionCmd())
 	root.AddCommand(newSecretsCmd())
+	root.AddCommand(newManifestCmd())
 	root.AddCommand(newLookupCommands()...)
 
 	return root

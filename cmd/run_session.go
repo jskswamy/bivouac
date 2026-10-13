@@ -156,6 +156,9 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 	for _, r := range records {
 		infos = append(infos, lifecycle.DescribeSessions(cmd.Context(), r.Name, r.Sessions)...)
 	}
+	if jsonFlag(cmd) {
+		return printSessionListJSON(cmd, infos)
+	}
 	if len(infos) == 0 {
 		cmd.Println("no sessions")
 		return nil
@@ -176,6 +179,37 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 	}
 	_, err = fmt.Fprintf(out, "\n%s", renderTable(s, headers, rows, nil))
 	return err
+}
+
+func printSessionListJSON(cmd *cobra.Command, infos []lifecycle.SessionInfo) error {
+	type sessionJSON struct {
+		Name           string `json:"name"`
+		Instance       string `json:"instance"`
+		Branch         string `json:"branch"`
+		WorktreeExists bool   `json:"worktreeExists"`
+		WorktreeDirty  bool   `json:"worktreeDirty"`
+		RemoteKnown    bool   `json:"remoteKnown"`
+		UnmergedKnown  bool   `json:"unmergedKnown"`
+		Unmerged       int    `json:"unmerged"`
+		RemoteAhead    bool   `json:"remoteAhead"`
+	}
+	out := struct {
+		Sessions []sessionJSON `json:"sessions"`
+	}{Sessions: []sessionJSON{}}
+	for _, info := range infos {
+		out.Sessions = append(out.Sessions, sessionJSON{
+			Name:           info.Name,
+			Instance:       info.Instance,
+			Branch:         info.Branch,
+			WorktreeExists: info.WorktreeExists,
+			WorktreeDirty:  info.WorktreeDirty,
+			RemoteKnown:    info.RemoteKnown,
+			UnmergedKnown:  info.UnmergedKnown,
+			Unmerged:       info.Unmerged,
+			RemoteAhead:    info.RemoteAhead,
+		})
+	}
+	return writeJSON(cmd, out)
 }
 
 // resolveSessionArg resolves the session a session-aware command acts on.

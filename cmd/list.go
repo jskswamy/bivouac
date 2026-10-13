@@ -23,11 +23,6 @@ func newListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(records) == 0 {
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), "no instances")
-				return err
-			}
-
 			withCost, err := cmd.Flags().GetBool("cost")
 			if err != nil {
 				return err
@@ -39,7 +34,15 @@ func newListCmd() *cobra.Command {
 				}
 			}
 
-			return printInstances(cmd, records, vms, time.Now())
+			now := time.Now()
+			if jsonFlag(cmd) {
+				return printInstancesJSON(cmd, records, vms, now)
+			}
+			if len(records) == 0 {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "no instances")
+				return err
+			}
+			return printInstances(cmd, records, vms, now)
 		},
 	}
 	// Off by default so the common `list` stays what it has always been:
@@ -48,6 +51,12 @@ func newListCmd() *cobra.Command {
 	// which degrades because its live check is incidental -- a failure
 	// here is a failure of the thing that was requested.
 	c.Flags().Bool("cost", false, "look up live status and accrued cost from the provider")
+	c.Flags().Bool("json", false, "print machine-readable JSON")
+	setCommandMetadata(c, commandMetadata{
+		Title:        "List bivouac instances",
+		RequiresRepo: false,
+		SupportsJSON: true,
+	})
 	return c
 }
 
@@ -70,15 +79,39 @@ func liveVMs(cmd *cobra.Command) (map[string]provider.VM, error) {
 	return vms, nil
 }
 
-// printInstances renders the instance table. A nil vms means no live
-// lookup was made, and the status and cost columns are left out
+// printInstancesJSON renders the machine-readable instance list. A nil vms
+// means no live lookup was made, and the status and cost fields are left out
 // altogether rather than printed full of unknowns.
-//
-// Separate from the command so it can be tested without a provider or a
-// token, and with a fixed clock -- accrued cost otherwise changes between
-// runs. The write error is returned rather than dropped: `bivouac list`
-// piped into a closed pipe must fail rather than exit 0 having printed
-// nothing.
+func printInstancesJSON(cmd *cobra.Command, records []state.Record, vms map[string]provider.VM, now time.Time) error {
+	type instanceJSON struct {
+		Name     string  `json:"name"`
+		Provider string  `json:"provider"`
+		IP       string  `json:"ip"`
+		Status   *string `json:"status,omitempty"`
+		Cost     *string `json:"cost,omitempty"`
+	}
+	out := struct {
+		Instances []instanceJSON `json:"instances"`
+	}{Instances: []instanceJSON{}}
+	for _, r := range records {
+		item := instanceJSON{Name: r.Name, Provider: r.Provider, IP: r.IP}
+		if vms != nil {
+			status := "unknown"
+			cost := "?"
+			if vm, ok := vms[r.VMID]; ok {
+				status = vm.Status
+				if c := lifecycle.ComputeCost(vm, now); c.Known {
+					cost = formatMoney(c.Accrued)
+				}
+			}
+			item.Status = &status
+			item.Cost = &cost
+		}
+		out.Instances = append(out.Instances, item)
+	}
+	return writeJSON(cmd, out)
+}
+
 func printInstances(cmd *cobra.Command, records []state.Record, vms map[string]provider.VM, now time.Time) error {
 	out := cmd.OutOrStdout()
 	s := newStyles(out)

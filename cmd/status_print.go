@@ -18,11 +18,61 @@ const (
 	statusValueWidth = 17
 )
 
-// printStatus renders the instance report: a heading naming the instance
-// and its live state, then the fields, then the cost.
-//
-// Split out of runStatus so it can be tested without a provider -- the
-// same reason printSessions and printServing below are separate.
+// printStatusJSON renders the instance report as stable machine-readable
+// output. It stays separate from printStatus so JSON mode can share status
+// lookup with the human report without inheriting terminal formatting.
+func printStatusJSON(cmd *cobra.Command, st lifecycle.InstanceStatus, record state.Record) error {
+	live := st.LiveStatus
+	liveErr := ""
+	if st.LiveErr != nil {
+		live = "unknown"
+		liveErr = st.LiveErr.Error()
+	}
+	type instanceJSON struct {
+		Name       string `json:"name"`
+		Provider   string `json:"provider,omitempty"`
+		IP         string `json:"ip"`
+		Region     string `json:"region,omitempty"`
+		Size       string `json:"size,omitempty"`
+		Template   string `json:"template,omitempty"`
+		User       string `json:"user,omitempty"`
+		RepoPath   string `json:"repoPath,omitempty"`
+		LiveStatus string `json:"liveStatus"`
+		LiveError  string `json:"liveError,omitempty"`
+	}
+	type sessionJSON struct {
+		Name     string `json:"name"`
+		Branch   string `json:"branch"`
+		RepoName string `json:"repoName,omitempty"`
+	}
+	out := struct {
+		Instance instanceJSON  `json:"instance"`
+		Sessions []sessionJSON `json:"sessions"`
+	}{
+		Instance: instanceJSON{
+			Name:       record.Name,
+			Provider:   record.Provider,
+			IP:         record.IP,
+			Region:     record.Region,
+			Size:       record.Size,
+			Template:   record.Template,
+			User:       record.User,
+			RepoPath:   record.RepoPath,
+			LiveStatus: live,
+			LiveError:  liveErr,
+		},
+		Sessions: []sessionJSON{},
+	}
+	for _, session := range record.Sessions {
+		out.Sessions = append(out.Sessions, sessionJSON{
+			Name:     session.Name,
+			Branch:   lifecycle.SessionBranch(session.Name),
+			RepoName: session.RepoName,
+		})
+	}
+	return writeJSON(cmd, out)
+}
+
 func printStatus(cmd *cobra.Command, st lifecycle.InstanceStatus) {
 	out := cmd.OutOrStdout()
 	s := newStyles(out)
