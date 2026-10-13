@@ -23,6 +23,38 @@ func TestRootCommandHelp(t *testing.T) {
 	}
 }
 
+func TestRootCommandVersionDefault(t *testing.T) {
+	root := newRootCmd()
+	root.SetArgs([]string{"--version"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	want := "bivouac dev (commit: none, built: unknown)\n"
+	if out.String() != want {
+		t.Fatalf("version output = %q, want %q", out.String(), want)
+	}
+}
+
+func TestRootCommandVersionInjected(t *testing.T) {
+	root := newRootCmdWithBuildInfo(BuildInfo{Version: "v1.2.3", Commit: "abc1234", Date: "2026-10-13T10:00:00Z"})
+	root.SetArgs([]string{"--version"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	want := "bivouac v1.2.3 (commit: abc1234, built: 2026-10-13T10:00:00Z)\n"
+	if out.String() != want {
+		t.Fatalf("version output = %q, want %q", out.String(), want)
+	}
+}
+
 // The top level is about the instance. Session verbs -- start, pull, merge --
 // live under `session` rather than sitting beside up/down/ssh, so this list
 // deliberately does not contain them.

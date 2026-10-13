@@ -8,7 +8,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type BuildInfo struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+func defaultBuildInfo() BuildInfo {
+	return BuildInfo{Version: "dev", Commit: "none", Date: "unknown"}
+}
+
 func newRootCmd() *cobra.Command {
+	return newRootCmdWithBuildInfo(defaultBuildInfo())
+}
+
+func newRootCmdWithBuildInfo(info BuildInfo) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "bivouac",
 		Short: "Disposable remote workspaces for coding agents",
@@ -16,6 +30,8 @@ func newRootCmd() *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	root.Version = info.Version
+	root.SetVersionTemplate("bivouac " + info.Version + " (commit: " + info.Commit + ", built: " + info.Date + ")\n")
 	if runningUnderAgent() {
 		root.Long = agentJSONHint()
 	}
@@ -45,8 +61,8 @@ func newRootCmd() *cobra.Command {
 // on screen explains. Ctrl-C in a terminal already signals the whole
 // foreground process group and so appeared to work -- this covers every
 // other way the process can be told to stop.
-func Execute() error {
+func Execute(info BuildInfo) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return newRootCmd().ExecuteContext(ctx)
+	return newRootCmdWithBuildInfo(info).ExecuteContext(ctx)
 }
