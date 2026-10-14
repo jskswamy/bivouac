@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,10 +11,20 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
 func newUpCmd() *cobra.Command {
+	return newUpCmdWithProvider(resolveProvider)
+}
+
+// Provider resolution is injectable so confirmation tests never reach a live
+// account; the creation orchestration remains the same production path.
+func newUpCmdWithProvider(resolve func(context.Context) (provider.Provider, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up [name]",
 		Short: "Create the VM, provision it, and bring the instance fully live",
@@ -41,12 +52,33 @@ func newUpCmd() *cobra.Command {
 			// secrets-file token is decrypted even when the answer turns out
 			// to be no -- the cheaper order of the two, since up is confirmed
 			// far more often than it is aborted.
-			p, err := resolveProvider(ctx)
+			p, err := resolve(ctx)
 			if err != nil {
 				return fmt.Errorf("%w (needed to create instance %q)", err, name)
 			}
 
-			ok, err := confirm(cmd, upSummary(name, bivouacPath, cfg))
+			registry, ok := p.(provider.KeyRegistry)
+			if !ok {
+				return errors.New("provider does not support SSH-key account planning")
+			}
+			var selected []sshkeys.Key
+			for _, ref := range cfg.SSHKeyFiles {
+				key, err := sshkeys.ReadPublicFile(ref)
+				if err != nil {
+					return err
+				}
+				selected = append(selected, key)
+			}
+			ctx = sshidentity.WithProgress(ctx, func(status string) { provider.ReportProgress(ctx, status) })
+			keys, err := keyplan.Build(ctx, registry, selected)
+			if err != nil {
+				return err
+			}
+			plan, err := lifecycle.PrepareUp(ctx, name, bivouacPath, root, cfg, keys)
+			if err != nil {
+				return err
+			}
+			ok, err = confirm(cmd, upSummary(plan))
 			if err != nil {
 				return err
 			}
@@ -55,7 +87,7 @@ func newUpCmd() *cobra.Command {
 				return nil
 			}
 
-			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), name, bivouacPath, root); err != nil {
+			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), plan); err != nil {
 				return err
 			}
 			cmd.Printf("Instance %s is up\n", name)
@@ -164,16 +196,34 @@ func ensureSSHKeysWith(cmd *cobra.Command, bivouacPath string, p prompter, keys 
 // config) but it is invisible, and it cost a live-fire run that died at
 // a sops step the worktree's config had switched off. Printing the path
 // makes the surprise cost one glance instead of a debugging session.
-func upSummary(name, bivouacPath string, cfg config.Resolved) string {
+func upSummary(plan lifecycle.UpPlan) string {
+	cfg := plan.Config
 	var b strings.Builder
-	fmt.Fprintf(&b, "This will create instance %q:\n", name)
-	fmt.Fprintf(&b, "  Config:   %s\n", bivouacPath)
+	fmt.Fprintf(&b, "This will create instance %q:\n", plan.Name)
+	fmt.Fprintf(&b, "  Config:   %s\n", plan.ConfigPath)
 	fmt.Fprintf(&b, "  Region:   %s\n", cfg.Region)
 	fmt.Fprintf(&b, "  Size:     %s\n", cfg.Size)
 	fmt.Fprintf(&b, "  Template: %s\n", cfg.Template)
 	if cfg.Image != "" {
 		fmt.Fprintf(&b, "  Image:    %s\n", cfg.Image)
 	}
+	for _, entry := range plan.Keys.Entries {
+		status := "will be registered as " + entry.AccountName
+		if entry.Registered {
+			status = "already registered (" + entry.AccountName + ")"
+		}
+		usable := false
+		for _, id := range plan.Keys.Identities {
+			if id.PublicPath == entry.Key.Path {
+				usable = true
+			}
+		}
+		if !usable {
+			status += "; extra recipient, not usable for local login"
+		}
+		fmt.Fprintf(&b, "  SSH key:  %s — %s\n", entry.Key.Path, status)
+	}
+	fmt.Fprintf(&b, "  SSH:      %s; install/update one managed SSH include\n", plan.Connection.Alias)
 	b.WriteString("Proceed? [y/N]: ")
 	return b.String()
 }

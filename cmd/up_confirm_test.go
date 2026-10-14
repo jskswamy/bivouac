@@ -5,52 +5,25 @@ import (
 	"testing"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/keyplan"
+	"github.com/jskswamy/bivouac/internal/lifecycle"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
-func TestUpSummary_ShowsInstanceNameAndConfig(t *testing.T) {
-	cfg := config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}
-
-	got := upSummary("myrepo", "/repos/myrepo/bivouac.pkl", cfg)
-
-	for _, want := range []string{`"myrepo"`, "nyc3", "s-2vcpu-4gb", "python", "Proceed?"} {
+func TestUpSummary_ShowsApprovedCreation(t *testing.T) {
+	plan := lifecycle.UpPlan{Name: "myrepo", ConfigPath: "/repos/myrepo/bivouac.pkl", Config: config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}, Connection: sshidentity.Connection{Alias: "bivouac-myrepo"}, Keys: keyplan.Plan{Entries: []keyplan.Entry{{Key: sshkeys.Key{Path: "/keys/custom.pub"}, AccountName: "bivouac-custom"}, {Key: sshkeys.Key{Path: "/keys/colleague.pub"}, Registered: true, AccountName: "colleague"}}, Identities: []sshidentity.Identity{{PublicPath: "/keys/custom.pub"}}}}
+	got := upSummary(plan)
+	for _, want := range []string{`"myrepo"`, plan.ConfigPath, "nyc3", "s-2vcpu-4gb", "python", "Proceed?", "will be registered as bivouac-custom", "already registered (colleague)", "extra recipient", "bivouac-myrepo", "managed SSH include"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("upSummary() = %q, want it to contain %q", got, want)
+			t.Errorf("summary lacks %q: %s", want, got)
 		}
 	}
-}
-
-func TestUpSummary_OmitsImageLineWhenUnset(t *testing.T) {
-	cfg := config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}
-
-	got := upSummary("myrepo", "/repos/myrepo/bivouac.pkl", cfg)
-
 	if strings.Contains(got, "Image:") {
-		t.Errorf("upSummary() = %q, want no Image line when unset", got)
+		t.Fatal("empty image shown")
 	}
-}
-
-func TestUpSummary_IncludesImageWhenSet(t *testing.T) {
-	cfg := config.Resolved{
-		Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python",
-		Config: config.Config{Image: "custom-image-123"},
-	}
-
-	got := upSummary("myrepo", "/repos/myrepo/bivouac.pkl", cfg)
-
-	if !strings.Contains(got, "custom-image-123") {
-		t.Errorf("upSummary() = %q, want it to contain the custom image", got)
-	}
-}
-
-// Run from a linked worktree, up reads the MAIN checkout's bivouac.pkl and
-// ignores one beside the caller. Naming the path is what makes that
-// visible before any money is spent.
-func TestUpSummary_NamesTheConfigItResolved(t *testing.T) {
-	cfg := config.Resolved{Region: "nyc3", Size: "s-2vcpu-4gb", Template: "python"}
-
-	got := upSummary("myrepo", "/repos/myrepo/bivouac.pkl", cfg)
-
-	if !strings.Contains(got, "/repos/myrepo/bivouac.pkl") {
-		t.Errorf("upSummary() = %q, want the config path it read", got)
+	plan.Config.Image = "custom-image-123"
+	if !strings.Contains(upSummary(plan), "custom-image-123") {
+		t.Fatal("image omitted")
 	}
 }

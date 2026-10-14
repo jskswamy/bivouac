@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–5 (`cloudlab-1em.1`–`cloudlab-1em.5`) are implemented and tested.
-Tasks 6–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–6 (`cloudlab-1em.1`–`cloudlab-1em.6`) are implemented and tested.
+Tasks 7–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -239,6 +239,38 @@ metadata without ever reporting a partial authoritative list.
   mutation-before-write, quoted recovery, partial retention/retry and
   paginated/malformed provider listings. No live account was used.
 
-Next task: approved creation, persisted state and final confirmation (6).
+### Task 6: approved creation and persisted identity
+
+Up now executes an UpPlan, never resolving raw key paths into a new creation
+spec after confirmation. PrepareUp settles name/state/user/cloud-init/path
+and read-only SSH-profile prerequisites. Summary shows registered and pending
+keys, extra-recipient caveats and alias/include action. Account registration
+runs only after approval; duplicate state and current profile prerequisites
+are rechecked before writes. Selected optional SSH metadata is persisted
+immediately with the VM, before profiles/readiness/provisioning. State-write
+failure retains existing VM rollback; profile failure leaves the VM tracked.
+
+Added only provider-resolution injection to the existing up constructor for
+confirmation tests, not another creation orchestrator. An attempted test
+http.DefaultTransport override did not intercept godo's independently built
+transport: two GET account-key requests with an invalid test token received
+401 responses from the real API. No account writes or valid credentials were
+involved. That approach was removed; confirmation tests now inject a fake
+provider/registry and explicitly reject remote writes. Fixture-generated repo
+names were numeric, so confirmation tests now pass a valid explicit name to
+exercise the intended prompt rather than the new early name validation.
+
+- Red APIs: `/tmp/bivouac-task6-red.log`, missing UpPlan/PrepareUp/state SSH.
+- Full lifecycle and state packages passed in the broad green run; cmd
+  failures above were fixed. Final focused verification:
+  `go test ./cmd ./internal/lifecycle ./internal/state -run
+  'Test(Up|ApprovedUp|SSHMetadata)'` exited 0
+  (`/tmp/bivouac-task6-green-final.log`). It covers decline/no writes,
+  approved-spec stability, registration order, state/context before readiness,
+  material mutation, registration/profile failures, state rollback and old
+  JSON compatibility. Existing lifecycle creation tests use a fixture-built
+  approved plan and retain their assertions.
+
+Next task: selected Go SSH authentication and record-context ownership (7).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.

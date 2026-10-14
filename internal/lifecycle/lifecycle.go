@@ -6,34 +6,21 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/jskswamy/bivouac/internal/config"
-	"github.com/jskswamy/bivouac/internal/identity"
+	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/provider"
-	"github.com/jskswamy/bivouac/internal/provisioning"
 	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/jskswamy/bivouac/internal/tui"
 )
 
 const readyTimeout = 5 * time.Minute
 
-// validInstanceName matches names usable as both a provider VM name and a
-// path component: must start with a letter, followed by letters, digits, or
-// hyphens. The instance name is also the repository name, so it lands in
-// RemoteBarePath and LocalWorktreePath. Checked before any expensive step
-// (VM creation, billing) begins.
+// Names become provider names, branch components and directory paths on both
+// machines. Validate before any irreversible or billable operation.
 var validInstanceName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
-
-// validSessionName has the same shape and the same reason. A session name
-// becomes a git branch component, a directory on both machines via
-// filepath.Join, and the suffix of the git remote name -- and a later
-// `git worktree remove` is pointed at the path built from it.
 var validSessionName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
-// CheckSessionName rejects a session name that cannot safely be a branch
-// component, a directory, or a remote suffix. Exported because the CLI
-// records the session name before creating it (so a half-created session is
-// still visible to down) and must not persist a name that can never work.
 func CheckSessionName(session string) error {
 	if !validSessionName.MatchString(session) {
 		return fmt.Errorf("session name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens)", session)
@@ -41,143 +28,76 @@ func CheckSessionName(session string) error {
 	return nil
 }
 
-// Steps groups the lifecycle steps Up calls after creating the VM, so
-// tests can substitute recording fakes for the steps that would
-// otherwise need a real remote instance to talk to. Production
-// callers always use DefaultSteps.
+// Steps keeps post-creation network operations replaceable in local tests.
 type Steps struct {
-	WaitReady     func(ctx context.Context, ip, user string, timeout time.Duration) error
-	Reconcile     func(ctx context.Context, name, bivouacPath string) error
-	JoinTailscale func(ctx context.Context, ip, user string) error
+	WaitReady     func(context.Context, string, string, time.Duration) error
+	Reconcile     func(context.Context, string, string) error
+	JoinTailscale func(context.Context, string, string) error
 }
 
-// DefaultSteps wires Steps to the real implementations. Reconcile is
-// wrapped in tui.Run so home-manager switch's output renders in a
-// collapsible viewport (on a real terminal; plain streaming otherwise)
-// -- reconcile.Reconcile itself is unchanged either way.
 func DefaultSteps() Steps {
-	return Steps{
-		WaitReady: WaitReady,
-		Reconcile: func(ctx context.Context, name, bivouacPath string) error {
-			return tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error {
-				return reconcile.Reconcile(ctx, name, bivouacPath)
-			})
-		},
-		JoinTailscale: JoinTailscale,
-	}
+	return Steps{WaitReady: WaitReady, Reconcile: func(ctx context.Context, name, path string) error {
+		return tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error { return reconcile.Reconcile(ctx, name, path) })
+	}, JoinTailscale: JoinTailscale}
 }
 
-// Up creates a new instance and brings it fully live: creates the VM,
-// records its state immediately (so a later failure still leaves it
-// destroyable), waits until it's genuinely ready, and reconciles
-// home-manager once. It does not seed a repository -- nothing needs the
-// code on the instance until a session exists, so that happens in
-// StartSession instead.
-func Up(ctx context.Context, p provider.Provider, steps Steps, name, bivouacPath, repoRoot string) error {
-	if !validInstanceName.MatchString(name) {
-		return fmt.Errorf("instance name %q is not valid (must start with a letter, and contain only letters, digits, and hyphens -- it is also used as the repository name in paths on both machines) -- pass an explicit --name", name)
-	}
-
-	cfg, err := config.Resolve(ctx, bivouacPath)
-	if err != nil {
-		return err
-	}
-
-	var sshKeys []string
-	if cfg.SshKeys != nil {
-		sshKeys = *cfg.SshKeys
-	}
-
-	// remoteUser is the instance's own non-root login, derived once
-	// here and stored in its state record -- not re-derived per
-	// command, since a later command may run as a different local user
-	// or on a different machine and must keep talking to whichever
-	// user this instance was actually provisioned with.
-	remoteUser, err := identity.RemoteUser()
-	if err != nil {
-		return fmt.Errorf("deriving remote username: %w", err)
-	}
-	// remotePath is likewise computed once and stored (state.Record.RepoPath)
-	// rather than re-derived: a later `bivouac ssh` may run from
-	// somewhere that isn't this repo's checkout at all, and needs to
-	// know where THIS instance's repo actually landed.
-	remotePath, err := RemotePath(repoRoot, remoteUser)
-	if err != nil {
-		return fmt.Errorf("computing remote repo path: %w", err)
-	}
-	cloudInit, err := provisioning.RenderCloudInit(remoteUser, cfg.Shell)
-	if err != nil {
-		return fmt.Errorf("rendering cloud-init: %w", err)
-	}
-
-	spec := provider.InstanceSpec{
-		Name:     name,
-		Region:   cfg.Region,
-		Size:     cfg.Size,
-		Image:    cfg.Image,
-		SSHKeys:  sshKeys,
-		UserData: cloudInit,
-	}
-
+// Up executes only an approved creation plan. Account additions are retained
+// on failure; a created VM is tracked before readiness, profile publication or
+// provisioning, so later failures cannot leave an invisible billable machine.
+func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) error {
 	store, err := state.Open()
 	if err != nil {
 		return err
 	}
-
-	// Before Create, because Create is the irreversible step. Up used to go
-	// straight there and then overwrite the record, so a second run against a
-	// half-provisioned instance built a new droplet and orphaned the first --
-	// still running, still billing, and invisible to list and down, which read
-	// only the record. Recovering one needed the provider API by hand.
-	//
-	// The money is the smaller half. A session on the orphaned droplet is
-	// unreachable work, which is exactly what rescue-before-destroy exists to
-	// prevent.
-	if existing, ok, err := store.Get(name); err != nil {
+	// Recheck even after PrepareUp: another process may have completed creation
+	// while the user was considering the confirmation prompt.
+	if err := checkNewInstance(store, plan.Name); err != nil {
 		return err
-	} else if ok {
-		return fmt.Errorf("instance %q already exists at %s (id %s)\nrun `bivouac provision %s` to finish setting it up, or `bivouac down %s` to destroy it first — creating another would leave this one running and unreachable", name, existing.IP, existing.VMID, name, name)
 	}
-
+	profiles, err := sshidentity.DefaultProfileStore()
+	if err != nil {
+		return err
+	}
+	if err := profiles.Check(ctx, plan.Connection); err != nil {
+		return err
+	}
+	registry, ok := p.(provider.KeyRegistry)
+	if !ok {
+		return fmt.Errorf("provider cannot register selected SSH keys")
+	}
+	ids, err := keyplan.Register(ctx, registry, plan.Keys)
+	if err != nil {
+		return err
+	}
+	spec := plan.Spec
+	spec.SSHKeys = ids
 	provider.ReportProgress(ctx, "creating instance")
 	vm, err := p.Create(ctx, spec)
 	if err != nil {
-		return fmt.Errorf("creating instance: %w", err)
+		return fmt.Errorf("creating instance (approved account additions retained): %w", err)
 	}
-
-	record := state.Record{
-		Name:     name,
-		Provider: "digitalocean",
-		VMID:     vm.ID,
-		IP:       vm.IP,
-		Region:   vm.Region,
-		Size:     vm.Size,
-		Template: cfg.Template,
-		User:     remoteUser,
-		RepoPath: remotePath,
-		Shell:    cfg.Shell,
-	}
+	connection := plan.Connection
+	connection.PublicIP = vm.IP
+	connection.PreferredHost = vm.IP
+	record := state.Record{Name: plan.Name, Provider: "digitalocean", VMID: vm.ID, IP: vm.IP, Region: vm.Region, Size: vm.Size, Template: plan.Config.Template, User: connection.User, RepoPath: plan.RemotePath, Shell: plan.Config.Shell, SSH: &connection}
 	if err := store.Put(record); err != nil {
 		if destroyErr := p.Destroy(ctx, vm.ID); destroyErr != nil {
 			return fmt.Errorf("recording instance state failed (%v), and cleanup also failed -- destroy VM %s manually: %w", err, vm.ID, destroyErr)
 		}
 		return fmt.Errorf("recording instance state: %w", err)
 	}
-
-	// Waits as remoteUser, the same login every step after it uses:
-	// cloud-init creates that user early and disables root SSH login as
-	// its last step, so root would race a closing window (see
-	// WaitReady's own doc comment).
-	if err := steps.WaitReady(ctx, vm.IP, remoteUser, readyTimeout); err != nil {
-		return fmt.Errorf("waiting for %s to be ready: %w", name, err)
+	if err := profiles.Upsert(ctx, connection); err != nil {
+		return fmt.Errorf("instance %s is tracked but SSH profile installation failed: %w; repair the conflicting local SSH configuration and retry bivouac provision %s", plan.Name, err, plan.Name)
 	}
-
-	if err := steps.Reconcile(ctx, name, bivouacPath); err != nil {
+	ctx = sshidentity.WithConnection(ctx, connection)
+	if err := steps.WaitReady(ctx, vm.IP, connection.User, readyTimeout); err != nil {
+		return fmt.Errorf("waiting for %s to be ready: %w", plan.Name, err)
+	}
+	if err := steps.Reconcile(ctx, plan.Name, plan.ConfigPath); err != nil {
 		return err
 	}
-
-	if cfg.Tailscale {
-		if err := steps.JoinTailscale(ctx, vm.IP, remoteUser); err != nil {
+	if plan.Config.Tailscale {
+		if err := steps.JoinTailscale(ctx, vm.IP, connection.User); err != nil {
 			return err
 		}
 		record.TailscaleJoined = true
@@ -185,6 +105,5 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, name, bivouacPath
 			return err
 		}
 	}
-
 	return nil
 }

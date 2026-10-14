@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
@@ -24,6 +25,9 @@ type Record struct {
 	RepoPath        string `json:"repo_path"`
 	TailscaleJoined bool   `json:"tailscale_joined"`
 	HerdrMachineID  string `json:"herdr_machine_id,omitempty"`
+	// SSH is optional for old state. New records bind authentication to the
+	// creation-time selection, not later edits to the project configuration.
+	SSH *sshidentity.Connection `json:"ssh,omitempty"`
 	// Shell is the login shell cloud-init was asked to set at creation.
 	// Recorded because nothing applies it afterwards, so a later config
 	// edit can be checked against what the instance actually got. Empty

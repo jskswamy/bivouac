@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,15 +28,47 @@ import (
 func minimalBivouacPkl(t *testing.T, dir string) {
 	t.Helper()
 	path := filepath.Join(dir, "bivouac.pkl")
-	body := strings.Join([]string{
-		`region = "nyc3"`,
-		`size = "s-1vcpu-1gb"`,
-		`template = "python"`,
-		`sshKeys { "aa:bb:cc" }`,
-	}, "\n") + "\n"
+	key := setupKey(t)
+	body := fmt.Sprintf("region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nsshKeys { %q }\n", key.Path)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
 	}
+}
+
+// Inject only provider resolution; exercise the real up confirmation path.
+type confirmedUpProvider struct {
+	fakeRegistry
+	t *testing.T
+}
+
+func (p *confirmedUpProvider) Create(context.Context, provider.InstanceSpec) (provider.VM, error) {
+	p.t.Error("droplet write before confirmation")
+	return provider.VM{}, fmt.Errorf("unexpected create")
+}
+func (p *confirmedUpProvider) Destroy(context.Context, string) error {
+	return fmt.Errorf("unexpected destroy")
+}
+func (p *confirmedUpProvider) Get(context.Context, string) (provider.VM, error) {
+	return provider.VM{}, fmt.Errorf("unexpected get")
+}
+func (p *confirmedUpProvider) List(context.Context) ([]provider.VM, error) {
+	return nil, fmt.Errorf("unexpected list")
+}
+func upRootWithRegistry(t *testing.T) *cobra.Command {
+	root := newRootCmd()
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "up" {
+			root.RemoveCommand(cmd)
+		}
+	}
+	p := &confirmedUpProvider{t: t}
+	root.AddCommand(newUpCmdWithProvider(func(context.Context) (provider.Provider, error) { return p, nil }))
+	t.Cleanup(func() {
+		if len(p.created) != 0 {
+			t.Error("account writes before confirmation")
+		}
+	})
+	return root
 }
 
 // chdir switches the process's working directory to dir for the
@@ -108,8 +141,8 @@ func TestUpCommand_DeclinedConfirmation_AbortsWithoutCreating(t *testing.T) {
 	minimalBivouacPkl(t, dir)
 	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
 
-	root := newRootCmd()
-	root.SetArgs([]string{"up"})
+	root := upRootWithRegistry(t)
+	root.SetArgs([]string{"up", "fixture"})
 	root.SetIn(strings.NewReader("n\n"))
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -132,8 +165,8 @@ func TestUpCommand_ConfirmationSummary_ShownBeforePrompt(t *testing.T) {
 	minimalBivouacPkl(t, dir)
 	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
 
-	root := newRootCmd()
-	root.SetArgs([]string{"up"})
+	root := upRootWithRegistry(t)
+	root.SetArgs([]string{"up", "fixture"})
 	root.SetIn(strings.NewReader("n\n"))
 	var out bytes.Buffer
 	root.SetOut(&out)

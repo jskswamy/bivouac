@@ -20,19 +20,26 @@ import (
 // returns a canned VM (or err, if set); the other three methods are
 // unused by Up but must exist to satisfy the interface.
 type fakeProvider struct {
-	vm          provider.VM
-	err         error
-	created     bool
-	gotSpec     provider.InstanceSpec
-	destroyedID string
-	destroyed   bool
-	destroyErr  error
-	getVM       provider.VM
-	getErr      error
+	vm                       provider.VM
+	err                      error
+	created                  bool
+	gotSpec                  provider.InstanceSpec
+	destroyedID              string
+	destroyed                bool
+	destroyErr               error
+	getVM                    provider.VM
+	getErr                   error
+	accountKeys              []provider.SSHKey
+	keyListErr, keyCreateErr error
+	keyWrites                int
+	onCreate                 func()
 }
 
 func (f *fakeProvider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
 	f.created = true
+	if f.onCreate != nil {
+		f.onCreate()
+	}
 	f.gotSpec = spec
 	return f.vm, f.err
 }
@@ -95,7 +102,7 @@ func TestUp_RunsFullSequenceInOrder(t *testing.T) {
 	var progress []string
 	ctx := provider.WithProgress(context.Background(), func(status string) { progress = append(progress, status) })
 
-	if err := Up(ctx, p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
+	if err := upFixture(t, ctx, p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 
@@ -152,7 +159,7 @@ func TestUp_PassesTheShellToCloudInitAndRecordsIt(t *testing.T) {
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: addr, Region: "nyc3", Size: "s-1vcpu-1gb"}}
 	steps := Steps{WaitReady: WaitReady, Reconcile: reconcile.Reconcile}
 
-	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
+	if err := upFixture(t, context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 
@@ -182,7 +189,7 @@ func TestUp_StateNotRecordedWhenCreateFails(t *testing.T) {
 
 	p := &fakeProvider{err: errors.New("create failed")}
 
-	err := Up(context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
+	err := upFixture(t, context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error when Create fails")
 	}
@@ -229,7 +236,7 @@ func TestUp_RefusesWhenTheInstanceAlreadyExists(t *testing.T) {
 	}
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-new", IP: "192.0.2.1"}}
-	err = Up(context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
+	err = upFixture(t, context.Background(), p, DefaultSteps(), "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() = nil, want a refusal when the instance already exists")
 	}
@@ -257,7 +264,7 @@ func TestUp_RejectsInvalidInstanceNameBeforeCreate(t *testing.T) {
 
 	p := &fakeProvider{vm: provider.VM{ID: "vm-1", IP: "192.0.2.1"}}
 
-	err := Up(context.Background(), p, DefaultSteps(), "my.instance", bivouacPath, repoRoot)
+	err := upFixture(t, context.Background(), p, DefaultSteps(), "my.instance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error for an invalid instance name")
 	}
@@ -291,7 +298,7 @@ func TestUp_JoinsTailscaleWhenConfigEnablesIt(t *testing.T) {
 		},
 	}
 
-	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
+	if err := upFixture(t, context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 	if gotIP != "192.0.2.1" || gotUser == "" {
@@ -327,7 +334,7 @@ func TestUp_SkipsTailscaleWhenConfigDisablesIt(t *testing.T) {
 		JoinTailscale: func(ctx context.Context, ip, user string) error { called = true; return nil },
 	}
 
-	if err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
+	if err := upFixture(t, context.Background(), p, steps, "myinstance", bivouacPath, repoRoot); err != nil {
 		t.Fatalf("Up() error = %v", err)
 	}
 	if called {
@@ -363,7 +370,7 @@ func TestUp_StateRecordedBeforeWaitReady(t *testing.T) {
 		Reconcile: func(ctx context.Context, name, bivouacPath string) error { return nil },
 	}
 
-	err := Up(context.Background(), p, steps, "myinstance", bivouacPath, repoRoot)
+	err := upFixture(t, context.Background(), p, steps, "myinstance", bivouacPath, repoRoot)
 	if err == nil {
 		t.Fatal("Up() error = nil, want error when WaitReady fails")
 	}
