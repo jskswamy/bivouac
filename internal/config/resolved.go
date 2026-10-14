@@ -1,5 +1,7 @@
 package config
 
+import "github.com/jskswamy/bivouac/internal/sshkeys"
+
 // Resolved is a configuration that has been through Resolve: the required
 // fields are known to be set, and carried as plain strings rather than the
 // pointers the generated struct uses.
@@ -26,6 +28,9 @@ type Resolved struct {
 	// Shell is fish, zsh or bash: the project's value, else the base's,
 	// else fish. Never empty.
 	Shell string
+
+	// SSHKeyFiles retains each entry's declaring file through the additive merge.
+	SSHKeyFiles []sshkeys.FileRef
 }
 
 // defaultShell applies when neither the project nor the base names one.

@@ -41,21 +41,32 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 		return Resolved{}, fmt.Errorf("resolving base config path: %w", err)
 	}
 
+	projectKeys, projectKeyErr := configSSHKeyFiles(path, project)
+	keyFiles := projectKeys
+	var baseKeyErr error
 	merged := project
 	if _, statErr := os.Stat(basePath); statErr == nil {
 		base, err := loadResolved(ctx, basePath)
 		if err != nil {
 			return Resolved{}, err
 		}
+		baseKeys, keyErr := configSSHKeyFiles(basePath, base)
+		baseKeyErr = keyErr
+		keyFiles = append(baseKeys, projectKeys...)
 		merged = mergeConfig(base, project)
 	} else if !os.IsNotExist(statErr) {
 		return Resolved{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
 	}
 
+	if err := errors.Join(baseKeyErr, projectKeyErr); err != nil {
+		return Resolved{}, err
+	}
 	if err := validate(merged); err != nil {
 		return Resolved{}, err
 	}
-	return resolved(merged), nil
+	result := resolved(merged)
+	result.SSHKeyFiles = keyFiles
+	return result, nil
 }
 
 // ResolveBase loads the personal base config on its own, for the one

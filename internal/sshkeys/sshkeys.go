@@ -41,6 +41,8 @@ func (s Source) String() string {
 
 // Key is one public key this machine holds.
 type Key struct {
+	// Path is the public-key file, empty for keys only found in the agent.
+	Path string
 	// Fingerprint is the RFC 4716 MD5 presentation -- colon-separated
 	// hex, no prefix -- which is the form DigitalOcean stores and
 	// matches on.

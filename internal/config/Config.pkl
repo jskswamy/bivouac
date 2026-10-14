@@ -40,6 +40,10 @@ shell: ("fish"|"zsh"|"bash")?
 /// repository is in. `bd dolt remote list` is authoritative for that, and
 /// a second copy here would only drift.
 beads: "session"|"dolthub"|"off" = "session"
+/// Public-key file paths only; fingerprints and account key IDs are rejected
+/// during local resolution. Relative paths use this config's directory;
+/// ~/ expands to the local home directory. Base/project lists are additive.
+/// Kept as strings so init can read legacy entries and help replace them.
 sshKeys: Listing<String>?
 packages: Listing<String> = new Listing {}
 

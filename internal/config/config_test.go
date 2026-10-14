@@ -44,7 +44,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 	writeFixture(t, base, strings.Join([]string{
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
-		`sshKeys { "base-key" }`,
+		`sshKeys { "keys/base.pub" }`,
 		`packages { "git" }`,
 	}, "\n")+"\n")
 
@@ -56,7 +56,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		`arch = "arm64"`,
 		`tailscale = true`,
 		`beads = "dolthub"`,
-		`sshKeys { "project-key" }`,
+		`sshKeys { "keys/project.pub" }`,
 		`packages { "ripgrep" }`,
 	}, "\n")+"\n")
 
@@ -75,7 +75,7 @@ func TestLoad_MergesWithBase_ScalarsOverrideListsAdditive(t *testing.T) {
 		t.Errorf("Template = %v, want python", cfg.Template)
 	}
 
-	wantKeys := []string{"base-key", "project-key"}
+	wantKeys := []string{"keys/base.pub", "keys/project.pub"}
 	if cfg.SshKeys == nil || !equalStrings(*cfg.SshKeys, wantKeys) {
 		t.Errorf("SshKeys = %v, want %v (base then project)", cfg.SshKeys, wantKeys)
 	}
