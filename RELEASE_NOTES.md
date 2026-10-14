@@ -1,3 +1,5 @@
+## Unreleased
+
 ## v0.1.0
 
 First public release of bivouac: disposable, Nix-provisioned cloud
