@@ -18,7 +18,7 @@ import (
 )
 
 func runSSH(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -88,11 +88,11 @@ func herdrTabsFor(ctx context.Context, localRepo string) []config.HerdrTab {
 }
 
 func runHerdr(cmd *cobra.Command, name string, args []string) error {
-	ctx := progressCtx(cmd)
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
+	ctx := progressCtx(cmd)
 	// nil, not args: args[0] here is the INSTANCE name (see the nil-args
 	// comment on runSSH). herdr does not accept a starting directory for a
 	// --remote session (that's cloudlab-7y1, via `workspace create --cwd` at
@@ -179,7 +179,7 @@ func recordHerdrMachine(store *state.Store, instance, id string) error {
 }
 
 func runPair(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,7 @@ func tmuxSession(args []string) string {
 }
 
 func runTmux(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}

@@ -184,7 +184,7 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 	// DescribeSessions, not a DescribeSession loop: each one probes its
 	// instance over the network, so in sequence the report costs the sum of
 	// every session's timeout.
-	for _, info := range lifecycle.DescribeSessions(cmd.Context(), record.Name, record.Sessions) {
+	for _, info := range lifecycle.DescribeSessions(record.ConnectionContext(cmd.Context()), record.Name, record.Sessions) {
 		wtState := "clean"
 		if !info.WorktreeExists {
 			wtState = "no worktree"

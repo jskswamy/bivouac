@@ -71,7 +71,7 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 
 	var infos []lifecycle.SessionInfo
 	for _, r := range records {
-		infos = append(infos, lifecycle.DescribeSessions(cmd.Context(), r.Name, r.Sessions)...)
+		infos = append(infos, lifecycle.DescribeSessions(r.ConnectionContext(cmd.Context()), r.Name, r.Sessions)...)
 	}
 	if jsonFlag(cmd) {
 		return printSessionListJSON(cmd, infos)
@@ -257,6 +257,7 @@ func resolveInstanceForSession(cmd *cobra.Command, name string, args []string) (
 		}
 		switch found {
 		case 1:
+			cmd.SetContext(match.ConnectionContext(cmd.Context()))
 			return store, match, nil
 		case 0:
 			// Falls through to the cwd-derived lookup below, whose error
@@ -266,7 +267,7 @@ func resolveInstanceForSession(cmd *cobra.Command, name string, args []string) (
 			return nil, state.Record{}, fmt.Errorf("session %q exists on more than one instance; pass --name to pick one", args[0])
 		}
 	}
-	return resolveInstance(name)
+	return resolveInstance(cmd, name)
 }
 
 func resolveSessionArg(cmd *cobra.Command, record state.Record, args []string) (state.Session, error) {

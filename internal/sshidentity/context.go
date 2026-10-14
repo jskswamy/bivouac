@@ -28,6 +28,13 @@ func WithConnection(ctx context.Context, c Connection) context.Context {
 	c.Keys = append([]Identity(nil), c.Keys...)
 	return context.WithValue(ctx, connectionKey{}, c)
 }
+
+// WithoutConnection prevents an inherited identity from leaking into an old
+// record or the next machine in a multi-instance operation.
+func WithoutConnection(ctx context.Context) context.Context {
+	return context.WithValue(ctx, connectionKey{}, nil)
+}
+
 func FromContext(ctx context.Context) (Connection, bool) {
 	c, ok := ctx.Value(connectionKey{}).(Connection)
 	c.Keys = append([]Identity(nil), c.Keys...)

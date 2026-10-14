@@ -169,7 +169,7 @@ func discoverAndChoose(cmd *cobra.Command, record state.Record, name string, por
 // runConnect reaches a service on the instance. With a port it goes
 // straight there; without one it asks the instance what is listening.
 func runConnect(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func serveTarget(tailnetIP string, l lifecycle.Listener) (string, bool) {
 // command. Discovery is identical to connect's: the two commands differ
 // in how long the result lasts, not in how you name what you want.
 func runServe(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -353,7 +353,7 @@ func runServe(cmd *cobra.Command, name string, args []string) error {
 // terminal with no PID recorded, so the empty-state message says so
 // rather than leaving someone to wonder why unserve did nothing.
 func runUnserve(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}

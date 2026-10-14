@@ -18,7 +18,7 @@ import (
 // the same "no instance named" error every command below list/up
 // reports identically when the name doesn't resolve to a known
 // instance.
-func resolveInstance(name string) (*state.Store, state.Record, error) {
+func resolveInstance(cmd *cobra.Command, name string) (*state.Store, state.Record, error) {
 	store, err := state.Open()
 	if err != nil {
 		return nil, state.Record{}, err
@@ -30,6 +30,7 @@ func resolveInstance(name string) (*state.Store, state.Record, error) {
 	if !ok {
 		return nil, state.Record{}, fmt.Errorf("no instance named %q (run bivouac up first)", name)
 	}
+	cmd.SetContext(record.ConnectionContext(cmd.Context()))
 	return store, record, nil
 }
 
@@ -46,7 +47,7 @@ func resolveProvider(ctx context.Context) (provider.Provider, error) {
 }
 
 func runDown(cmd *cobra.Command, name string, args []string) error {
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -104,7 +105,7 @@ func downSummary(record state.Record) string {
 const servingLookupTimeout = 20 * time.Second
 
 func runStatus(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -174,7 +175,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 }
 
 func runTailscale(cmd *cobra.Command, name string, args []string) error {
-	store, record, err := resolveInstance(name)
+	store, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}

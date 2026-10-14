@@ -22,6 +22,7 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
 
 // Client wraps an established SSH connection to an instance.
@@ -57,10 +58,26 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 		addr = net.JoinHostPort(ip, "22")
 	}
 
-	auth, err := authMethods()
-	if err != nil {
-		return nil, err
+	var auth []ssh.AuthMethod
+	cleanup := func() {}
+	if selected, ok := sshidentity.FromContext(ctx); ok {
+		if _, err := sshidentity.TransportHost(ctx, ip, user); err != nil {
+			return nil, err
+		}
+		signers, closeAgent, err := sshidentity.Signers(ctx, selected.Keys)
+		if err != nil {
+			return nil, err
+		}
+		cleanup = closeAgent
+		auth = []ssh.AuthMethod{ssh.PublicKeys(signers...)}
+	} else {
+		var err error
+		auth, err = authMethods()
+		if err != nil {
+			return nil, err
+		}
 	}
+	defer cleanup()
 
 	knownHostsPath, err := defaultKnownHostsPath()
 	if err != nil {
@@ -86,6 +103,7 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientConfig)
 	if err != nil {
+		_ = conn.Close()
 		var keyErr *knownhosts.KeyError
 		if errors.As(err, &keyErr) && len(keyErr.Want) > 0 {
 			return nil, fmt.Errorf("host key for %s has changed — if you recreated this instance (down + up), remove its stale entry from ~/.ssh/known_hosts and try again: %w", addr, err)

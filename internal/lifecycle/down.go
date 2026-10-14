@@ -53,6 +53,7 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 // the error is still returned so the user knows to check the
 // provider's dashboard.
 func Down(ctx context.Context, p provider.Provider, store *state.Store, record state.Record, force bool) error {
+	ctx = record.ConnectionContext(ctx)
 	if !force {
 		if err := rescueBeforeDestroy(ctx, record); err != nil {
 			return err
@@ -88,6 +89,7 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 // from any directory, so neither the session's name nor the repository it
 // belongs to is derivable from where the command happens to be typed.
 func rescueBeforeDestroy(ctx context.Context, record state.Record) error {
+	ctx = record.ConnectionContext(ctx)
 	if len(record.Sessions) == 0 {
 		// No session was ever started on this instance, so there is
 		// nothing an agent could have left behind.

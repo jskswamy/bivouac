@@ -158,6 +158,22 @@ func TestApprovedUpRegistrationAndProfileFailure(t *testing.T) {
 		})
 	}
 }
+func TestForceDownDoesNotLoadMissingRecordedSigner(t *testing.T) {
+	testenv.Isolate(t)
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := state.Record{Name: "machine", VMID: "vm", IP: "192.0.2.1", User: "me", SSH: &sshidentity.Connection{Name: "machine", Alias: "bivouac-machine", PublicIP: "192.0.2.1", PreferredHost: "192.0.2.1", User: "me", Keys: []sshidentity.Identity{{PublicPath: "/missing.pub", PrivatePath: "/missing"}}}}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, true); err != nil || !p.destroyed {
+		t.Fatalf("force down failed: %v", err)
+	}
+}
+
 func TestApprovedUpStateFailureRollsBackVM(t *testing.T) {
 	testenv.Isolate(t)
 	t.Setenv("SSH_AUTH_SOCK", "")

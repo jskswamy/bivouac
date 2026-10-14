@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,6 +35,15 @@ type Record struct {
 	// means the instance predates the field.
 	Shell    string    `json:"shell,omitempty"`
 	Sessions []Session `json:"sessions"`
+}
+
+// ConnectionContext binds metadata at record ownership boundaries without
+// loading signers. Force teardown remains possible if local keys disappear.
+func (r Record) ConnectionContext(ctx context.Context) context.Context {
+	if r.SSH == nil {
+		return sshidentity.WithoutConnection(ctx)
+	}
+	return sshidentity.WithConnection(ctx, *r.SSH)
 }
 
 // Session is one agent session on an instance. Name, LocalRepo and Base

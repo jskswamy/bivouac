@@ -31,7 +31,7 @@ func syncRemoteDir(args []string, local, remoteUser string) (string, error) {
 }
 
 func runSync(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func defaultLocalDir(remote string) string {
 }
 
 func runDownload(cmd *cobra.Command, name string, args []string) error {
-	_, record, err := resolveInstance(name)
+	_, record, err := resolveInstance(cmd, name)
 	if err != nil {
 		return err
 	}

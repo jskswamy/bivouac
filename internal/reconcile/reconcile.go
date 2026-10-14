@@ -11,6 +11,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provisioning"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -74,6 +75,17 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	}
 	if !ok {
 		return fmt.Errorf("instance %q not found — run \"bivouac up %s\" first", name, name)
+	}
+
+	ctx = record.ConnectionContext(ctx)
+	if record.SSH != nil {
+		profiles, err := sshidentity.DefaultProfileStore()
+		if err != nil {
+			return err
+		}
+		if err := profiles.Upsert(ctx, *record.SSH); err != nil {
+			return fmt.Errorf("repairing instance SSH profile: %w", err)
+		}
 	}
 
 	cfg, err := config.Resolve(ctx, bivouacPath)

@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–6 (`cloudlab-1em.1`–`cloudlab-1em.6`) are implemented and tested.
-Tasks 7–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–7 (`cloudlab-1em.1`–`cloudlab-1em.7`) are implemented and tested.
+Tasks 8–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -271,6 +271,31 @@ exercise the intended prompt rather than the new early name validation.
   JSON compatibility. Existing lifecycle creation tests use a fixture-built
   approved plan and retain their assertions.
 
-Next task: selected Go SSH authentication and record-context ownership (7).
+### Task 7: Go SSH and context ownership
+
+Connect uses only the recorded selected signers when metadata is present,
+checks endpoint/user scope, and closes agent resources after handshake.
+Legacy state keeps default authentication. Failed handshakes now close their
+TCP connection too. Existing host-key verification and forwarding remain.
+
+Record.ConnectionContext binds or clears identity without loading keys;
+resolveInstance attaches it to command context. Direct session lookup and
+per-instance session/status listings bind the correct record independently.
+Herdr's progress context is now derived after instance resolution so it does
+not accidentally discard selected metadata. Reconcile and Down bind their
+own record context; provision also repairs the owned SSH profile after an
+interrupted up. Force teardown does not eagerly require a missing signer.
+
+- Behavioural red: selected-only SSH server with eight unrelated agent keys
+  rejected the old Connect path with too many authentication failures
+  (`/tmp/bivouac-task7-red.log`).
+- Green: `go test ./internal/reconcile ./internal/lifecycle ./cmd` exited 0
+  (`/tmp/bivouac-task7-green.log`). The actual local SSH handshake succeeds
+  with a custom selected identity and records no unrelated offered key.
+  Existing host-key, rescue, provisioning and forwarding tests remain green.
+  Command tests also prove metadata binding does not load missing keys and
+  an old record cannot inherit the previous machine's identity.
+
+Next task: external SSH, rsync and persistent Git transport (8).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.
