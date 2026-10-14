@@ -43,3 +43,18 @@ pre-commit run --all-files   # every hook, without committing anything
 nix flake check              # the same checks, in a form CI can run
 go test ./...                # just the Go test suite
 ```
+
+The flake's Go lint and vulnerability hooks need network access to resolve
+modules and fetch the vulnerability database. CI uses `sandbox = false`
+for these checks. On a Linux installation with sandboxing enabled, match
+that setting for this invocation only:
+
+```bash
+nix flake check --option sandbox false --print-build-logs
+```
+
+The daemon must trust the invoking user to accept this restricted option.
+If it prints `ignoring the client-specified setting 'sandbox'`, an
+administrator must run the check with that option (for example, using
+`sudo` where authorised). There is no need to disable sandboxing globally.
+This check is network-dependent, not a hermetic/offline build.
