@@ -132,7 +132,10 @@
                 enable = true;
                 # golangci-lint shells out to go; the official Go toolchain
                 # also needs Nix's CA bundle to fetch modules inside checks.
-                entry = "env SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.golangci-lint}/bin/golangci-lint run";
+                # The hook environment does not put a C compiler on PATH, so
+                # keep Linux stdlib package loading out of cgo just as the
+                # govulncheck hook does below.
+                entry = "env CGO_ENABLED=0 SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.golangci-lint}/bin/golangci-lint run";
                 pass_filenames = false;
               };
 
@@ -145,7 +148,7 @@
                 # gosec shells out to go for package loading (same PATH gap
                 # as golangci-lint above); .gocache is our own local GOPATH,
                 # not project source, and inflates results if scanned.
-                entry = "env SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.gosec}/bin/gosec -exclude-dir=.gocache ./...";
+                entry = "env CGO_ENABLED=0 SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt PATH=${goTool}/bin:$PATH ${pkgs.gosec}/bin/gosec -exclude-dir=.gocache ./...";
                 files = "\\.go$";
                 pass_filenames = false;
               };
