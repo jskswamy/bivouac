@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–3 (`cloudlab-1em.1`–`cloudlab-1em.3`) are implemented and tested.
-Tasks 4–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–4 (`cloudlab-1em.1`–`cloudlab-1em.4`) are implemented and tested.
+Tasks 5–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -184,6 +184,33 @@ credential-free recovery, rather than duplicating normalization in cmd.
 - Tests confirm no credential-free token fallback; no cloud account or
   actual hardware was used.
 
-Next tasks: OpenSSH profiles (4) and account-key planning (5).
+### Task 4: persistent machine OpenSSH profiles
+
+Added one stable machine alias, safely quoted selected identity paths,
+real-endpoint HostKeyAlias and IdentitiesOnly. Agent descriptors use their
+public files; disk descriptors use private paths. User forwarding settings
+are not rewritten. Read-only Check evaluates actual `ssh -G`, including
+system settings (which `-F` would otherwise suppress), and rejects additive
+unrelated IdentityFile directives and host-key-check disabling conflicts.
+
+The owned profile index is authoritative and atomically published before
+the managed SSH config. Retries regenerate all entries after interruption.
+A context-aware flock serializes independent processes. Owned files use
+0600 permissions; new directories use 0700. One marked Include is prepended
+with Host scope resets; original user bytes and file mode are preserved.
+Symlinked/nonregular or explicitly unwritable user config is rejected.
+Remove deletes only one owned machine entry and retains the shared include.
+
+- Red: `go test ./internal/sshidentity` exited 1 for missing profile/alias
+  APIs (`/tmp/bivouac-task4-red.log`).
+- Green: `go test -race ./internal/sshidentity` exited 0
+  (`/tmp/bivouac-task4-green.log`), including real OpenSSH settings,
+  multiple machines, one include, user-byte preservation, identity conflicts,
+  symlink refusal, control-character rejection, agent paths, percent/space
+  quoting, interrupted publication retry, permissions and concurrent
+  subprocess updates. These are local configuration tests, not proof of
+  persistent Git or Herdr authentication.
+
+Next task: account-key planning (5).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.
