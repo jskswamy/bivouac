@@ -1,4 +1,4 @@
-## Unreleased
+## v0.1.0
 
 First public release of bivouac: disposable, Nix-provisioned cloud
 workspaces for coding agents, with a git-based session workflow that makes the
