@@ -4,34 +4,21 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
-// schemaPath returns the absolute path to internal/config/Config.pkl
-// regardless of the test binary's working directory.
-func schemaPath(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine this test file's own path")
-	}
-	return filepath.Join(filepath.Dir(thisFile), "Config.pkl")
-}
-
-func TestLoadFromPath_MinimalFixture(t *testing.T) {
+func TestLoadResolved_MinimalFixture(t *testing.T) {
 	dir := t.TempDir()
 	fixture := filepath.Join(dir, "bivouac.pkl")
-	content := "amends " + quote(schemaPath(t)) + "\n\n" +
-		"region = \"nyc3\"\n" +
+	content := "region = \"nyc3\"\n" +
 		"packages {\n  \"ripgrep\"\n}\n"
 	if err := os.WriteFile(fixture, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
 
-	cfg, err := LoadFromPath(context.Background(), fixture)
+	cfg, err := loadResolved(context.Background(), fixture)
 	if err != nil {
-		t.Fatalf("LoadFromPath() error = %v", err)
+		t.Fatalf("loadResolved() error = %v", err)
 	}
 
 	if cfg.Region == nil || *cfg.Region != "nyc3" {
