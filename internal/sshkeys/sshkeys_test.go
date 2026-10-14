@@ -159,6 +159,9 @@ func TestDiscover_DedupesAgentOverDisk(t *testing.T) {
 	if keys[0].Source != Agent {
 		t.Errorf("Source = %v, want Agent to win the dedupe", keys[0].Source)
 	}
+	if keys[0].Path != filepath.Join(home, ".ssh", "id_ed25519.pub") {
+		t.Errorf("deduplication lost public file: %+v", keys[0])
+	}
 }
 
 // Agent keys come first: they are the ones that can authenticate now.

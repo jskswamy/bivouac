@@ -75,13 +75,16 @@ func Discover() ([]Key, error) {
 // rather than an error.
 func discover(agentSock, sshDir string) ([]Key, error) {
 	var keys []Key
-	seen := map[string]bool{}
+	seen := map[string]int{}
 
 	add := func(k Key) {
-		if seen[k.Fingerprint] {
+		if i, ok := seen[k.Fingerprint]; ok {
+			if keys[i].Path == "" && k.Path != "" {
+				keys[i].Path = k.Path
+			}
 			return
 		}
-		seen[k.Fingerprint] = true
+		seen[k.Fingerprint] = len(keys)
 		keys = append(keys, k)
 	}
 
@@ -151,28 +154,16 @@ func diskKeys(sshDir string) []Key {
 
 	var keys []Key
 	for _, path := range matches {
-		// #nosec G304 -- path comes from globbing the user's own ~/.ssh
-		// for *.pub, and a public key is public by construction.
-		raw, err := os.ReadFile(path)
+		key, err := ReadPublicFile(FileRef{Entry: path, Path: path, ConfigPath: "local discovery"})
 		if err != nil {
+			// Discovery is best-effort; explicitly selected files are checked
+			// separately and never silently skipped.
 			continue
 		}
-		pub, comment, _, _, err := ssh.ParseAuthorizedKey(raw)
-		if err != nil {
-			// Not a public key. ~/.ssh holds config, known_hosts and
-			// private keys too; none of them is a broken key worth
-			// reporting.
-			continue
+		if key.Comment == "" {
+			key.Comment = strings.TrimSuffix(filepath.Base(path), ".pub")
 		}
-		if comment = strings.TrimSpace(comment); comment == "" {
-			comment = strings.TrimSuffix(filepath.Base(path), ".pub")
-		}
-		keys = append(keys, Key{
-			Fingerprint: ssh.FingerprintLegacyMD5(pub),
-			Comment:     comment,
-			Source:      Disk,
-			PublicKey:   strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))),
-		})
+		keys = append(keys, key)
 	}
 	return keys
 }

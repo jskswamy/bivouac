@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Task 1 (`cloudlab-1em.1`) is implemented and tested. Tasks 2–10 remain
-unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–2 (`cloudlab-1em.1`, `cloudlab-1em.2`) are implemented and tested.
+Tasks 3–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -122,8 +122,37 @@ strict parsing, error context and absence of private-key/provider writes.
 One logical implementation commit is used; there are no TDD-churn commits
 to fold. This is not a claim of an independent automated review.
 
-Next unblocked task: Task 2 (`cloudlab-1em.2`), selected local signing
-capabilities and revalidation. Use matching fake agents/custom private
-fixtures, cancellation tests, and path-preserving discovery deduplication.
+### Task 2: selected signing capabilities
+
+Added serializable connection/identity descriptors, context scoping, strict
+recorded-identity revalidation, custom private-file matching, matching-agent
+selection and a verified random signing challenge. Agent selection is
+preferred; later use retains the recorded mode and never falls back to
+unrelated identities. One locally usable selected key suffices; recipients
+without a local private counterpart remain allowed. No secrets or agent
+socket paths enter descriptors. Agent IPC has a 30-second ceiling and is
+closed on cancellation and explicit cleanup. Signing progress is emitted
+before a potentially interactive hardware operation; `WithProgress` lets
+callers direct it into their UI without a provider-package dependency.
+
+Discovery retains a disk path when the same key was found in the agent,
+without losing its agent availability. It reuses strict public-file reading.
+
+- Red: `go test ./internal/sshidentity ./internal/sshkeys` exited 1:
+  missing new APIs and a behavioural failure proving deduplication lost the
+  public file path (`/tmp/bivouac-task2-red.log`).
+- First implementation run exposed missing public-path error context and a
+  cancellation race: socket deadlines may expire immediately before
+  `ctx.Err()` becomes visible. Both were fixed, preserving deadline errors.
+- Green: `go test -race ./internal/sshidentity ./internal/sshkeys` exited 0
+  (`/tmp/bivouac-task2-green.log`). Tests cover custom disk signers, matching
+  and unrelated agent keys, refusing hardware, encrypted/mismatched keys,
+  multiple recipients, changed/missing recorded public/private keys, missing
+  recorded agent identity, context/JSON safety, cancellation and IPC cleanup.
+- This is fake-agent/local-fixture evidence, not live hardware or remote
+  authentication evidence. Call-site integration follows in later tasks.
+
+Next unblocked tasks: wizard migration recovery (3), OpenSSH profiles (4),
+and account-key planning (5), all depending on selected signing capabilities.
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.
