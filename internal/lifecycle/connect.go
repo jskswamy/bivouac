@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/tool"
 )
 
@@ -147,5 +148,16 @@ func Forward(ctx context.Context, host, user string, localPort, remotePort int) 
 	// Argv-array exec, no local shell. host is
 	// provider-assigned or tailnet-resolved and the ports are ints, so
 	// none of them can inject.
-	return tool.Passthrough(ctx, "ssh", forwardArgs(host, user, localPort, remotePort)...)
+	if c, selected := sshidentity.FromContext(ctx); selected && host != c.PublicIP && host != c.PreferredHost {
+		var err error
+		ctx, err = rememberPreferredHost(ctx, host)
+		if err != nil {
+			return err
+		}
+	}
+	alias, options, err := instanceTransport(ctx, host, user)
+	if err != nil {
+		return err
+	}
+	return tool.Passthrough(ctx, "ssh", append(options, forwardArgs(alias, user, localPort, remotePort)...)...)
 }

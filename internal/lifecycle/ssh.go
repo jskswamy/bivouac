@@ -44,5 +44,9 @@ func SSH(ctx context.Context, ip, user, dir string, forwardAgent bool) error {
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but dir is shell-quoted via shellcmd.Quote before being
 	// embedded.
-	return tool.Passthrough(ctx, "ssh", sshArgs(ip, user, dir, forwardAgent)...)
+	host, options, err := instanceTransport(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	return tool.Passthrough(ctx, "ssh", append(options, sshArgs(host, user, dir, forwardAgent)...)...)
 }

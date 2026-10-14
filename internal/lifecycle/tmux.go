@@ -38,5 +38,9 @@ func Tmux(ctx context.Context, ip, user, session string, forwardAgent bool) erro
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but session is shell-quoted via shellcmd.Quote before
 	// being embedded, and ip/user are never attacker-controlled.
-	return tool.Passthrough(ctx, "ssh", tmuxArgs(ip, user, session, forwardAgent)...)
+	host, options, err := instanceTransport(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	return tool.Passthrough(ctx, "ssh", append(options, tmuxArgs(host, user, session, forwardAgent)...)...)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
 
 // RescueSession makes every scrap of a session's work durable on this
@@ -53,20 +54,28 @@ func RescueSession(ctx context.Context, ip, user, localRepo, repoName, session s
 	// find out by letting a real fetch fail. Probe both up front: ip
 	// is Connect's own parameter, already proven reachable above in
 	// this same call, so it is always a fair fallback to check.
-	fallbackURL := sshGitURL(user, ip, repo)
-	storedOK, fallbackOK := chooseReachableAddress(storedURL, fallbackURL, probeTimeout)
-	switch {
-	case storedOK:
-		// Nothing to change -- the stored address still answers.
-	case fallbackOK:
-		if _, err := runLocalGit(ctx, localRepo, "remote", "set-url", remote, fallbackURL); err != nil {
-			return "", "", fmt.Errorf("pointing session %s at a reachable address: %w", session, err)
+	endpoint := ""
+	if c, selected := sshidentity.FromContext(ctx); selected {
+		if _, err := gitEndpoint(ctx, storedURL); err != nil {
+			return "", "", err
 		}
-	default:
-		return "", "", fmt.Errorf("fetching session %s: neither its stored address nor %s answered", session, ip)
+		endpoint = c.PreferredHost
+	} else {
+		fallbackURL := sshGitURL(user, ip, repo)
+		storedOK, fallbackOK := chooseReachableAddress(storedURL, fallbackURL, probeTimeout)
+		switch {
+		case storedOK:
+			// Nothing to change -- the stored address still answers.
+		case fallbackOK:
+			if _, err := runLocalGit(ctx, localRepo, "remote", "set-url", remote, fallbackURL); err != nil {
+				return "", "", fmt.Errorf("pointing session %s at a reachable address: %w", session, err)
+			}
+		default:
+			return "", "", fmt.Errorf("fetching session %s: neither its stored address nor %s answered", session, ip)
+		}
 	}
 
-	out, err := runLocalGit(ctx, localRepo, fetchRemoteFastArgs(remote)...)
+	out, err := runInstanceGit(ctx, localRepo, endpoint, fetchRemoteFastArgs(remote)...)
 	if err != nil {
 		return "", "", fmt.Errorf("fetching session %s: %w\n%s", session, err, out)
 	}

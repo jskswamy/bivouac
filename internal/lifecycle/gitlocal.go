@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
 
 // sshGitURL builds the git URL the Mac uses to reach a repository on the
@@ -45,6 +47,9 @@ func sshGitURL(user, ip, path string) string {
 // of those are failures -- an instance without Tailscale is a supported
 // configuration, it just gets the public address.
 func gitHost(ctx context.Context, ip, user string) string {
+	if c, selected := sshidentity.FromContext(ctx); selected {
+		return c.PreferredHost
+	}
 	addr, err := TailscaleIP(ctx, ip, user)
 	if err != nil || addr == "" {
 		return ip

@@ -162,7 +162,7 @@ func remoteTip(ctx context.Context, localRepo, remote, branch string) (string, e
 	ctx, cancel := context.WithTimeout(ctx, remoteProbeTimeout)
 	defer cancel()
 
-	out, err := runLocalGit(ctx, localRepo, lsRemoteArgs(remote, branch)...)
+	out, err := runInstanceGit(ctx, localRepo, "", lsRemoteArgs(remote, branch)...)
 	if err != nil {
 		return "", err
 	}

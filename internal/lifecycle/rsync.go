@@ -145,7 +145,20 @@ func Push(ctx context.Context, ip, user, local, remote string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, user/local/remote are local identifiers/path
 	// args, none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPushArgs(ip, user, local, remote, gitIgnoredExcludes(ctx, local))...)
+	host, options, err := instanceTransport(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	args := rsyncPushArgs(host, user, local, remote, gitIgnoredExcludes(ctx, local))
+	for i := range args {
+		if args[i] == "-e" {
+			args[i+1] = sshCommand(options)
+			break
+		}
+	}
+	// #nosec G204 -- fixed rsync executable with argv; the remote shell is
+	// constructed from fixed SSH options and quoted recorded endpoint data.
+	cmd := exec.CommandContext(ctx, "rsync", args...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
@@ -173,7 +186,19 @@ func Pull(ctx context.Context, ip, user, remote, local string) error {
 	// #nosec G204 -- argv-array exec.Command, no shell; ip is
 	// provider-assigned, user/remote/local are local identifiers/path
 	// args, none attacker-controlled.
-	cmd := exec.CommandContext(ctx, "rsync", rsyncPullArgs(ip, user, remote, local)...)
+	host, options, err := instanceTransport(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	args := rsyncPullArgs(host, user, remote, local)
+	for i := range args {
+		if args[i] == "-e" {
+			args[i+1] = sshCommand(options)
+			break
+		}
+	}
+	// #nosec G204 -- fixed rsync executable and safely constructed argv.
+	cmd := exec.CommandContext(ctx, "rsync", args...)
 	var buf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)

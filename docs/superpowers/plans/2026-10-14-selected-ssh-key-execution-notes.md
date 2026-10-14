@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–7 (`cloudlab-1em.1`–`cloudlab-1em.7`) are implemented and tested.
-Tasks 8–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–8 (`cloudlab-1em.1`–`cloudlab-1em.8`) are implemented and tested.
+Tasks 9–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -296,6 +296,52 @@ interrupted up. Force teardown does not eagerly require a missing signer.
   Command tests also prove metadata binding does not load missing keys and
   an old record cannot inherit the previous machine's identity.
 
-Next task: external SSH, rsync and persistent Git transport (8).
+### Task 8: external transports and persistent Git
+
+Runtime SSH/tmux/pair/forwarding and both rsync directions validate recorded
+references/settings and use the machine alias; pure builders and old-state
+behavior stay intact. Selected Git push/fetch/ls-remote use a dedicated
+wrapper, while generic local Git/signing is unchanged. New Git and beads
+remote URLs use the alias. Legacy owned SSH URLs remain readable through a
+process-scoped remote URL override; unrelated remotes are never rewritten.
+Explicit caller SSH overrides and alias-changing Git URL rewrites receive
+repair guidance. Effective inherited SSH identities are checked each time.
+
+Git probes resolve recorded real endpoints, never alias DNS. Public fallback
+keeps the alias/identity and sets real HostName/Port/HostKeyAlias only for the
+transfer, without changing the stored remote or disabling host-key checks.
+Tailnet discovery after a successful join persists PreferredHost and updates
+the same profile, retaining PublicIP. Optional Steps.TailnetHost isolates
+this discovery in existing lifecycle unit fixtures, rather than networking
+from tests that intentionally stub JoinTailscale.
+
+Actual ordinary Git testing exposed an OpenSSH detail missed by `ssh -G`:
+HostKeyAlias is used verbatim, without appending a nondefault port. Profile
+and fallback aliases now use knownhosts.Normalize(actual endpoint), matching
+Go SSH's known_hosts names. The local server's random port exercises this.
+
+- Red: new transport API/behavior tests failed before implementation
+  (`/tmp/bivouac-task8-red.log`).
+- Green: lifecycle/sshidentity/cmd suite exited 0
+  (`/tmp/bivouac-task8-suite.log`); focused streaming tests also passed under
+  the race detector (`/tmp/bivouac-task8-race.log`).
+- A real `git fetch` streams git-upload-pack over actual SSH from a disposable
+  bare repository through the persistent alias, using a custom private path
+  containing spaces and eight unrelated fixture agent keys. GIT_SSH_COMMAND
+  and GIT_SSH are absent. No bivouac wrapper is involved; fixture-only
+  core.sshCommand selects the isolated user config with -F (OpenSSH uses
+  passwd's home rather than test HOME), and selects the seeded known_hosts
+  file with strict verification. Identity paths come only from the profile.
+- A separate actual transfer exercises unreachable-preferred/public fallback
+  with unchanged saved alias and strict real-endpoint host-key checks. Its
+  PATH adapter only selects the fixture config/known_hosts; it supplies no
+  identity flags. External SSH/rsync adapters additionally prove shared alias
+  argv and the existing suites cover command quoting/forwarding policy.
+
+No actual beads/Dolt transport or live cloud/hardware use is claimed. The
+saved beads URL shares the profile alias, but Dolt interoperability still
+requires external verification if that transport ignores OpenSSH config.
+
+Next task: Herdr targets, transport evidence and machine teardown (9).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.

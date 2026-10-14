@@ -187,6 +187,9 @@ func runTailscale(cmd *cobra.Command, name string, args []string) error {
 	if err := store.Put(record); err != nil {
 		return err
 	}
+	if err := lifecycle.RefreshTailnetRoute(ctx); err != nil {
+		return err
+	}
 	cmd.Printf("%s joined the tailnet\n", name)
 	return nil
 }

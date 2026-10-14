@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 var machineName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
@@ -97,7 +99,7 @@ func renderProfile(c Connection) (string, error) {
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, host)
+	fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, knownhosts.Normalize(net.JoinHostPort(host, port)))
 	for _, path := range paths {
 		quoted, err := quoteSSH(path)
 		if err != nil {

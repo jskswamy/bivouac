@@ -33,12 +33,13 @@ type Steps struct {
 	WaitReady     func(context.Context, string, string, time.Duration) error
 	Reconcile     func(context.Context, string, string) error
 	JoinTailscale func(context.Context, string, string) error
+	TailnetHost   func(context.Context, string, string) (string, error)
 }
 
 func DefaultSteps() Steps {
 	return Steps{WaitReady: WaitReady, Reconcile: func(ctx context.Context, name, path string) error {
 		return tui.Run(ctx, "Reconciling environment", func(ctx context.Context) error { return reconcile.Reconcile(ctx, name, path) })
-	}, JoinTailscale: JoinTailscale}
+	}, JoinTailscale: JoinTailscale, TailnetHost: TailscaleIP}
 }
 
 // Up executes only an approved creation plan. Account additions are retained
@@ -103,6 +104,15 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) erro
 		record.TailscaleJoined = true
 		if err := store.Put(record); err != nil {
 			return err
+		}
+		if steps.TailnetHost != nil {
+			host, err := steps.TailnetHost(ctx, vm.IP, connection.User)
+			if err != nil {
+				return err
+			}
+			if _, err := rememberPreferredHost(ctx, host); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

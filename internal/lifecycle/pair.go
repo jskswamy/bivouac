@@ -43,5 +43,9 @@ func Pair(ctx context.Context, sshHost, advertiseHost, user string, forwardAgent
 	// the remote command IS shell-interpreted by sshd's login shell,
 	// but advertiseHost is shell-quoted via shellcmd.Quote before
 	// being embedded, and the hosts/user are never attacker-controlled.
-	return tool.Passthrough(ctx, "ssh", pairArgs(sshHost, advertiseHost, user, forwardAgent)...)
+	host, options, err := instanceTransport(ctx, sshHost, user)
+	if err != nil {
+		return err
+	}
+	return tool.Passthrough(ctx, "ssh", append(options, pairArgs(host, advertiseHost, user, forwardAgent)...)...)
 }

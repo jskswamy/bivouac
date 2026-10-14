@@ -10,6 +10,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
 
 // StartSession creates a session: a repository on the instance for the agent
@@ -36,7 +37,10 @@ func StartSession(ctx context.Context, ip, user, localRepo, repoName, session st
 	host := gitHost(ctx, ip, user)
 	repo := RemoteRepoPath(user, session, repoName)
 	branch := SessionBranch(session)
-	url := sshGitURL(user, host, repo)
+	url, err := instanceGitURL(ctx, user, host, repo)
+	if err != nil {
+		return err
+	}
 
 	if err := seedSession(ctx, ip, user, localRepo, repo, branch, url, host, session, beadsMode, task); err != nil {
 		return err
@@ -82,7 +86,7 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 	// HEAD, not the branch name: a detached HEAD or an unusual checkout is
 	// still a commit worth seeding, and the session branch is named for the
 	// session regardless of what the Mac calls the branch it came from.
-	if out, err := runLocalGit(ctx, localRepo, pushArgs(url, "HEAD", branch)...); err != nil {
+	if out, err := runInstanceGit(ctx, localRepo, host, pushArgs(url, "HEAD", branch)...); err != nil {
 		return fmt.Errorf("seeding session onto instance: %w\n%s\nif the session already has commits, pull or merge it instead of starting it again", err, out)
 	}
 	if out, err := client.Run(checkoutSessionCmd(repo, branch)); err != nil {
@@ -115,7 +119,11 @@ func seedSession(ctx context.Context, ip, user, localRepo, repo, branch, url, ho
 	// Last, deliberately. Beads never fails a session, so this returns
 	// nothing -- but it also has to run after the push and checkout above,
 	// because pushing dolt data into a git remote with no branches fails.
-	seedBeads(ctx, client, localRepo, repo, user, host, session, beadsMode)
+	beadsHost, err := sshidentity.TransportHost(ctx, host, user)
+	if err != nil {
+		return err
+	}
+	seedBeads(ctx, client, localRepo, repo, user, beadsHost, session, beadsMode)
 	return nil
 }
 
@@ -157,7 +165,7 @@ func trackSession(ctx context.Context, localRepo, session, branch, url string) e
 	if out, err := runLocalGit(ctx, localRepo, remoteAddArgs(remote, url)...); err != nil {
 		return fmt.Errorf("registering remote %s: %w\n%s", remote, err, out)
 	}
-	if out, err := runLocalGit(ctx, localRepo, fetchRemoteArgs(remote)...); err != nil {
+	if out, err := runInstanceGit(ctx, localRepo, "", fetchRemoteArgs(remote)...); err != nil {
 		return fmt.Errorf("fetching %s: %w\n%s", remote, err, out)
 	}
 
