@@ -550,7 +550,7 @@ func TestBootstrapBeads_WarnsOnVersionMismatchAfterASuccessfulBootstrap(t *testi
 
 	session := "s"
 	localRepo := t.TempDir()
-	wireBeadsForRequireLanded(t, localRepo, session)
+	initRepo(t, localRepo)
 
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
 		if strings.Contains(cmd, "bd") && strings.Contains(cmd, "version") {
