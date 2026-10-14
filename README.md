@@ -3,25 +3,66 @@
 [![CI](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml/badge.svg)](https://github.com/jskswamy/bivouac/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jskswamy/bivouac)](https://github.com/jskswamy/bivouac/releases/latest)
 
-A bivouac is a shelter improvised for one stay: no built infrastructure,
-struck completely afterward. This is that, for coding agents — a
-disposable remote workspace, declared from scratch by Nix and
-home-manager rather than hand-configured, where nothing survives `down`
-except what you deliberately carried out as a signed git commit.
+Run coding agents on disposable cloud machines without giving them your laptop,
+your GitHub credentials, or an unreviewed path back to `main`.
 
-The backend is a cloud VM, not a process on your Mac, so Docker Desktop
-or minikube isn't what's burning your battery. DigitalOcean is the first
-(and for now, only) supported provider; the provider boundary is designed
-to add others without touching the rest of the tool — see
-[ADR-0008](docs/adr/0008-provider-abstraction.md).
+A bivouac is a shelter improvised for one stay: useful while you need it,
+struck afterward. This is that for agent work. `bivouac` boots a temporary
+DigitalOcean VM, provisions it from a declarative Nix/home-manager config, lets
+agents work there, then brings their work home as ordinary git commits that you
+review, sign, and merge locally.
 
-> **Status:** `up`, `provision`, `down`, `list`, `status`, `ssh`, `tmux`,
-> `herdr`, `pair`, `tailscale`, `secrets`, `connect`, `serve`/`unserve`,
-> `sync`/`download` and the git session flow (`session start` / `pull` /
-> `merge`) are implemented.
-> `shell` is still a stub — it parses, resolves an instance, and exits
-> with "not implemented yet". See [`docs/architecture.md`](docs/architecture.md)
-> and [`docs/adr/`](docs/adr/) for the full design.
+## Why bivouac?
+
+Coding agents are most useful when they can run builds, tests, browsers,
+services, package managers, and long-lived terminals for hours at a time. That
+is also exactly why running them directly on your laptop can be uncomfortable:
+
+- long-running agent sessions stop when your laptop sleeps, loses network, or
+  needs to move with you;
+- local agents burn battery, memory, disk, CPU, and ports while you are trying
+  to use the same machine;
+- dangerous commands run beside your SSH keys, cloud credentials, browser
+  profile, and personal files;
+- cloud devboxes drift unless their setup is declared somewhere;
+- an agent's work is hard to trust if it lands as a pile of untracked files;
+- giving a VM GitHub credentials makes cleanup and blast radius harder.
+
+Bivouac's answer is a disposable, reproducible Linux workspace with a git
+handoff boundary:
+
+- **Disposable cloud compute:** start a VM for this repo, use it, destroy it.
+- **Declarative setup:** provision with Nix/home-manager from `bivouac.pkl` plus
+  optional personal defaults.
+- **Agent sessions as branches:** each session runs in its own checkout on the
+  instance and its own local worktree.
+- **Local merge boundary:** the VM never pushes to GitHub; you pull, replay,
+  sign, verify, and merge commits on your machine.
+- **Explicit secrets:** provider credentials stay local; optional instance
+  secrets are decrypted just in time and streamed over SSH.
+- **LLM-readable surfaces:** selected commands have explicit JSON output, and
+  `bivouac manifest --format mcp-tools` exposes the CLI as tool metadata.
+
+## When to use it
+
+Use bivouac when you want to:
+
+- run Claude, Codex, Copilot, Cursor, OpenCode, Pi, or other tools away from
+  your laptop;
+- give an agent a beefier Linux machine with Docker, Python, devbox, Tailscale,
+  or custom Nix modules;
+- isolate risky agent work while still getting a clean git review path;
+- run several named agent sessions against one repo and merge them one at a
+  time;
+- preserve only the work you deliberately bring home.
+
+It is not trying to be:
+
+- a permanent dev environment manager;
+- a Kubernetes or multi-cloud orchestrator;
+- a live collaborative editor;
+- a general file-sync tool for source code;
+- provider-agnostic yet — DigitalOcean is the first implemented backend.
 
 ## Install
 
@@ -39,116 +80,103 @@ curl -sSfL https://raw.githubusercontent.com/jskswamy/bivouac/main/install.sh | 
 go install github.com/jskswamy/bivouac@latest
 ```
 
-## What it does
+You also need a DigitalOcean API token, SSH access to your account's droplets,
+and the external tools used by the workflows you choose (`sops`, `age`,
+`tailscale`, `herdr`, `bd`, etc.). The repository's `nix develop` shell has the
+development/test toolchain.
+
+## Quickstart
+
+From any git repository:
 
 ```bash
-cd myproject                  # any git repo
-bivouac init                  # answer a few questions; writes bivouac.pkl
-bivouac up                    # boots a VM (per bivouac.pkl) and reconciles
-                              # its Nix/home-manager environment
-bivouac session start agent   # seeds the repo onto the instance via git and
-                              # checks it out on branch bivouac/agent
-bivouac ssh                   # interactive shell on the instance
-bivouac connect --port 8888   # reach a service on the instance
-bivouac serve 8888            # publish it on your tailnet; outlives the command
-bivouac unserve 8888          # stop publishing it
-bivouac session list          # every session on every instance, at a glance
-bivouac session pull          # fetch the session's commits without merging
-bivouac session merge         # replay, sign, verify, then retire the session
+# 1. Create or edit personal secrets and defaults.
+bivouac secrets init
+
+# 2. Create this repo's instance config.
+bivouac init
+
+# 3. Boot and provision the VM.
+bivouac up
+
+# 4. Start an isolated agent session on the instance.
+bivouac session start agent
+
+# 5. Attach however you work.
+bivouac herdr agent       # saved Herdr machine + session workspace
+# or: bivouac ssh agent
+# or: bivouac tmux agent
+
+# 6. Bring work home without merging yet.
+bivouac session pull agent
+
+# 7. Review, replay, sign, verify, and retire the session.
+bivouac session merge agent
+
+# 8. Tear the VM down when you are done.
+bivouac down
+```
+
+Day to day, the common commands are:
+
+```bash
+bivouac status                # this instance, sessions, served ports, cost
+bivouac list --cost           # all instances and accumulated cost
 bivouac provision             # re-apply bivouac.pkl after editing it
-bivouac sync --dir ./dataset  # one-shot rsync push of anything outside git
-bivouac download ~/results    # one-shot rsync pull back
-bivouac status                # what this instance is, and what it has cost so far
-bivouac list --cost           # every instance, with what each is running up
-bivouac down                  # rescues every session's work, then destroys the VM
+bivouac connect --port 8888   # reach a service on the instance
+bivouac serve 8888            # publish a service on your tailnet
+bivouac unserve 8888          # stop publishing it
+bivouac sync --dir ./dataset  # one-shot rsync push for non-git data
+bivouac download ~/results    # one-shot rsync pull for outputs
 ```
 
 `session pull`/`merge`/`delete` all take the session name as an optional
-argument: give it explicitly, or leave it off and it resolves from the
-worktree you're standing in, or from being the instance's only session.
+argument: give it explicitly, or leave it off and it resolves from the worktree
+you are standing in, or from being the instance's only session.
 
-Every instance is named after the git repo it belongs to (derived from the
-`origin` remote, so two different clones of the same repo share an instance)
-and provisioned via Nix + home-manager rather than hand-rolled cloud-init
-package lists — so the same declarative config that keeps your Mac's
-environment reproducible also keeps your ephemeral cloud boxes reproducible.
+## The safety model
 
-## Code moves as git commits
+`bivouac up` does not copy your repository to the VM. It only creates or updates
+the instance. Code first reaches the instance when you run
+`bivouac session start <name>`.
 
-`up` never touches your repository. Code first reaches the instance when you
-start a session:
+A session start:
 
-- `session start <name>` pushes your current commit into a fresh git
-  repository at `~/sessions/<name>/<owner>/<repo>` on the instance, checks it
-  out on branch `bivouac/<name>`, and creates a matching local worktree at
-  `<repo>/.worktrees/<name>` tracking it. An instance can run several named
-  sessions at once.
-- `session pull [name]` checkpoints whatever the agent left uncommitted,
-  fetches the branch, and fast-forwards your worktree. Safe to run while the
-  agent is still working. The name is optional with one session on the
-  instance, or when run from inside its worktree.
-- `session merge [name]` cherry-picks the session's commits onto your current
-  branch **with your signature**, verifies every one of them verifies
-  (`%G?` = `G`), and only then deletes the session from both machines.
-  Deletion is strictly downstream of verification, so nothing is removed from
-  the instance before its commits are provably in your local object store. A
-  conflict stops the replay; resolve it, `git cherry-pick --continue`, and
-  run merge again — it resumes where it stopped instead of replaying what
-  has already landed.
-- `session list` shows every session on every instance — name, branch,
-  unmerged commit count, worktree state — for when you've lost track of
-  what's running where. `status` shows the same detail scoped to one
-  instance.
+1. pushes your current commit to a fresh repository at
+   `~/sessions/<name>/<owner>/<repo>` on the instance;
+2. checks it out on branch `bivouac/<name>`;
+3. creates a local worktree at `<repo>/.worktrees/<name>` tracking the session;
+4. records enough state to pull, merge, and clean it up later.
 
-`status` also reports what the instance has cost so far: its uptime since the
-provider created it, multiplied by the size's hourly price and capped at the
-monthly one, which is how DigitalOcean actually bills. `list --cost` does the
-same across every instance and totals it. Cost is the one thing in either
-report that needs an API token — `status` degrades to "unknown" without one,
-since its live check was always incidental, while `list --cost` fails, because
-the token is exactly what you asked it to use. Plain `list` stays offline.
+A session merge:
 
-The instance never pushes anywhere and never talks to a shared remote — no
-GitHub credentials, host keys or signing keys ever reach the VM.
+1. checkpoints anything the agent left uncommitted;
+2. fetches the session branch;
+3. cherry-picks the session's commits onto your current branch **with your
+   signature**;
+4. verifies every replayed commit has a good signature (`%G? = G`);
+5. only then deletes the session from both machines.
 
-The one carve-out is opt-in: `beads = "dolthub"` in `bivouac.pkl` places your
-DoltHub credential on the instance, in tmpfs, so the agent's issue database can
-sync against DoltHub directly. That credential is account-wide — it grants write
-access to every Dolt repository on your account for the life of the instance.
-The default, `beads = "session"`, needs no credential at all: issues ride the
-session's own git remote over the SSH channel your code already uses. `sync`/
-`download` remain one-shot rsync transfers for things that deliberately
-aren't in git (datasets, weights, results); they never touch repo content or
-trigger a reconcile.
+The VM never pushes to GitHub and does not need your signing key, GitHub token,
+or host credentials. If a merge conflicts, resolve it and run
+`git cherry-pick --continue`; `bivouac session merge` resumes where it stopped.
 
-See
-[`docs/superpowers/specs/2026-09-05-git-aware-sync-design.md`](docs/superpowers/specs/2026-09-05-git-aware-sync-design.md)
-for why code moves as commits rather than a live file sync.
+`bivouac down` rescues session work before destroying the VM. It refuses to
+discard unmerged commits or unlanded issue state unless you explicitly force the
+destructive operation.
 
-## Templates
-
-| Template | What it adds |
-|----------|--------------|
-| `python` | `python312`, `uv` |
-| `docker` | `docker` + `minikube`, with a `dockerd` systemd --user unit and `docker` group membership wired up |
-
-Both build on a shared `common` home-manager module, which every instance
-gets: `git`, `age`, `devbox`, `herdr`, `mosh`, `moshi-hook`, `tailscale`,
-`tmux` (installed, not configured -- bring your own config through a flake
-module), plus `fish` and `starship`. Template-specific modules only declare what's
-actually different.
-
-A `template` value that isn't `python` or `docker` is passed through as a
-complete flake reference, so you can point at your own.
+The one credential carve-out is opt-in: `beads = "dolthub"` in `bivouac.pkl`
+places a DoltHub credential on the instance, in tmpfs, so the agent's issue
+database can sync against DoltHub directly. The default, `beads = "session"`,
+needs no DoltHub credential; issues ride the session's own git remote over SSH.
 
 ## Configuring an instance
 
-Run `bivouac init` and answer the questions — it writes the files for
-you, and `up` runs the same thing by itself in a repo that has no config
-yet. `bivouac preset list/show/edit/delete` manage the shapes it offers
-to save.
+Run `bivouac init` and answer the questions. It writes `bivouac.pkl` for the
+repo. `bivouac preset list/show/edit/delete` manage saved shapes that the
+wizard can offer.
 
-Or drop a `bivouac.pkl` in your repo root by hand:
+A minimal hand-written config looks like this:
 
 ```pkl
 region = "nyc3"
@@ -174,49 +202,77 @@ flakes {
 }
 ```
 
+Settings you repeat in every repo — usual region, droplet size, SSH keys,
+packages, agents, Herdr tabs, flake modules, home-manager settings — can live
+once in `~/.config/bivouac/base.pkl`. The project config layers on top.
+
 Coding agent harnesses are opt-in through `agents` rather than plain
-`packages`, because the nixpkgs attribute isn't guessable from the tool's
-name (`claude` → `claude-code`, `pi` → `pi-coding-agent`) and several are
-unfree, which has to be permitted where nixpkgs is instantiated. Selecting
-one permits exactly that package, nothing else.
+`packages`, because the nixpkgs attribute is not guessable from the tool name
+(`claude` → `claude-code`, `pi` → `pi-coding-agent`) and several are unfree.
+Selecting one permits exactly that package, not unfree software in general.
 
-Settings you'd otherwise repeat in every repo (SSH key, usual droplet size,
-packages you always want) go once in a personal base config at
-`~/.config/bivouac/base.pkl` and merge with each project's file.
+See [`docs/config.md`](docs/config.md) for every field, merge rules, examples,
+and error messages.
 
-[`docs/config.md`](docs/config.md) documents every field, the merge rules,
-and the errors you might see. Worked examples live in
-[`docs/examples/`](docs/examples/).
+## What gets installed
 
-## Secrets
+Templates are Nix/home-manager modules. The built-in templates are:
+
+| Template | What it adds |
+|----------|--------------|
+| `python` | `python312`, `uv` |
+| `docker` | `docker` + `minikube`, with a `dockerd` systemd --user unit and `docker` group membership wired up |
+
+Both build on a shared base module with `git`, `age`, `devbox`, `herdr`, `mosh`,
+`moshi-hook`, `tailscale`, `tmux` (installed, not configured), `fish`, and
+`starship`. A `template` value that is not `python` or `docker` is treated as a
+complete flake reference, so you can bring your own.
+
+## Secrets and provider credentials
 
 `bivouac secrets init/edit/keys` manage a personal,
 [sops](https://github.com/getsops/sops)-encrypted file at
-`~/.config/bivouac/secrets.yaml`. It holds `tailscale_authkey`,
-`digitalocean_token`, an optional `github_token` for `gh` on the instance,
-and — for `beads = "dolthub"` — a DoltHub credential (`dolthub_creds` and
-`dolthub_creds_id`).
+`~/.config/bivouac/secrets.yaml`. It can hold:
 
-`up`/`bivouac tailscale` and `beads = "dolthub"` decrypt the Tailscale and
-DoltHub secrets just-in-time, stream them to the instance's tmpfs over SSH
-stdin, and zero immediately after — never a command-line argument, never
-plaintext on disk on either machine.
+- `digitalocean_token` for local provider API calls;
+- `tailscale_authkey` for joining the instance to your tailnet;
+- optional `github_token` for `gh` on the instance;
+- optional DoltHub credentials for `beads = "dolthub"`.
 
-`digitalocean_token` is the exception: it authenticates bivouac's own API
-calls from your machine and never reaches an instance. `DIGITALOCEAN_TOKEN`
-in the environment takes precedence over it, so unattended agents never need
-a hardware key — see [the token section in
-`docs/config.md`](docs/config.md#the-digitalocean-token) for why the order
-runs that way.
+`digitalocean_token` authenticates bivouac's local API calls and never reaches
+an instance. `DIGITALOCEAN_TOKEN` in the environment takes precedence, which is
+useful for unattended runs.
 
-## Documentation
+Tailscale, GitHub, and DoltHub secrets are decrypted just in time, streamed to
+the instance over SSH stdin, and placed only where the selected feature needs
+them.
 
-- [`docs/architecture.md`](docs/architecture.md) — components, data flow, instance lifecycle
-- [`docs/config.md`](docs/config.md) — every `bivouac.pkl` field, base-config merging, errors
-- [`docs/examples/`](docs/examples/) — a minimal config, and the base-merge pattern
-- [`docs/adr/`](docs/adr/) — why things are shaped the way they are, one decision per file
-- [`docs/superpowers/`](docs/superpowers/) — dated design specs and delivery plans
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev environment setup, pre-commit hooks
+## Machine-readable output for agents
+
+Human output is the default. Bivouac does not silently switch formats because it
+thinks an LLM is calling it.
+
+Use explicit structured surfaces instead:
+
+```bash
+bivouac manifest --format mcp-tools
+bivouac list --json
+bivouac session list --json
+bivouac status --json
+```
+
+The manifest is MCP-shaped tool metadata for discovering commands, flags, side
+effects, and JSON-output availability. It is not a full MCP server yet; it is a
+stable surface agents can read without scraping human help.
+
+## Documentation by task
+
+- **Configure an instance:** [`docs/config.md`](docs/config.md)
+- **Understand the architecture:** [`docs/architecture.md`](docs/architecture.md)
+- **See examples:** [`docs/examples/`](docs/examples/)
+- **Understand design decisions:** [`docs/adr/`](docs/adr/)
+- **Read design specs and plans:** [`docs/superpowers/`](docs/superpowers/)
+- **Contribute:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ## License
 
