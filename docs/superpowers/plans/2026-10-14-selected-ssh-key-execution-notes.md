@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–4 (`cloudlab-1em.1`–`cloudlab-1em.4`) are implemented and tested.
-Tasks 5–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–5 (`cloudlab-1em.1`–`cloudlab-1em.5`) are implemented and tested.
+Tasks 6–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -211,6 +211,34 @@ Remove deletes only one owned machine entry and retains the shared include.
   subprocess updates. These are local configuration tests, not proof of
   persistent Git or Herdr authentication.
 
-Next task: account-key planning (5).
+### Task 5: read-only account plans and approved registration
+
+Added canonical file revalidation, at-least-one signer selection before
+account listing, public-identity deduplication and authoritative read errors.
+Plans classify registered keys without renaming and propose only
+`bivouac-<stem>` additions. Approved registration revalidates all files and
+recorded signers before any account write, re-lists for idempotent retries,
+and resolves create races by matching identity. Partial additions are retained
+with retry guidance; errors include safely quoted doctl import commands.
+Standalone setup now uses the same public-registration/race helper and
+revalidates the selected file before its explicit upload.
+
+The pagination regression exposed an infinite loop, not only partial-list
+success: godo CurrentPage does not validate malformed first-page Next links.
+Listing now parses the next page locally and rejects invalid/non-advancing
+metadata without ever reporting a partial authoritative list.
+
+- Red APIs: `/tmp/bivouac-task5-red.log`; the broad first attempt exceeded
+  30 seconds in the newly exposed pagination loop.
+- Behavioural pagination red: `go test -timeout 3s
+  ./internal/provider/digitalocean -run TestListKeys_MalformedPaginationFails`
+  exited 1 with timeout (`/tmp/bivouac-task5-pagination-red.log`).
+- Green: `go test ./internal/keyplan ./internal/provider/digitalocean ./cmd`
+  exited 0 (`/tmp/bivouac-task5-green.log`). Covers read-only plans,
+  registered reuse, duplicates, forbidden/read errors, create races,
+  mutation-before-write, quoted recovery, partial retention/retry and
+  paginated/malformed provider listings. No live account was used.
+
+Next task: approved creation, persisted state and final confirmation (6).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.

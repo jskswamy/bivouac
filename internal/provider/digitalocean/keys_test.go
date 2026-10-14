@@ -65,6 +65,34 @@ func TestListKeys_ForbiddenIsDistinguishable(t *testing.T) {
 	}
 }
 
+func TestListKeys_MalformedPaginationFails(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/account/keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ssh_keys":[{"id":1,"fingerprint":"partial"}],"links":{"pages":{"next":"https://api.digitalocean.com/v2/account/keys?page=broken"}}}`))
+	})
+	keys, err := p.ListKeys(context.Background())
+	if err == nil || len(keys) != 0 {
+		t.Fatalf("partial authoritative list: keys=%v err=%v", keys, err)
+	}
+}
+
+func TestListKeys_Paginated(t *testing.T) {
+	p, mux := newTestProvider(t)
+	mux.HandleFunc("/v2/account/keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = w.Write([]byte(`{"ssh_keys":[{"id":2,"fingerprint":"second"}]}`))
+		} else {
+			_, _ = w.Write([]byte(`{"ssh_keys":[{"id":1,"fingerprint":"first"}],"links":{"pages":{"next":"https://api.digitalocean.com/v2/account/keys?page=2"}}}`))
+		}
+	})
+	keys, err := p.ListKeys(context.Background())
+	if err != nil || len(keys) != 2 || keys[1].Fingerprint != "second" {
+		t.Fatalf("keys=%v err=%v", keys, err)
+	}
+}
+
 func TestCreateKey(t *testing.T) {
 	p, mux := newTestProvider(t)
 	var body string

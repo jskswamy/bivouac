@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/digitalocean/godo"
@@ -25,11 +26,15 @@ func (p *Provider) ListKeys(ctx context.Context) ([]provider.SSHKey, error) {
 		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
 			return keys, nil
 		}
-		current, err := resp.Links.CurrentPage()
+		nextURL, err := url.Parse(resp.Links.Pages.Next)
 		if err != nil {
-			return keys, nil
+			return nil, fmt.Errorf("listing SSH keys: invalid next-page metadata: %w", err)
 		}
-		opt.Page = current + 1
+		next, err := strconv.Atoi(nextURL.Query().Get("page"))
+		if err != nil || next <= opt.Page || next <= 1 {
+			return nil, fmt.Errorf("listing SSH keys: invalid or non-advancing next page %q", resp.Links.Pages.Next)
+		}
+		opt.Page = next
 	}
 }
 

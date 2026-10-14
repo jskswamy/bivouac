@@ -148,6 +148,22 @@ func Select(ctx context.Context, keys []sshkeys.Key) ([]Identity, error) {
 	return ids, nil
 }
 
+// CheckSigners validates current recorded capabilities before an approved
+// account write. It never changes the selected signing mode.
+func CheckSigners(ctx context.Context, identities []Identity) error {
+	signers, cleanup, err := Signers(ctx, identities)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	for i, signer := range signers {
+		if err := challenge(ctx, signer, identities[i].PublicPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Signers revalidates recorded identities and offers only those signers. It
 // deliberately never falls back to unrelated keys or changes signing mode.
 func Signers(ctx context.Context, identities []Identity) ([]ssh.Signer, func(), error) {

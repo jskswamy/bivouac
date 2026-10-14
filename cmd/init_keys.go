@@ -7,14 +7,13 @@ import (
 	"os"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/sshkeys"
 	"github.com/jskswamy/bivouac/internal/wizard"
 )
-
-const registerKeysURL = "https://cloud.digitalocean.com/account/security"
 
 type keySetupPolicy int
 
@@ -161,23 +160,11 @@ func lookUpAccount(ctx context.Context, out io.Writer, sources keySources) (prov
 }
 
 func registerKey(ctx context.Context, registry provider.KeyRegistry, name string, key wizard.KeyChoice) error {
-	_, err := registry.CreateKey(ctx, name, key.PublicKey)
-	if err == nil || registered(ctx, registry, key.Fingerprint) {
-		return nil
-	}
-	return fmt.Errorf("could not register %s: %w; import public file %q manually at %s or use a token with SSH-key create permission. Selection kept; up will retry after confirmation", key.Value, err, key.Value, registerKeysURL)
-}
-func registered(ctx context.Context, registry provider.KeyRegistry, fingerprint string) bool {
-	keys, err := registry.ListKeys(ctx)
+	_, err := keyplan.RegisterPublic(ctx, registry, sshkeys.Key{Path: key.Value, PublicKey: key.PublicKey, Fingerprint: key.Fingerprint}, name)
 	if err != nil {
-		return false
+		return fmt.Errorf("%w. Selection kept; up will retry after confirmation", err)
 	}
-	for _, key := range keys {
-		if key.Fingerprint == fingerprint {
-			return true
-		}
-	}
-	return false
+	return nil
 }
 func currentKeys(values config.Values) []string {
 	keys, _ := values[config.FieldSSHKeys].([]string)
