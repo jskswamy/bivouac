@@ -84,7 +84,7 @@ func resolveOrInit(cmd *cobra.Command, bivouacPath, root string) (config.Resolve
 		return config.Resolved{}, fmt.Errorf("no bivouac.pkl in %s: %w", root, terr)
 	}
 	cmd.Printf("No bivouac.pkl in %s yet — let's create one.\n", root)
-	if err := runInitFlow(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root); err != nil {
+	if err := runInitFlowWith(cmd.Context(), cmd.OutOrStdout(), newFormPrompter(), root, defaultKeySources(), keySetupForUp); err != nil {
 		return config.Resolved{}, err
 	}
 	return config.Resolve(cmd.Context(), bivouacPath)
@@ -134,7 +134,7 @@ func ensureSSHKeysWith(cmd *cobra.Command, bivouacPath string, p prompter, keys 
 	}
 
 	cmd.Printf("%s has no sshKeys configured — up will create an instance nothing can log into without one.\n", bivouacPath)
-	chosen, err := askSSHKeys(cmd.Context(), cmd.OutOrStdout(), p, keys, currentKeys(existing))
+	chosen, err := askSSHKeys(cmd.Context(), cmd.OutOrStdout(), p, keys, currentKeys(existing), keySetupForUp)
 	if err != nil {
 		return config.Resolved{}, err
 	}

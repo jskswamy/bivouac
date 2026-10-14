@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–2 (`cloudlab-1em.1`, `cloudlab-1em.2`) are implemented and tested.
-Tasks 3–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–3 (`cloudlab-1em.1`–`cloudlab-1em.3`) are implemented and tested.
+Tasks 4–10 remain unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -152,7 +152,38 @@ without losing its agent availability. It reuses strict public-file reading.
 - This is fake-agent/local-fixture evidence, not live hardware or remote
   authentication evidence. Call-site integration follows in later tasks.
 
-Next unblocked tasks: wizard migration recovery (3), OpenSSH profiles (4),
-and account-key planning (5), all depending on selected signing capabilities.
+### Task 3: file-based setup and migration recovery
+
+Wizard values are now public-file paths, with filename/comment/agent and
+account-status detail. Account-only and agent-only choices are retired;
+agent-only discovery explains public-file export. Manually entered files are
+strictly read and local signing availability checked after selection with
+visible progress, without decrypting credentials.
+
+Standalone init offers explicit public-only registration using a
+`bivouac-<stem>` name. Declined/failed uploads keep the path for a later
+confirmed up rather than silently deleting a selection. The for-up policy
+never registers; both implicit init and missing-key setup use it.
+
+Recovery reads raw values before normal resolution and re-asks legacy
+entries even when personal settings are reused or moving project fields is
+declined. A project basePath override is honoured. Moving relative project
+key paths to a personal file makes them absolute first, preserving their
+original meaning. Shared config helpers are exported for this origin-aware
+credential-free recovery, rather than duplicating normalization in cmd.
+
+- Red: `go test ./cmd ./internal/wizard` exited 1 for absent policy/value
+  APIs (`/tmp/bivouac-task3-red.log`). Existing fake-fingerprint setup tests
+  were replaced with real disposable public/private fixtures; old
+  fingerprint-preservation semantics are intentionally removed.
+- Green: `go test ./cmd ./internal/wizard ./internal/config` exited 0
+  (`/tmp/bivouac-task3-green.log`). Tests cover path storage, zero for-up
+  uploads, standalone prefixed names, decline/failure retention, optional
+  registry failure, both legacy file origins, declined moves, overridden
+  base files, invalid manual paths, agent export and empty selection.
+- Tests confirm no credential-free token fallback; no cloud account or
+  actual hardware was used.
+
+Next tasks: OpenSSH profiles (4) and account-key planning (5).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.

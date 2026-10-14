@@ -277,20 +277,16 @@ func TestEnsureSSHKeysWith_WritesChosenKeyAndReResolves(t *testing.T) {
 	cmd.SetContext(context.Background())
 
 	s := newScript()
-	s.keyChoice = []string{"aa:bb"}
-	sources := keySources{
-		local: func() ([]sshkeys.Key, error) {
-			return []sshkeys.Key{localKey("aa:bb", "laptop", sshkeys.Agent)}, nil
-		},
-		registry: func(ctx context.Context) (provider.KeyRegistry, error) { return nil, nil },
-	}
+	key := setupKey(t)
+	s.keyChoice = []string{key.Path}
+	sources := setupSources(key, nil)
 
 	cfg, err := ensureSSHKeysWith(cmd, path, s, sources)
 	if err != nil {
 		t.Fatalf("ensureSSHKeysWith() error = %v\n%s", err, out.String())
 	}
-	if cfg.SshKeys == nil || !reflect.DeepEqual(*cfg.SshKeys, []string{"aa:bb"}) {
-		t.Errorf("resolved SshKeys = %v, want [aa:bb]", cfg.SshKeys)
+	if cfg.SshKeys == nil || !reflect.DeepEqual(*cfg.SshKeys, []string{key.Path}) {
+		t.Errorf("resolved SshKeys = %v, want [%s]", cfg.SshKeys, key.Path)
 	}
 
 	basePath, err := config.DefaultBasePath()
@@ -301,7 +297,7 @@ func TestEnsureSSHKeysWith_WritesChosenKeyAndReResolves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading %s: %v", basePath, err)
 	}
-	if !strings.Contains(string(written), "aa:bb") {
+	if !strings.Contains(string(written), key.Path) {
 		t.Errorf("base.pkl = %s, want it to record the chosen key", written)
 	}
 }

@@ -10,6 +10,12 @@ import (
 	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
 
+// ResolveSSHKeyFiles lets credential-free setup validate raw entries without
+// requiring a complete config or merging away their declaring-file origins.
+func ResolveSSHKeyFiles(configPath string, entries []string) ([]sshkeys.FileRef, error) {
+	return resolveSSHKeyFiles(configPath, entries)
+}
+
 func resolveSSHKeyFiles(configPath string, entries []string) ([]sshkeys.FileRef, error) {
 	origin, err := filepath.Abs(configPath)
 	if err != nil {

@@ -60,7 +60,7 @@ type prompter interface {
 	Confirm(m meta, current bool) (bool, error)
 	// Input reads a single free-form line.
 	Input(m meta, current string) (string, error)
-	// AskKeys picks SSH keys from an offer, returning fingerprints.
+	// AskKeys picks public-key file paths from an offer.
 	//
 	// Its own method rather than a wizard.Question because the choices
 	// are discovered rather than declared -- from the ssh-agent, from
@@ -125,11 +125,11 @@ func repoRootFromFlag(ctx context.Context, repoFlag string) (string, error) {
 // settle the personal file; then the project one; then read back what
 // was written.
 func runInitFlow(ctx context.Context, out io.Writer, p prompter, root string) error {
-	return runInitFlowWith(ctx, out, p, root, defaultKeySources())
+	return runInitFlowWith(ctx, out, p, root, defaultKeySources(), keySetupStandalone)
 }
 
 // runInitFlowWith is runInitFlow with its SSH key inputs injected.
-func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string, keys keySources) error {
+func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string, keys keySources, policy keySetupPolicy) error {
 	basePath, err := config.DefaultBasePath()
 	if err != nil {
 		return err
@@ -141,12 +141,36 @@ func runInitFlowWith(ctx context.Context, out io.Writer, p prompter, root string
 		return err
 	}
 
+	existingProject, err = repairLegacyKeys(ctx, out, p, projectPath, existingProject, keys, policy)
+	if err != nil {
+		return err
+	}
+
+	if override, ok := existingProject[config.FieldBasePath].(string); ok {
+		basePath, err = config.ResolveBasePath(projectPath, &override)
+		if err != nil {
+			return err
+		}
+	}
+
 	lifted, existingProject, err := offerMove(out, p, existingProject, projectExists)
 	if err != nil {
 		return err
 	}
 
-	base, err := settlePersonal(ctx, out, p, basePath, lifted, keys)
+	if entries := currentKeys(lifted); len(entries) > 0 {
+		refs, err := config.ResolveSSHKeyFiles(projectPath, entries)
+		if err != nil {
+			return err
+		}
+		paths := make([]string, len(refs))
+		for i, ref := range refs {
+			paths[i] = ref.Path
+		}
+		lifted[config.FieldSSHKeys] = paths
+	}
+
+	base, err := settlePersonal(ctx, out, p, basePath, lifted, keys, policy)
 	if err != nil {
 		return err
 	}
@@ -196,7 +220,7 @@ func offerMove(out io.Writer, p prompter, existing config.Values, exists bool) (
 
 	printf(out, "This project's bivouac.pkl sets %s, which are personal settings.\n", strings.Join(found, ", "))
 	if _, committed := existing[config.FieldSSHKeys]; committed {
-		printf(out, "sshKeys in particular is a fingerprint of your own key, committed for anyone who clones this repo.\n")
+		printf(out, "sshKeys contains personal public-key file paths, committed for anyone who clones this repo.\n")
 	}
 
 	move, err := p.Confirm(meta{
@@ -228,8 +252,14 @@ func offerMove(out io.Writer, p prompter, existing config.Values, exists bool) (
 // to go on. A base that already exists is summarised rather than
 // re-asked, and fields lifted out of a project file answer the same
 // questions without asking them again.
-func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath string, lifted config.Values, keys keySources) (config.Values, error) {
+func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath string, lifted config.Values, keys keySources, policy keySetupPolicy) (config.Values, error) {
 	existing, exists, err := readIfPresent(ctx, basePath)
+	if err != nil {
+		return nil, err
+	}
+	original := existing
+	keys.configPath = basePath
+	existing, err = repairLegacyKeys(ctx, out, p, basePath, existing, keys, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -251,14 +281,14 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 			return nil, err
 		}
 		if action == personalChange {
-			values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys)
+			values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys, policy)
 			if err != nil {
 				return nil, err
 			}
 			asked = true
 		}
 	default:
-		values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys)
+		values, err = askPersonal(ctx, out, p, filepath.Dir(basePath), values, keys, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -286,7 +316,7 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 	if len(values) == 0 {
 		return values, nil
 	}
-	if !exists || !reflect.DeepEqual(values, existing) {
+	if !exists || !reflect.DeepEqual(values, original) {
 		// 0o600: base.pkl records personal choices and is not shared.
 		if err := writeValues(basePath, values, 0o600); err != nil {
 			return nil, err
@@ -303,13 +333,16 @@ func settlePersonal(ctx context.Context, out io.Writer, p prompter, basePath str
 // from ~/.ssh and from the provider account, and choosing one can lead
 // to registering it. Keeping it out of the declarative question list is
 // what stops that machinery leaking into every other field.
-func askPersonal(ctx context.Context, out io.Writer, p prompter, baseDir string, values config.Values, keys keySources) (config.Values, error) {
+func askPersonal(ctx context.Context, out io.Writer, p prompter, baseDir string, values config.Values, keys keySources, policy keySetupPolicy) (config.Values, error) {
 	values, err := ask(p, wizard.PersonalQuestions(baseDir), values)
 	if err != nil {
 		return nil, err
 	}
 
-	chosen, err := askSSHKeys(ctx, out, p, keys, currentKeys(values))
+	if keys.configPath == "" {
+		keys.configPath = filepath.Join(baseDir, "base.pkl")
+	}
+	chosen, err := askSSHKeys(ctx, out, p, keys, currentKeys(values), policy)
 	if err != nil {
 		return nil, err
 	}

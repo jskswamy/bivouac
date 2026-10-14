@@ -65,8 +65,7 @@ func (formPrompter) Input(m meta, current string) (string, error) {
 
 // manualKeyEntry is the sentinel option that opens a free-text entry.
 //
-// A NUL keeps it from ever colliding with a real fingerprint, which is
-// colon-separated hex.
+// A NUL keeps it from ever colliding with a filesystem path.
 const manualKeyEntry = "\x00manual"
 
 // AskKeys offers the discovered keys as a multi-select, plus a way to
@@ -80,7 +79,7 @@ func (formPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
 	// Nothing was discovered: there is no list to choose from, so ask
 	// for the value directly rather than showing an empty form.
 	if len(offer.Choices) == 0 {
-		typed, err := runInput("Which SSH keys?", "Fingerprints or IDs registered with your provider, separated by commas.", "aa:bb:cc:...", "")
+		typed, err := runInput("Which public-key files?", "Public-key file paths, separated by commas. Paths with spaces are allowed.", "~/.ssh/id_ed25519.pub", "")
 		if err != nil {
 			return nil, err
 		}
@@ -90,16 +89,16 @@ func (formPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
 	options := make([]huh.Option[string], 0, len(offer.Choices)+1)
 	var value []string
 	for _, c := range offer.Choices {
-		options = append(options, huh.NewOption(keyLabel(c), c.Fingerprint).Selected(c.Selected))
+		options = append(options, huh.NewOption(keyLabel(c), c.Value).Selected(c.Selected))
 		if c.Selected {
-			value = append(value, c.Fingerprint)
+			value = append(value, c.Value)
 		}
 	}
-	options = append(options, huh.NewOption("Type a fingerprint or key ID…", manualKeyEntry))
+	options = append(options, huh.NewOption("Enter a public-key file path…", manualKeyEntry))
 
-	description := "Keys on this machine. bivouac cannot check these against your account without a token, and an unregistered key makes `up` fail before anything is created."
+	description := "Public-key files on this machine. Account verification is deferred until up when no token is available."
 	if offer.AccountKnown {
-		description = "Keys on this machine and on your provider account."
+		description = "Public-key files with account registration status. Missing keys can be registered after confirmation."
 	}
 
 	if err := run(huh.NewMultiSelect[string]().
@@ -122,7 +121,7 @@ func (formPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
 	if !manual {
 		return chosen, nil
 	}
-	typed, err := runInput("Which other SSH keys?", "Fingerprints or IDs, separated by commas.", "aa:bb:cc:...", "")
+	typed, err := runInput("Which other public-key files?", "Public-key file paths, separated by commas.", "~/.ssh/id_ed25519.pub", "")
 	if err != nil {
 		return nil, err
 	}

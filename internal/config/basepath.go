@@ -34,6 +34,12 @@ func DefaultBasePath() (string, error) {
 // non-empty) — ~-expanded if home-relative, used as-is if absolute,
 // else resolved relative to projectPath's own directory; else
 // DefaultBasePath.
+// ResolveBasePath lets setup repair the same personal file normal resolution
+// reads, including a project's explicit basePath override.
+func ResolveBasePath(projectPath string, override *string) (string, error) {
+	return resolveBasePath(projectPath, override)
+}
+
 func resolveBasePath(projectPath string, override *string) (string, error) {
 	if override != nil && *override != "" {
 		return resolveOverridePath(filepath.Dir(projectPath), *override)

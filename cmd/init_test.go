@@ -29,7 +29,7 @@ type scriptedPrompter struct {
 	asked []string
 	// seen records the value each field was pre-filled with.
 	seen map[string]any
-	// keyChoice is what AskKeys returns, by fingerprint.
+	// keyChoice is what AskKeys returns, as public-key file paths.
 	keyChoice []string
 	// keyOffer records the offer AskKeys was given.
 	keyOffer wizard.KeyOffer
@@ -65,7 +65,7 @@ func (s *scriptedPrompter) AskKeys(offer wizard.KeyOffer) ([]string, error) {
 	var chosen []string
 	for _, c := range offer.Choices {
 		if c.Selected {
-			chosen = append(chosen, c.Fingerprint)
+			chosen = append(chosen, c.Value)
 		}
 	}
 	return chosen, nil
@@ -182,15 +182,15 @@ func TestInitFlow_FirstRunEver(t *testing.T) {
 		"tailscale": false,
 	}
 	s.decisions = map[string]any{promptSavePreset: false}
-	// No agent and no ~/.ssh in the fixture, so the key offer is empty
-	// and this stands for the free-text entry it always carries.
-	s.keyChoice = []string{"aa:bb:cc"}
+	// A custom file exercises the free-text path even without discovery.
+	key := setupKey(t)
+	s.keyChoice = []string{key.Path}
 
 	if err := f.run(t, s); err != nil {
 		t.Fatalf("runInitFlow() error = %v\n%s", err, f.out)
 	}
 
-	wantBase := config.Values{"region": "nyc3", "size": "s-1vcpu-1gb", "sshKeys": []string{"aa:bb:cc"}}
+	wantBase := config.Values{"region": "nyc3", "size": "s-1vcpu-1gb", "sshKeys": []string{key.Path}}
 	if got := f.values(t, f.basePath); !reflect.DeepEqual(got, wantBase) {
 		t.Errorf("base.pkl = %#v, want %#v", got, wantBase)
 	}
@@ -213,12 +213,13 @@ func TestInitFlow_ProjectFileNeverGetsTheSSHKey(t *testing.T) {
 		"template": "python",
 	}
 	s.decisions = map[string]any{promptSavePreset: false}
-	s.keyChoice = []string{"aa:bb:cc"}
+	key := setupKey(t)
+	s.keyChoice = []string{key.Path}
 
 	if err := f.run(t, s); err != nil {
 		t.Fatalf("runInitFlow() error = %v", err)
 	}
-	if text := f.text(t, f.project); strings.Contains(text, "aa:bb:cc") {
+	if text := f.text(t, f.project); strings.Contains(text, key.Path) {
 		t.Errorf("bivouac.pkl contains the SSH key:\n%s", text)
 	}
 }
@@ -471,7 +472,7 @@ func TestInitFlow_EditsAnExistingProjectFile(t *testing.T) {
 // file, which resolves to the same config either way.
 func TestInitFlow_MovesPersonalFieldsOnAccept(t *testing.T) {
 	f := newInitFixture(t)
-	f.write(t, f.project, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nsshKeys {\n  \"aa:bb:cc\"\n}\n")
+	f.write(t, f.project, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nsshKeys {\n  \"keys/local.pub\"\n}\n")
 
 	s := newScript()
 	s.decisions = map[string]any{
@@ -493,7 +494,7 @@ func TestInitFlow_MovesPersonalFieldsOnAccept(t *testing.T) {
 	if base["region"] != "nyc3" || base["size"] != "s-1vcpu-1gb" {
 		t.Errorf("base.pkl = %#v, want the lifted region and size", base)
 	}
-	if !reflect.DeepEqual(base["sshKeys"], []string{"aa:bb:cc"}) {
+	if !reflect.DeepEqual(base["sshKeys"], []string{filepath.Join(f.root, "keys/local.pub")}) {
 		t.Errorf("base.pkl sshKeys = %v, want the lifted key", base["sshKeys"])
 	}
 }
@@ -503,7 +504,7 @@ func TestInitFlow_MovesPersonalFieldsOnAccept(t *testing.T) {
 // the design rejects.
 func TestInitFlow_DecliningTheMoveKeepsTheFieldsInPlace(t *testing.T) {
 	f := newInitFixture(t)
-	f.write(t, f.project, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nsshKeys {\n  \"aa:bb:cc\"\n}\n")
+	f.write(t, f.project, "region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\ntemplate = \"python\"\nsshKeys {\n  \"keys/local.pub\"\n}\n")
 
 	s := newScript()
 	s.answers = map[string]any{"template": "docker"}
@@ -519,7 +520,7 @@ func TestInitFlow_DecliningTheMoveKeepsTheFieldsInPlace(t *testing.T) {
 	if project["region"] != "nyc3" || project["size"] != "s-1vcpu-1gb" {
 		t.Errorf("bivouac.pkl = %#v, want region and size left where they were", project)
 	}
-	if !reflect.DeepEqual(project["sshKeys"], []string{"aa:bb:cc"}) {
+	if !reflect.DeepEqual(project["sshKeys"], []string{"keys/local.pub"}) {
 		t.Errorf("sshKeys = %v, want it left in place", project["sshKeys"])
 	}
 	if project["template"] != "docker" {
@@ -530,10 +531,10 @@ func TestInitFlow_DecliningTheMoveKeepsTheFieldsInPlace(t *testing.T) {
 	}
 }
 
-// A committed fingerprint is the one the report has to name outright.
+// Committed personal public-key paths are named in the move report.
 func TestInitFlow_NamesACommittedSSHKey(t *testing.T) {
 	f := newInitFixture(t)
-	f.write(t, f.project, "template = \"python\"\nsshKeys {\n  \"aa:bb:cc\"\n}\n")
+	f.write(t, f.project, "template = \"python\"\nsshKeys {\n  \"keys/local.pub\"\n}\n")
 
 	s := newScript()
 	s.answers = map[string]any{"region": "nyc3", "size": "s-1vcpu-1gb"}
