@@ -1,5 +1,15 @@
 ## Unreleased
 
+### Planned
+
+- Select SSH public keys by path and use the matching local identity throughout
+  provisioning and later connections. Bivouac will handle DigitalOcean key
+  lookup and confirmed registration internally and report unusable keys before
+  creating a VM. **Breaking:** fingerprint and numeric key-ID config entries
+  must be replaced with public-key paths; migration errors will name the
+  entries to update. See the
+  [approved design](docs/superpowers/specs/2026-10-14-selected-ssh-key-end-to-end-design.md).
+
 ## v0.1.0
 
 First public release of bivouac: disposable, Nix-provisioned cloud
