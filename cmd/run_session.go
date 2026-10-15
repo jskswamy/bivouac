@@ -291,7 +291,7 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, sess.LocalRepo, record.Name, sess.Name, sess.Base)
+	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, record.Name, sess)
 	if err != nil {
 		return err
 	}

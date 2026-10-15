@@ -178,7 +178,8 @@ func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T
 		return "", 0
 	})
 
-	_, _ = PullSession(context.Background(), addr, "devuser", t.TempDir(), "bivouac", "auth", "")
+	_, _ = PullSession(context.Background(), addr, "devuser", "bivouac",
+		state.Session{Name: "auth", LocalRepo: t.TempDir()})
 
 	if len(commands) == 0 {
 		t.Fatal("PullSession() ran no remote commands, want at least a checkpoint")

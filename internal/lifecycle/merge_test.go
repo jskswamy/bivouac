@@ -138,7 +138,8 @@ func (f *sessionFixture) sessionRemoved() bool {
 
 func (f *sessionFixture) pull(t *testing.T) ([]string, error) {
 	t.Helper()
-	return PullSession(context.Background(), f.addr, "devuser", f.repo, f.repoName, f.session, f.base)
+	return PullSession(context.Background(), f.addr, "devuser", f.repoName,
+		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
 }
 
 func (f *sessionFixture) merge(t *testing.T) ([]string, error) {
@@ -517,7 +518,7 @@ func TestPullSession_UpdatesTheSessionWorktreeAndNeverTheUsersBranch(t *testing.
 	f := newSessionFixture(t, 2)
 	userTip := gitOut(t, f.repo, "rev-parse", "HEAD")
 
-	commits, err := PullSession(context.Background(), f.addr, "devuser", f.repo, f.repoName, f.session, f.base)
+	commits, err := f.pull(t)
 	if err != nil {
 		t.Fatalf("PullSession() error = %v", err)
 	}
@@ -532,7 +533,7 @@ func TestPullSession_UpdatesTheSessionWorktreeAndNeverTheUsersBranch(t *testing.
 	}
 
 	// Running it again is a no-op, not an error.
-	if _, err := PullSession(context.Background(), f.addr, "devuser", f.repo, f.repoName, f.session, f.base); err != nil {
+	if _, err := f.pull(t); err != nil {
 		t.Fatalf("second PullSession() error = %v, want pull to be repeatable", err)
 	}
 }

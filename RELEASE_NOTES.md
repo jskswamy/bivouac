@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Fixed
+
+- Session pull, merge, and delete now use the session's recorded repository
+  path rather than the instance name, including nested `owner/repo` checkouts.
+  Older sessions without a recorded path retain the instance-name fallback.
+
 ### Planned
 
 - Select SSH public keys by path and use the matching local identity throughout

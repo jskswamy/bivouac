@@ -6,6 +6,7 @@ import (
 
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/reconcile"
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // PullSession brings a session's work to this machine and refreshes the
@@ -13,7 +14,9 @@ import (
 // repeatedly, including while the agent is still working and while the
 // user's own tree is dirty. Returns one "<sha> <subject>" line per commit
 // not yet on the current branch.
-func PullSession(ctx context.Context, ip, user, localRepo, repoName, session, sessionBase string) ([]string, error) {
+func PullSession(ctx context.Context, ip, user, instanceName string, sess state.Session) ([]string, error) {
+	localRepo, session, sessionBase := sess.LocalRepo, sess.Name, sess.Base
+	repoName := sess.RepoNameOr(instanceName)
 	provider.ReportProgress(ctx, "checkpointing and fetching "+session)
 
 	ref, _, err := RescueSession(ctx, ip, user, localRepo, repoName, session)

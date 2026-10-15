@@ -21,7 +21,8 @@ import (
 // A dead droplet must not make a session permanently undeletable, and an error
 // here would strand the record entry: its local remote is already gone, so
 // nothing could ever rescue it again and every later `down` would refuse.
-func DeleteSession(ctx context.Context, ip, user, repoName string, s state.Session, force bool) (string, error) {
+func DeleteSession(ctx context.Context, ip, user, instanceName string, s state.Session, force bool) (string, error) {
+	repoName := s.RepoNameOr(instanceName)
 	if !force {
 		// Rescue first, exactly as pull, merge and down do. The local session
 		// branch only moves when pull fast-forwards it, so measuring it alone

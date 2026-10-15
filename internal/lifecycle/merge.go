@@ -17,11 +17,9 @@ import (
 // The ordering is the safety property. Deletion is strictly downstream of
 // verification, so nothing is ever removed from the instance before its
 // commits are provably in this machine's object store.
-func MergeSession(ctx context.Context, ip, user, repoName string, sess state.Session) ([]string, error) {
-	// Unpacked once rather than threaded as four more parameters: merge
-	// needs the recorded herdr machine id for its cleanup, and passing the
-	// record is smaller than passing everything in it.
+func MergeSession(ctx context.Context, ip, user, instanceName string, sess state.Session) ([]string, error) {
 	localRepo, session, sessionBase := sess.LocalRepo, sess.Name, sess.Base
+	repoName := sess.RepoNameOr(instanceName)
 	if err := CheckSessionName(session); err != nil {
 		return nil, err
 	}
