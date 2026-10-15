@@ -82,6 +82,23 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	if err := lifecycle.CheckSessionName(session); err != nil {
 		return err
 	}
+	instanceRelease, err := store.LockInstance(cmd.Context(), record.Name, false)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = instanceRelease() }()
+	sessionRelease, err := store.LockSession(cmd.Context(), record.Name, session)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sessionRelease() }()
+	if latest, ok, err := store.Get(record.Name); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("instance %s disappeared while waiting to start session %s", record.Name, session)
+	} else {
+		record = latest
+	}
 	ctx := progressCtx(cmd)
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -122,10 +139,10 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	// matching the record's own name -- an instance renamed or consolidated
 	// after this session was seeded must not silently point every later
 	// pull/merge/delete at a directory that was never seeded.
-	if _, err := record.PrepareSessionStart(session, root, base, repoPath); err != nil {
+	if err := store.Update(record.Name, func(latest *state.Record) error {
+		_, err := latest.PrepareSessionStart(session, root, base, repoPath)
 		return err
-	}
-	if err := store.Put(record); err != nil {
+	}); err != nil {
 		return err
 	}
 	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, repoPath, session, beadsModeFor(ctx, root), taskText); err != nil {
@@ -344,11 +361,10 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 // since the record is the only thing telling `down` what to rescue.
 // runSessionDelete drops its entry on the same reasoning.
 func forgetMergedSession(store *state.Store, record state.Record, session string) error {
-	if _, ok := record.FindSession(session); !ok {
+	return store.Update(record.Name, func(latest *state.Record) error {
+		latest.RemoveSession(session)
 		return nil
-	}
-	record.RemoveSession(session)
-	return store.Put(record)
+	})
 }
 
 func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
@@ -373,8 +389,10 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	record.RemoveSession(sess.Name)
-	if err := store.Put(record); err != nil {
+	if err := store.Update(record.Name, func(latest *state.Record) error {
+		latest.RemoveSession(sess.Name)
+		return nil
+	}); err != nil {
 		return err
 	}
 	if warning != "" {

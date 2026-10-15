@@ -117,6 +117,26 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// every instance, which is what 0.9.0 added machines for. Outside it
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
+		instanceRelease, err := store.LockInstance(cmd.Context(), record.Name, false)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = instanceRelease() }()
+		if session != "" {
+			sessionRelease, err := store.LockSession(cmd.Context(), record.Name, session)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = sessionRelease() }()
+		}
+		latest, ok, err := store.Get(record.Name)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("instance disappeared while waiting to attach Herdr")
+		}
+		record = latest
 		id, label, err := lifecycle.AttachMachine(ctx, record.Name, record.IP,
 			record.User, session, repoName, record.HerdrMachineID, herdrTabsFor(ctx, localRepo), ownedMachines(store))
 		// Recorded before the error is looked at: AttachMachine hands back a
@@ -167,15 +187,10 @@ func recordHerdrMachine(store *state.Store, instance, id string) error {
 	if id == "" {
 		return nil
 	}
-	record, ok, err := store.Get(instance)
-	if err != nil || !ok {
-		return err
-	}
-	if record.HerdrMachineID == id {
+	return store.Update(instance, func(record *state.Record) error {
+		record.HerdrMachineID = id
 		return nil
-	}
-	record.HerdrMachineID = id
-	return store.Put(record)
+	})
 }
 
 func runPair(cmd *cobra.Command, name string, args []string) error {

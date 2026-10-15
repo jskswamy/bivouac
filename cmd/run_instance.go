@@ -183,8 +183,10 @@ func runTailscale(cmd *cobra.Command, name string, args []string) error {
 	if err := lifecycle.JoinTailscale(ctx, record.IP, record.User); err != nil {
 		return err
 	}
-	record.TailscaleJoined = true
-	if err := store.Put(record); err != nil {
+	if err := store.Update(record.Name, func(latest *state.Record) error {
+		latest.TailscaleJoined = true
+		return nil
+	}); err != nil {
 		return err
 	}
 	if err := lifecycle.RefreshTailnetRoute(ctx); err != nil {

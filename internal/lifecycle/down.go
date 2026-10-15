@@ -56,6 +56,19 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 // provider's dashboard. Selected-identity records instead retain both state
 // and profile on a failed destroy, so a retry cannot lose their credentials.
 func Down(ctx context.Context, p provider.Provider, store *state.Store, record state.Record, force bool) error {
+	release, err := store.LockInstance(ctx, record.Name, true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+	latest, ok, err := store.Get(record.Name)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	record = latest
 	ctx = record.ConnectionContext(ctx)
 	if !force {
 		if err := rescueBeforeDestroy(ctx, record); err != nil {

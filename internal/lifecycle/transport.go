@@ -233,8 +233,13 @@ func rememberPreferredHost(ctx context.Context, host string) (context.Context, e
 	if !ok || record.SSH == nil || record.SSH.Alias != c.Alias {
 		return ctx, fmt.Errorf("cannot update routing for untracked selected instance %s", c.Name)
 	}
-	record.SSH = &c
-	if err := store.Put(record); err != nil {
+	if err := store.Update(record.Name, func(latest *state.Record) error {
+		if latest.SSH == nil || latest.SSH.Alias != c.Alias {
+			return fmt.Errorf("cannot update routing for changed selected instance %s", c.Name)
+		}
+		latest.SSH = &c
+		return nil
+	}); err != nil {
 		return ctx, err
 	}
 	if err := profiles.Upsert(ctx, c); err != nil {

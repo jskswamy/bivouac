@@ -265,6 +265,9 @@ func TestDown_RescuesEverySessionBeforeDestroying(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
 	p := &fakeProvider{}
 	// Rescue fails (no real git remote), so this must refuse to destroy --
 	// which is also what proves both sessions were attempted.

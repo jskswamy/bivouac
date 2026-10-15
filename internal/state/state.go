@@ -154,7 +154,12 @@ func Open() (*Store, error) {
 // List returns every stored Record, sorted by name. An empty slice (not
 // an error) is returned if the state file doesn't exist yet.
 func (s *Store) List() ([]Record, error) {
-	records, err := s.all()
+	release, err := s.lockState(context.Background(), false)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = release() }()
+	records, err := s.allUnlocked()
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +173,12 @@ func (s *Store) List() ([]Record, error) {
 
 // Get looks up a single Record by name.
 func (s *Store) Get(name string) (Record, bool, error) {
-	records, err := s.all()
+	release, err := s.lockState(context.Background(), false)
+	if err != nil {
+		return Record{}, false, err
+	}
+	defer func() { _ = release() }()
+	records, err := s.allUnlocked()
 	if err != nil {
 		return Record{}, false, err
 	}
@@ -178,25 +188,87 @@ func (s *Store) Get(name string) (Record, bool, error) {
 
 // Put creates or replaces the Record for r.Name.
 func (s *Store) Put(r Record) error {
-	records, err := s.all()
+	release, err := s.lockState(context.Background(), true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+	records, err := s.allUnlocked()
 	if err != nil {
 		return err
 	}
 	records[r.Name] = r
-	return s.save(records)
+	return s.saveUnlocked(records)
+}
+
+// Update reloads and mutates one record under the short state-file lock.
+func (s *Store) Update(instance string, mutate func(*Record) error) error {
+	release, err := s.lockState(context.Background(), true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+	records, err := s.allUnlocked()
+	if err != nil {
+		return err
+	}
+	record, ok := records[instance]
+	if !ok {
+		return fmt.Errorf("instance %s not found", instance)
+	}
+	if err := mutate(&record); err != nil {
+		return err
+	}
+	records[instance] = record
+	return s.saveUnlocked(records)
+}
+
+// CompleteRetirement records success and removes exactly the generation that
+// supplied its evidence in one state transaction.
+func (s *Store) CompleteRetirement(instance, generation string, receipt RetirementReceipt) error {
+	return s.Update(instance, func(record *Record) error {
+		index := -1
+		for i := range record.Sessions {
+			if record.Sessions[i].Generation == generation {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			return fmt.Errorf("session generation %s is no longer active on %s", generation, instance)
+		}
+		sess := record.Sessions[index]
+		if receipt.Generation != generation || receipt.Session != sess.Name {
+			return fmt.Errorf("retirement receipt does not match active generation %s", generation)
+		}
+		record.Sessions = append(append([]Session(nil), record.Sessions[:index]...), record.Sessions[index+1:]...)
+		kept := make([]RetirementReceipt, 0, len(record.RetirementReceipts)+1)
+		for _, existing := range record.RetirementReceipts {
+			if existing.Session != receipt.Session || existing.LocalRepo != receipt.LocalRepo {
+				kept = append(kept, existing)
+			}
+		}
+		record.RetirementReceipts = append(kept, receipt)
+		return nil
+	})
 }
 
 // Delete removes the Record for name, if present.
 func (s *Store) Delete(name string) error {
-	records, err := s.all()
+	release, err := s.lockState(context.Background(), true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+	records, err := s.allUnlocked()
 	if err != nil {
 		return err
 	}
 	delete(records, name)
-	return s.save(records)
+	return s.saveUnlocked(records)
 }
 
-func (s *Store) all() (map[string]Record, error) {
+func (s *Store) allUnlocked() (map[string]Record, error) {
 	data, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
 		return map[string]Record{}, nil
@@ -219,7 +291,7 @@ func (s *Store) all() (map[string]Record, error) {
 	return records, nil
 }
 
-func (s *Store) save(records map[string]Record) error {
+func (s *Store) saveUnlocked(records map[string]Record) error {
 	for _, record := range records {
 		if err := validateRecordLifecycle(record); err != nil {
 			return err
@@ -232,5 +304,5 @@ func (s *Store) save(records map[string]Record) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, data, 0o600)
+	return WriteFileAtomic(s.path, data, 0o600)
 }

@@ -101,8 +101,10 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) erro
 		if err := steps.JoinTailscale(ctx, vm.IP, connection.User); err != nil {
 			return err
 		}
-		record.TailscaleJoined = true
-		if err := store.Put(record); err != nil {
+		if err := store.Update(record.Name, func(latest *state.Record) error {
+			latest.TailscaleJoined = true
+			return nil
+		}); err != nil {
 			return err
 		}
 		if steps.TailnetHost != nil {
