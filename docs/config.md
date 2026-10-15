@@ -31,7 +31,7 @@ see "A note on trust" near the end of this doc.
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
 | `shell` | `"fish"\|"zsh"\|"bash"` | No | `"fish"` | The instance user's login shell, set once by cloud-init at creation and never changed afterwards. Can live in your base config — see [below](#shell). |
-| `sshKeys` | `Listing<String>?` | No | none | SSH key IDs/fingerprints already registered with your provider. `bivouac init` finds and fills these in — see [below](#ssh-keys). |
+| `sshKeys` | `Listing<String>?` | No | none | Public-key file paths. `bivouac init` selects them; `up` resolves account keys and registers missing public keys only after confirmation. See [SSH keys](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
@@ -474,7 +474,7 @@ asking you which file to put them in:
 |---|---|
 | `region`, `size`, `sshKeys` | `template`, `agents`, `packages`, `beads`, `tailscale` |
 
-`bivouac.pkl` is committed. Putting your SSH key fingerprint or your own
+`bivouac.pkl` is committed. Putting your personal SSH public-key path or your own
 preferred droplet size in it would hand both to everyone who clones the
 repo, and they'd provision with your key rather than theirs.
 
@@ -483,56 +483,112 @@ they're set to and offers to change them.
 
 ### SSH keys
 
-`bivouac init` does not ask you to remember a fingerprint. It lists the
-keys this machine holds and writes the fingerprint for whichever you
-pick:
+`sshKeys` contains **public-key file paths**, not account identifiers:
 
-```
-Which SSH keys should instances accept?
-
-  ✓ me@laptop      (in agent)
-  • old-desktop    (on disk)
-  • Type a fingerprint or key ID…
+```pkl
+sshKeys {
+  "~/.ssh/id_ed25519.pub"
+  "/keys/custom signing key.pub"
+}
 ```
 
-Keys come from your **ssh-agent** first, then `~/.ssh/*.pub`,
-deduplicated. The agent is the stronger source: a key it holds is one you
-can authenticate with right now, and it is the only place a
-YubiKey-resident key appears at all. Agent keys are the default
-selection; a `.pub` sitting on disk might have lost its private half, so
-picking one is left to you.
+Relative paths are relative to the config file declaring them, not the
+current working directory. Only a leading `~/` is expanded; shell variables
+and `~another-user` are not. Base and project lists merge additively, with
+each entry retaining its original directory. Every file must contain exactly
+one authorized-key public key (comments and blank lines are allowed).
+Private, missing, empty, malformed and multiple-key files are rejected.
 
-The fingerprint written is the one DigitalOcean matches on, and you can
-check it by hand:
+**Breaking migration:** numeric account IDs and MD5/SHA256 fingerprints are
+no longer configuration inputs, even if the account already has that key.
+Errors name the entry and its declaring file. Run `bivouac init` to replace
+old values in their original base/project files, or edit them to paths.
+An explicit path such as `./12345` is still a path, not a numeric ID.
 
-```bash
-ssh-keygen -lE md5 -f ~/.ssh/id_ed25519.pub    # the MD5: prefix is dropped
-```
+#### Selecting and unlocking keys
 
-**With a token in `DIGITALOCEAN_TOKEN`**, it also says which keys your
-account already has, lists account keys you do not hold locally (shown
-but never preselected — picking one is how you get an instance you cannot
-log into), and offers to upload a key that is missing:
+`bivouac init` lists discovered public files and accepts custom paths. Agent
+and disk discovery are deduplicated without losing a matching disk path.
+Account-only keys cannot be selected: an account registration does not prove
+you can log in. An agent-only key needs a public reference first—copy exactly
+one selected public-key line from `ssh-add -L` into a `.pub` file, then select
+that file. This exports no private material.
 
-```
-old-desktop is not on your provider account. Upload it?   [ Yes ]  [ No ]
-Name it:  old-desktop
-```
+At least one selected key must have a usable local signer. Bivouac prefers a
+matching agent key, otherwise checks the matching private file (the public
+path minus `.pub`). Custom filenames and spaces are supported. An encrypted
+private key must already be unlocked in ssh-agent; bivouac does not ask for
+or save its passphrase. Hardware-backed agent keys may require a touch during
+the displayed signing-capability check. Other selected keys may be additional
+recipients without local signers; the final summary identifies them.
 
-Nothing private ever leaves your machine — registering a key uploads its
-*public* half, exactly as the web console would.
+Standalone `init` can optionally register a missing public key with explicit
+approval when `DIGITALOCEAN_TOKEN` is already in the environment. It never
+decrypts a token just to run setup, and declining registration retains your
+path selection. Setup invoked implicitly by `up` never uploads keys.
 
-`init` never reaches for a token that is not already in the environment.
-The other route to your token decrypts through sops, often via a
-hardware key that waits for a touch, and a form silently blocked on that
-is indistinguishable from a hang. So a first run on a new machine
-completes with no credentials at all; a token scoped without SSH-key
-permission simply loses the account features rather than failing.
+#### Confirmation and credential scopes
 
-**If you pick no keys, `init` says so.** An instance created without one
-still boots and still bills, and refuses every login — unlike a wrong
-fingerprint, which DigitalOcean rejects outright before creating
-anything.
+`up` validates public files, usable signers, account key matches and effective
+SSH settings before its final confirmation. The summary names existing keys,
+pending additions, extra recipients, the machine alias and managed include.
+Declining makes no account/VM writes or persistent SSH-config changes.
+
+After approval, missing public keys are registered as `bivouac-<file-stem>`
+(with a safe normalised stem); already-registered names are preserved. Only
+public material is uploaded. Registration is add-only and retry-safe: account
+keys are never renamed, replaced or deleted, including on `down`. Approved
+additions remain registered if VM creation later fails.
+
+The token needs authoritative SSH-key **read** access, and **create** access
+when additions are needed, in addition to the droplet permissions your
+workflow uses. Failed reads are not treated as an empty account. If your
+token cannot create keys, import the public file through the web console or
+the quoted `doctl` command in the error, then retry with read access. Restrict
+credentials to the permissions you actually need.
+
+#### Recorded identities and persistent connections
+
+New machines record their approved identity references in local state.
+Changing config affects future machines, not the identity of an existing
+machine. Missing/changed public or private files and unavailable recorded
+agent keys produce repair guidance; bivouac does not switch to unrelated
+agent/default keys. Keep the recorded files and agent key available. Old
+state without identity metadata retains its previous connection behavior.
+
+Each new machine owns one `bivouac-<name>` SSH alias, shared by all its
+sessions. Bivouac writes only its entries under the XDG config root's
+`bivouac/ssh/` directory and adds one marked Include to `~/.ssh/config`,
+preserving user content and permissions. Git session remotes and Herdr saved
+machines use this persistent alias, so later connections work after the
+creating bivouac process exits. SSH, tmux, pairing, forwarding and rsync use
+the same selection. Generic local Git/signing and unrelated remotes remain
+unchanged. Beads remotes also store the alias; actual Dolt interoperability
+has not yet been integration-verified.
+
+The alias maps to the recorded real endpoint, with `IdentitiesOnly yes` and
+real-address host-key identity. Tailnet discovery updates the preferred
+endpoint while retaining public-IP fallback. Git probes real endpoints—not
+alias DNS—and scopes fallback to that transfer without changing its saved
+remote or disabling host-key checks. A changed server key is an error, not
+a reason to remove known-host entries automatically.
+
+Broad user `IdentityFile` settings can add unrelated keys even when
+`IdentitiesOnly` is set. Bivouac checks effective `ssh -G` settings and
+reports conflicts rather than rewriting your hosts. Scope those settings
+away from managed aliases (for example `Host * !bivouac-*`). Conflicting
+`GIT_SSH_COMMAND`, `GIT_SSH`, repository `core.sshCommand` and Git URL rewrites
+must likewise be scoped away or unset for bivouac-owned Git transfers.
+
+If profile installation was interrupted after creation, the VM remains
+tracked: fix the reported local config conflict and retry `bivouac provision
+<name>`. Symlinked/nonregular user configs are rejected with manual repair
+guidance. If local cleanup fails after a confirmed destroy, remove only the
+named alias and its entry in `bivouac/ssh/profiles.json`, preserving other
+machines. Removing a session never removes the shared SSH alias. Failed
+selected-machine destruction retains state and alias for retry; successful
+`down` removes only that machine's profile and removes the marked Include
+when no managed machines remain.
 
 ### Only what you chose
 

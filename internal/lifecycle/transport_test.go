@@ -1,7 +1,6 @@
 package lifecycle
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -17,7 +16,6 @@ import (
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/sshkeys"
 	"github.com/jskswamy/bivouac/internal/testenv"
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
 
@@ -67,86 +65,7 @@ func gitSSHServer(t *testing.T, key sshkeys.Key, bare string) string {
 
 func streamSSHServer(t *testing.T, key sshkeys.Key, run func(string) *exec.Cmd) string {
 	t.Helper()
-	public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.PublicKey))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer, err := ssh.NewSignerFromKey(private)
-	if err != nil {
-		t.Fatal(err)
-	}
-	config := &ssh.ServerConfig{PublicKeyCallback: func(_ ssh.ConnMetadata, got ssh.PublicKey) (*ssh.Permissions, error) {
-		if !bytes.Equal(public.Marshal(), got.Marshal()) {
-			return nil, fmt.Errorf("unselected key")
-		}
-		return nil, nil
-	}}
-	config.AddHostKey(signer)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func() {
-				defer func() { _ = conn.Close() }()
-				server, channels, requests, err := ssh.NewServerConn(conn, config)
-				if err != nil {
-					return
-				}
-				defer func() { _ = server.Close() }()
-				go ssh.DiscardRequests(requests)
-				for incoming := range channels {
-					if incoming.ChannelType() != "session" {
-						_ = incoming.Reject(ssh.UnknownChannelType, "fixture")
-						continue
-					}
-					channel, reqs, err := incoming.Accept()
-					if err != nil {
-						return
-					}
-					go func() {
-						defer func() { _ = channel.Close() }()
-						for request := range reqs {
-							if request.Type != "exec" {
-								_ = request.Reply(false, nil)
-								continue
-							}
-							var input struct{ Command string }
-							if err := ssh.Unmarshal(request.Payload, &input); err != nil {
-								return
-							}
-							cmd := run(input.Command)
-							if cmd == nil {
-								_ = request.Reply(false, nil)
-								return
-							}
-							_ = request.Reply(true, nil)
-							cmd.Stdin = channel
-							cmd.Stdout = channel
-							cmd.Stderr = channel.Stderr()
-							status := uint32(0)
-							if err := cmd.Run(); err != nil {
-								status = 1
-							}
-							_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
-							return
-						}
-					}()
-				}
-			}()
-		}
-	}()
-	return ln.Addr().String()
+	return testenv.StreamSSHServer(t, key, run)
 }
 
 func unrelatedTransportAgent(t *testing.T) {

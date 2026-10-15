@@ -85,6 +85,15 @@ and the external tools used by the workflows you choose (`sops`, `age`,
 `tailscale`, `herdr`, `bd`, etc.). The repository's `nix develop` shell has the
 development/test toolchain.
 
+Select **public-key file paths**, for example `sshKeys { "~/.ssh/id_ed25519.pub" }`,
+not DigitalOcean fingerprints or numeric IDs. `bivouac init` can migrate old
+entries. At least one selected key needs a matching local private file or an
+unlocked agent key; `up` lists any public-key registrations before asking for
+final approval. A persistent, machine-scoped SSH alias carries the selection
+into later SSH, rsync, Git and Herdr connections without changing unrelated
+hosts. See [SSH keys and migration](docs/config.md#ssh-keys) for path rules,
+credential permissions, conflict repair and verification limits.
+
 ## Quickstart
 
 From any git repository:

@@ -314,9 +314,10 @@ machines and sessions:
   remain available after bivouac exits. Preserve public/tailnet routing and
   explicit fallback behavior; an alias is not itself a resolvable IP.
 
-A local `ssh -G` check with isolated temporary config verified alias,
-identity-path quoting, and inclusion behavior; no live VM/Herdr connection
-has been tested yet. Integration verification remains part of implementation.
+At design approval, a local `ssh -G` check with isolated temporary config
+verified alias, identity-path quoting, and inclusion behavior; no live
+VM/Herdr connection had yet been tested. Implementation evidence is recorded
+below; the design-time check alone was not a transport guarantee.
 Existing broad user IdentityFile directives can add unrelated identities
 (OpenSSH treats them additively). Check effective settings and report
 conflicts rather than silently weakening selected-key isolation or rewriting
@@ -368,8 +369,24 @@ Cover:
   not substitute argument-only tests for an unverified transport guarantee.
 
 Run the Go suite redirected to a file, pre-commit checks, and flake checks
-in the development environment during implementation. This spec changes
-only documentation; it does not claim any of these behaviors are built.
+in the development environment during implementation. At approval this spec
+changed only documentation; implementation evidence is recorded below.
+
+## Implementation evidence
+
+Tasks 1–10 now implement this contract on the selected-ssh-key branch. The
+[execution record](../plans/2026-10-14-selected-ssh-key-execution-notes.md)
+contains per-task red/green results, decisions and review limitations.
+
+Local fixtures prove selected-only Go SSH with unrelated agent keys, actual
+ordinary Git fetch through the persistent alias, real-endpoint public fallback
+without weakening host-key verification, and actual Herdr 0.9.4 saved-machine
+reconnection from a separate process. Command regression composes init,
+read-only planning, approved registration/creation, selected-only readiness,
+record reuse after config edits and independent machine teardown. No live
+cloud writes, physical hardware signing or private-key upload is claimed.
+Beads remote URLs share the alias, but actual Dolt interoperability remains
+unverified; full all-transports external verification is therefore not claimed.
 
 ## Builder discretion
 

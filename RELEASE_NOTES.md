@@ -6,15 +6,33 @@
   path rather than the instance name, including nested `owner/repo` checkouts.
   Older sessions without a recorded path retain the instance-name fallback.
 
-### Planned
+### Changed
 
-- Select SSH public keys by path and use the matching local identity throughout
-  provisioning and later connections. Bivouac will handle DigitalOcean key
-  lookup and confirmed registration internally and report unusable keys before
-  creating a VM. **Breaking:** fingerprint and numeric key-ID config entries
-  must be replaced with public-key paths; migration errors will name the
-  entries to update. See the
-  [approved design](docs/superpowers/specs/2026-10-14-selected-ssh-key-end-to-end-design.md).
+- **Breaking:** `sshKeys` now accepts public-key file paths only, not MD5/SHA256
+  fingerprints or numeric account IDs. Relative paths retain their declaring
+  config's directory; base/project lists merge additively. `bivouac init`
+  repairs old entries in their original files. See [migration](docs/config.md#ssh-keys).
+- `up` checks selected files, local signing capability, account matches and SSH
+  settings before final confirmation. Approved registrations upload public
+  material only and never rename/delete account keys. Tokens need key-read
+  access and, when additions are needed, key-create access.
+
+### Added
+
+- Recorded machine identities and one persistent `bivouac-<name>` SSH alias
+  shared across sessions, provisioning, SSH/tmux/pair/forwarding, rsync, Git
+  remotes and Herdr targets. Ordinary Git fetch and separate-process Herdr
+  0.9.4 saved-machine reconnection are verified with disposable SSH fixtures.
+- Explicit guidance for missing/changed identities and conflicting inherited
+  SSH/Git settings, without silently trying unrelated agent keys. Old state
+  without identity metadata keeps legacy authentication behavior.
+- Machine-profile cleanup only after confirmed destruction; failed selected
+  destroys retain state for retry. Session cleanup leaves the shared alias.
+
+Live cloud writes and physical hardware keys have not been exercised. Beads
+remotes store the shared alias, but actual Dolt interoperability remains an
+external verification gap. See the [execution record](docs/superpowers/plans/2026-10-14-selected-ssh-key-execution-notes.md)
+for evidence and limitations.
 
 ## v0.1.0
 

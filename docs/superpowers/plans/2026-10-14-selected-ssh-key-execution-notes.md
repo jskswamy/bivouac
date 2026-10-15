@@ -6,8 +6,10 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–9 (`cloudlab-1em.1`–`cloudlab-1em.9`) are implemented and tested.
-Task 10 remains unimplemented. **This is an intermediate implementation, not a completed
+All ten implementation tasks (`cloudlab-1em.1`–`cloudlab-1em.10`) are
+implemented and fixture-tested. The parent epic remains open for the actual
+beads/Dolt transport verification gap, tracked in `cloudlab-1em.11`; do not
+interpret implementation completion as all-transports external certification. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -397,6 +399,66 @@ restarting or addressing the hosting session and left no fixture files or
 server processes in the checkout. The initial failed experiment is not
 counted as successful isolated transport evidence.
 
-Next task: whole-flow regression and user documentation (10).
+### Task 10: whole-flow regression, documentation and final review
+
+`cmd/ssh_workflow_test.go` composes the real init flow, resolved public-file
+references, read-only key planning and creation summary, approved Up, durable
+state and selected-only real SSH readiness/provision callbacks. It registers
+before VM create, exercises three sessions and a later transfer after config
+changes, creates a second machine with another generated key, binds command
+contexts independently, and destroys one without disturbing the other or
+account keys. A second regression proves numeric-ID migration fails in its
+original base file before provider resolution and can be repaired by init.
+The provider is a fake; SSH authentication/exec channels are real local ones.
+Existing command tests cover final-confirmation decline with zero writes.
+
+The shared disposable SSH server now lives in internal/testenv rather than
+copying its authentication/connection loop into the command regression. Echo
+and streaming modes share the same selected-only handshake; only an explicit
+fixture handler launches Git or Herdr. This removes the duplicated fixture
+found during the manual refactor review without adding product seams.
+
+README, config reference, release notes and the approved spec's historical
+implementation notes now explain path-only migration, signer requirements,
+confirmed registration, credential scopes, aliases, old-state fallback,
+conflict repair, teardown and external verification limits. Planned release
+copy has been replaced only for behavior backed by implemented/tested paths;
+Dolt interoperability is explicitly not claimed as verified.
+
+Final verification on x86_64-linux:
+
+- `BIVOUAC_HERDR_BIN=/tmp/bivouac-herdr-0.9.4 nix develop -c bash -c
+  'go test ./... > /tmp/bivouac-selected-ssh-final-go.log 2>&1'`: exit 0.
+  Lifecycle tests took 284.134s; the opt-in actual Herdr transport was enabled.
+- `nix develop -c pre-commit run --all-files`: exit 0, all eleven hooks passed
+  (`/tmp/bivouac-selected-ssh-final-precommit.log`). Newly added test files
+  were staged before this run and before flake source capture.
+- `sudo -n /nix/var/nix/profiles/default/bin/nix flake check --option sandbox
+  false --print-build-logs`: exit 0
+  (`/tmp/bivouac-selected-ssh-final-flake.log`). Uses existing network-enabled
+  CI policy per CONTRIBUTING, without changing global Nix settings. Other
+  Linux/macOS architectures were evaluated but their checks were omitted by
+  Nix as incompatible with this host; they were not locally verified.
+- `git diff --check`: exit 0. No fixture catalog/database/archive remains in
+  the checkout. Corrected Herdr runs left the hosting server PID/start time
+  unchanged and left no fixture server processes running.
+
+Required semantic refactor/fresh-reviewer tools (`refactor:scan` and
+`commit-tools:review-commits`) are not installed; no independent semantic
+review is claimed. Performed manual source/diff review for credential scopes,
+context ownership, transport quoting, host-key identity, failed-destroy
+recovery and fixture cleanup. Consolidated duplicated SSH fixture code as
+noted above. Reviewed the commit list: each green task is already a logical
+unit, with a separate requested Nix verification documentation commit; there
+are no red/green churn commits to fold. Nothing was pushed.
+
+### Remaining external verification
+
+`cloudlab-1em.11` tracks actual beads/Dolt push/pull via the saved SSH alias,
+including a separate client process and unrelated fixture agent keys. This
+needs a fully isolated local database/server setup, not the project's active
+Beads database. The parent epic stays open until this gap is settled. No live
+cloud writes, physical hardware/user-key access or all-platform verification
+was performed; those are not implied by the successful fixture suites.
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.
