@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Planned
+
+- Make session merge and delete resumable through a shared retirement workflow:
+  close owned Herdr resources, preserve other sessions and shared machines,
+  retain cleanup progress on failure, and resume with the same command.
+  See the [approved design](docs/superpowers/specs/2026-10-15-resumable-session-retirement-design.md).
+
 ### Fixed
 
 - Session pull, merge, and delete now use the session's recorded repository
