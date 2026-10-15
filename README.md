@@ -164,7 +164,18 @@ A session merge:
 3. cherry-picks the session's commits onto your current branch **with your
    signature**;
 4. verifies every replayed commit has a good signature (`%G? = G`);
-5. only then deletes the session from both machines.
+5. closes only Herdr workspaces or sessions whose recorded server and opaque
+   ownership proof still match;
+6. rechecks for work written while those resources were closing; and
+7. removes remote/local checkout residue through recorded, retryable effects.
+
+Merge and delete share this retirement workflow. If any cleanup step is
+unreachable or uncertain, the command exits nonzero, keeps the session's
+recovery record, and prints the same command to resume. Re-running a completed
+command succeeds from its completion receipt. `session delete --force` records
+explicit authority to discard work, but it does not turn an unreachable remote
+resource into proof that the resource is gone. Legacy sessions with unknown
+Herdr ownership must be interactively adopted before retirement.
 
 The VM never pushes to GitHub and does not need your signing key, GitHub token,
 or host credentials. If a merge conflicts, resolve it and run

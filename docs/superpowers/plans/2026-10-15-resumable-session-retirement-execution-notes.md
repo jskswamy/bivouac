@@ -93,3 +93,36 @@ server, session, cloud instance, or user SSH key was mutated.
 Without `BIVOUAC_HERDR_BIN`, all three real-Herdr tests skip with an explicit
 message; an ordinary suite result must report those skips rather than count
 them as integration passes.
+
+## Tasks 2–9: durable state and shared retirement workflow
+
+The implementation records a random session generation, exact Herdr address
+and ownership proof, immutable retirement intent, acceptance checkpoints,
+write-ahead effect status, and a bounded completion receipt. State replacement
+and replay-journal writes use atomic rename and operation locks serialize
+session work with instance destruction.
+
+Both `session merge` and `session delete` now call `RetireSession`. Tests inject
+failure at coordinator boundaries and establish that retries preserve the
+operation/force mode, skip proven-complete closure, repeat uncertain effects,
+run a final work gate after closure, and publish a receipt only after all
+residue effects are observed complete. A completed command retry succeeds from
+the receipt. `down` refuses pending retirement unless `--force` explicitly
+abandons its obligations.
+
+The ordinary Go suite covers late remote writes, destination branch changes,
+source extension, corrupt replay evidence, unreachable issue state, failed
+remote removal, missing resources, foreign Herdr resources, shared-machine
+preservation, and residue removal. The final validation command and result are
+recorded in the handoff commit history. Live cloud destruction was not run.
+The Herdr 0.9.4 restart limitation described above remains intentionally
+fail-closed.
+
+Final local checks passed: `go test ./...`, `go test -race ./internal/state
+./internal/lifecycle ./cmd`, `pre-commit run --all-files`, and the isolated
+Herdr ownership/attachment rows with the 0.9.4 binary above. `nix flake check
+--option sandbox false --print-build-logs` did not pass: the daemon reported
+that `sandbox` is restricted for this untrusted user, then the sandboxed
+pre-commit derivation could not download uncached Go modules because DNS/network
+access was unavailable. The same pre-commit hooks passed in the populated
+project development environment; no daemon trust setting was changed.

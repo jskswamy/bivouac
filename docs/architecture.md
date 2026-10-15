@@ -401,26 +401,35 @@ safety property:
    the check. A failed verification **rewinds this run's own picks** —
    leaving unverified commits behind would let the next merge drop them as
    empty, see an unmoved HEAD, skip verification, and silently pass.
-6. Re-checkpoint and re-read the instance-side tip. The agent keeps running
-   while the replay happens, and signing can block for minutes on a hardware
-   key touch; if the tip moved, nothing is deleted and re-running merge
-   takes the new work too.
-7. Only then: delete the session repo on the instance, remove the local
-   worktree and remote, and clear the session from state.
+6. Close every recorded Herdr attachment only after querying its exact saved
+   server and matching its opaque ownership proof. Workspace labels and reused
+   public IDs are never cleanup authority; unreachable or ambiguous ownership
+   leaves retirement pending.
+7. Re-checkpoint and re-read the instance-side tip after closure. The agent or
+   a detached writer may have produced late work while signing or closing; a
+   descendant tip is accepted without replaying the already accepted range.
+8. Record intent before each removal (remote checkout and TASK.md, local
+   worktree, beads/Git remotes, branch, replay journal), observe completion,
+   and finally replace the active generation with a bounded receipt.
+
+Every phase is durable. A failure exits nonzero with completed and pending
+work retained; the same merge command resumes. Closed panes stay closed when a
+late-work or issue gate pauses retirement. A retry after completion is a
+successful no-op backed by the generation's receipt.
 
 **`session delete [session]`** rescues (checkpoint + fetch) before it
 measures, exactly like merge, and for the same reason: the local session
 branch only moves when `pull` fast-forwards it, so measuring that branch
 alone read a session nobody had pulled as empty and deleted it with exit 0.
-Two consequences follow from rescuing first. It needs the instance
-reachable, and refuses when it is not — `--force` skips both the rescue and
-the refusal. And because rescue checkpoints whatever the agent left
-uncommitted, a session with dirty-but-uncommitted instance-side work now
-refuses to delete instead of going quietly: the checkpoint turns that dirt
-into a commit the unmerged gate counts. If beads was wired, delete also
-refuses when it cannot confirm the instance's issue edits have landed on the
-Mac — the one place beads is fail-closed, an unknown treated as unsafe the
-same way an unconfirmed commit is; `--force` skips this too.
+Two consequences follow from rescuing first. An ordinary delete needs the
+instance reachable and refuses when it is not. `--force` records immutable
+authority to discard work and can complete independent local effects while
+offline, but remote cleanup remains a pending obligation and the command stays
+nonzero until absence is observed. Because rescue checkpoints whatever the
+agent left uncommitted, a session with dirty instance-side work refuses to
+delete instead of going quietly. If beads was wired, delete also refuses when
+it cannot confirm the instance's issue edits have landed on the Mac; unknown
+issue state is unsafe, not an implicit empty result.
 
 **`down`** rescues every session's work before destroying anything, using the
 session names and local repo paths from the state record — `down` resolves an
@@ -593,11 +602,11 @@ Each record holds: name, provider, VM id, IP, region, size, template, remote
 user, remote repo path, tunnel PID, whether it joined the tailnet, the saved
 Herdr machine id for the instance when one has been registered, and
 `Sessions []Session` — one entry per live session, each holding the
-session's name, the local repository it belongs to, the remote repository path
-identity it was seeded under, and the commit it branched from (`Base`). A list
-rather than a single session, because an instance can run several at once;
-`PutSession`/`RemoveSession` add, replace
-and drop entries by name without disturbing the rest.
+session's name, random generation, local repository, remote repository path,
+base commit, owned Herdr attachments, and optional retirement journal. A list
+rather than a single session lets an instance run several at once. Updates are
+atomic transactions protected by per-instance/session operation leases, so a
+progress write cannot overwrite another session.
 
 The record is written **immediately** after `Create` returns and before
 anything else can fail, so a later failure still leaves an instance `down`
@@ -608,11 +617,12 @@ than leaking it.
 from any directory, and for `session pull`/`merge`/`delete`, which resolve
 which session they act on from it when no name is given (see
 [Sessions](#sessions-code-moves-as-git-commits)). `session start` appends to
-it *before* creating anything; `merge` and `session delete` remove the entry
-once the session is gone from both machines — leaving it would make the next
-`down` try to rescue a worktree that no longer exists, refuse to destroy,
-and recommend `--force`, training the user into the one flag that loses
-work.
+it *before* creating anything. Merge and delete retain the entry while any
+cleanup effect is uncertain, then atomically replace that exact generation
+with a bounded completion receipt. Name reuse gets a new generation and cannot
+inherit the old receipt. `down` distinguishes active work from pending
+retirement and refuses the latter unless its explicit `--force` override
+abandons the recorded obligations.
 
 ## Not built (deliberately)
 

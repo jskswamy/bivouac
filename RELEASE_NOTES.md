@@ -1,12 +1,5 @@
 ## Unreleased
 
-### Planned
-
-- Make session merge and delete resumable through a shared retirement workflow:
-  close owned Herdr resources, preserve other sessions and shared machines,
-  retain cleanup progress on failure, and resume with the same command.
-  See the [approved design](docs/superpowers/specs/2026-10-15-resumable-session-retirement-design.md).
-
 ### Fixed
 
 - Session pull, merge, and delete now use the session's recorded repository
@@ -15,6 +8,11 @@
 
 ### Changed
 
+- Session merge and delete now use one resumable retirement workflow. Cleanup
+  closes only ownership-proven Herdr resources, records each destructive step,
+  preserves other sessions and shared machines, and resumes with the same
+  command after partial failure. Unreachable resources remain pending rather
+  than being treated as absent.
 - **Breaking:** `sshKeys` now accepts public-key file paths only, not MD5/SHA256
   fingerprints or numeric account IDs. Relative paths retain their declaring
   config's directory; base/project lists merge additively. `bivouac init`
