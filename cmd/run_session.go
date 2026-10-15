@@ -122,7 +122,9 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	// matching the record's own name -- an instance renamed or consolidated
 	// after this session was seeded must not silently point every later
 	// pull/merge/delete at a directory that was never seeded.
-	record.PutSession(state.Session{Name: session, LocalRepo: root, Base: base, RepoName: repoPath})
+	if _, err := record.PrepareSessionStart(session, root, base, repoPath); err != nil {
+		return err
+	}
 	if err := store.Put(record); err != nil {
 		return err
 	}

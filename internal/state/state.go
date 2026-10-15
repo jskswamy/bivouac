@@ -33,8 +33,9 @@ type Record struct {
 	// Recorded because nothing applies it afterwards, so a later config
 	// edit can be checked against what the instance actually got. Empty
 	// means the instance predates the field.
-	Shell    string    `json:"shell,omitempty"`
-	Sessions []Session `json:"sessions"`
+	Shell              string              `json:"shell,omitempty"`
+	Sessions           []Session           `json:"sessions"`
+	RetirementReceipts []RetirementReceipt `json:"retirement_receipts,omitempty"`
 }
 
 // ConnectionContext binds metadata at record ownership boundaries without
@@ -77,7 +78,11 @@ type Session struct {
 	//
 	// Empty means bivouac never registered one, which is also every
 	// session that predates this field.
-	HerdrMachineID string `json:"herdr_machine_id,omitempty"`
+	HerdrMachineID   string            `json:"herdr_machine_id,omitempty"`
+	Generation       string            `json:"generation,omitempty"`
+	AttachmentsKnown bool              `json:"attachments_known,omitempty"`
+	Attachments      []HerdrAttachment `json:"attachments,omitempty"`
+	Retirement       *Retirement       `json:"retirement,omitempty"`
 }
 
 // RepoNameOr returns the identity the session's remote directory was
@@ -203,6 +208,11 @@ func (s *Store) all() (map[string]Record, error) {
 	if err := json.Unmarshal(data, &records); err != nil {
 		return nil, fmt.Errorf("corrupt state file %s: %w", s.path, err)
 	}
+	for _, record := range records {
+		if err := validateRecordLifecycle(record); err != nil {
+			return nil, fmt.Errorf("corrupt state file %s: %w", s.path, err)
+		}
+	}
 	if records == nil {
 		records = map[string]Record{}
 	}
@@ -210,6 +220,11 @@ func (s *Store) all() (map[string]Record, error) {
 }
 
 func (s *Store) save(records map[string]Record) error {
+	for _, record := range records {
+		if err := validateRecordLifecycle(record); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
