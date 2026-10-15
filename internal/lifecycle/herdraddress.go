@@ -13,6 +13,9 @@ import (
 // args. ConfigRoot and Session remain part of the durable identity even though
 // Herdr's --machine forwarding reads them from the profile rather than argv.
 func herdrCommand(address state.HerdrAddress, args ...string) ([]string, error) {
+	if address.MachineID == "" {
+		return nil, fmt.Errorf("herdr address has no saved machine id")
+	}
 	if err := validateHerdrAddress(address); err != nil {
 		return nil, err
 	}
@@ -49,9 +52,6 @@ func coerceHerdrAddress(value any) (state.HerdrAddress, error) {
 }
 
 func validateHerdrAddress(address state.HerdrAddress) error {
-	if address.MachineID == "" {
-		return fmt.Errorf("herdr address has no saved machine id")
-	}
 	if err := CheckSessionName(address.Session); err != nil {
 		return fmt.Errorf("herdr address has invalid session %q: %w", address.Session, err)
 	}

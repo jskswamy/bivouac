@@ -14,6 +14,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
 	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -104,10 +105,12 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// connect anyway with herdr's own default session -- connecting is not
 	// destructive and must degrade, not refuse.
 	session := ""
+	generation := ""
 	repoName := record.Name
 	localRepo := ""
 	if sess, err := resolveSessionInteractive(cmd, record, nil); err == nil {
 		session = sess.Name
+		generation = sess.Generation
 		repoName = sess.RepoNameOr(record.Name)
 		localRepo = sess.LocalRepo
 	}
@@ -117,68 +120,39 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 	// every instance, which is what 0.9.0 added machines for. Outside it
 	// there is nothing to attach to, so launching a client stays right.
 	if lifecycle.InsideHerdr() {
-		instanceRelease, err := store.LockInstance(cmd.Context(), record.Name, false)
+		if session == "" {
+			return errors.New("no session resolved -- start one with `bivouac session start <name>`")
+		}
+		attachment, err := lifecycle.EnsureSessionAttachment(ctx, store, record.Name, session)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = instanceRelease() }()
-		if session != "" {
-			sessionRelease, err := store.LockSession(cmd.Context(), record.Name, session)
-			if err != nil {
-				return err
+		if tabs := herdrTabsFor(ctx, localRepo); len(tabs) > 0 {
+			if client, err := reconcile.Connect(ctx, record.IP, record.User); err != nil {
+				provider.ReportWarning(ctx, "herdr: laying out tabs: connecting to the instance: "+err.Error())
+			} else {
+				err := lifecycle.LayOutTabs(client, attachment.Address.Session, attachment.Handle,
+					lifecycle.RemoteRepoPath(record.User, session, repoName), tabs, true)
+				_ = client.Close()
+				if err != nil {
+					provider.ReportWarning(ctx, "herdr: laying out tabs: "+err.Error())
+				}
 			}
-			defer func() { _ = sessionRelease() }()
 		}
-		latest, ok, err := store.Get(record.Name)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return errors.New("instance disappeared while waiting to attach Herdr")
-		}
-		record = latest
-		id, label, err := lifecycle.AttachMachine(ctx, record.Name, record.IP,
-			record.User, session, repoName, record.HerdrMachineID, herdrTabsFor(ctx, localRepo), ownedMachines(store))
-		// Recorded before the error is looked at: AttachMachine hands back a
-		// saved profile's id even when a later step failed, and teardown
-		// removes this exact profile -- one bivouac created but did not
-		// record is one nothing will ever clean up.
-		if rerr := recordHerdrMachine(store, record.Name, id); rerr != nil {
-			return errors.Join(err, rerr)
-		}
-		if err != nil {
-			return err
-		}
-		// Named, not selected. Which machine is current is client state
-		// with no CLI behind it, so the last step is the user's keypress.
-		cmd.Printf("%s is in your herdr sidebar — select it to attach\n", label)
+		cmd.Printf("%s is in your herdr sidebar — select it to attach\n", record.Name)
 		return nil
 	}
-	return lifecycle.Herdr(ctx, record.IP, record.User, session)
-}
-
-// ownedMachines gathers the herdr profiles bivouac registered, across every
-// instance, mapped to the instance that registered each.
-//
-// This is the only honest answer to "is this profile ours?". herdr stores no
-// owner field, so without it bivouac would have to match on label or target
-// -- and would then rename or delete profiles the user added by hand.
-func ownedMachines(store *state.Store) lifecycle.OwnedMachines {
-	owned := lifecycle.OwnedMachines{}
-	records, err := store.List()
+	if session == "" {
+		return lifecycle.Herdr(ctx, record.IP, record.User, session)
+	}
+	attachment, err := lifecycle.BeginDirectSessionAttachment(ctx, store, record.Name, session)
 	if err != nil {
-		// Best-effort: without this map bivouac qualifies its own label and
-		// renames nothing, which is the conservative half of the behaviour.
-		return owned
+		return err
 	}
-	for _, r := range records {
-		for _, s := range r.Sessions {
-			if s.HerdrMachineID != "" {
-				owned[s.HerdrMachineID] = r.Name
-			}
-		}
+	if err := lifecycle.Herdr(ctx, record.IP, record.User, session); err != nil {
+		return err
 	}
-	return owned
+	return lifecycle.CompleteDirectSessionAttachment(store, record.Name, generation, attachment)
 }
 
 // recordHerdrMachine remembers which profile belongs to an instance, so
