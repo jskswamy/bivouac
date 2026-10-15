@@ -108,8 +108,9 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 		return "", "", err
 	}
 
+	address := legacyHerdrAddress(id)
 	provider.ReportProgress(ctx, "preparing herdr workspace")
-	wsID, created, err := EnsureWorkspace(h, id, root, session)
+	wsID, created, err := EnsureWorkspace(h, address, root, session)
 	if err != nil {
 		// EnsureMachine already succeeded, so the sidebar entry exists even
 		// though the rest of the attach did not -- say so, and name it by
@@ -127,7 +128,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 		if client, err := reconcile.Connect(ctx, ip, user); err != nil {
 			provider.ReportWarning(ctx, "herdr: laying out tabs: connecting to the instance: "+err.Error())
 		} else {
-			err := LayOutTabs(client, session, wsID, root, tabs, created)
+			err := LayOutTabs(client, address.Session, wsID, root, tabs, created)
 			_ = client.Close()
 			if err != nil {
 				provider.ReportWarning(ctx, "herdr: laying out tabs: "+err.Error())
@@ -135,7 +136,7 @@ func attachMachine(ctx context.Context, h herdrRunner, instance, ip, user, targe
 		}
 	}
 	provider.ReportProgress(ctx, "focusing herdr workspace")
-	if err := FocusWorkspace(h, id, wsID); err != nil {
+	if err := FocusWorkspace(h, address, wsID); err != nil {
 		return id, label, fmt.Errorf("%s is saved in your herdr sidebar, but its workspace could not be prepared: %w", label, err)
 	}
 	return id, label, nil

@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // herdrWorkspace is one entry from `herdr workspace list` on an instance.
@@ -57,12 +59,13 @@ const herdrDefaultWorkspaceLabel = "~"
 //
 // Never alongside --session. The profile already carries its session, and
 // herdr's docs rule the combination out.
-func machineArgs(machine string, args ...string) []string {
-	return append([]string{"--machine", machine}, args...)
+func workspaceListAddressArgs(address state.HerdrAddress) ([]string, error) {
+	return herdrCommand(address, "workspace", "list")
 }
 
 func workspaceListArgs(machine string) []string {
-	return machineArgs(machine, "workspace", "list")
+	args, _ := workspaceListAddressArgs(legacyHerdrAddress(machine))
+	return args
 }
 
 // workspaceCreateArgs roots a workspace in the session's checkout, which is
@@ -70,16 +73,31 @@ func workspaceListArgs(machine string) []string {
 //
 // --no-focus because focusing is a separate, later step -- creating a
 // workspace should not move anyone who happens to be attached already.
+func workspaceCreateAddressArgs(address state.HerdrAddress, cwd, label string) ([]string, error) {
+	return herdrCommand(address, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+}
+
 func workspaceCreateArgs(machine, cwd, label string) []string {
-	return machineArgs(machine, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+	args, _ := workspaceCreateAddressArgs(legacyHerdrAddress(machine), cwd, label)
+	return args
+}
+
+func workspaceFocusAddressArgs(address state.HerdrAddress, id string) ([]string, error) {
+	return herdrCommand(address, "workspace", "focus", id)
 }
 
 func workspaceFocusArgs(machine, id string) []string {
-	return machineArgs(machine, "workspace", "focus", id)
+	args, _ := workspaceFocusAddressArgs(legacyHerdrAddress(machine), id)
+	return args
+}
+
+func workspaceCloseAddressArgs(address state.HerdrAddress, id string) ([]string, error) {
+	return herdrCommand(address, "workspace", "close", id)
 }
 
 func workspaceCloseArgs(machine, id string) []string {
-	return machineArgs(machine, "workspace", "close", id)
+	args, _ := workspaceCloseAddressArgs(legacyHerdrAddress(machine), id)
+	return args
 }
 
 // EnsureWorkspace makes sure the session has a workspace on the instance
@@ -98,8 +116,16 @@ func workspaceCloseArgs(machine, id string) []string {
 // case, and creating unconditionally would stack up a workspace per attach.
 // created says which happened, because only a workspace this call made is
 // known to be untouched -- see LayOutTabs.
-func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, created bool, err error) {
-	out, err := h.Run(workspaceListArgs(machine)...)
+func EnsureWorkspace(h herdrRunner, addressValue any, cwd, label string) (id string, created bool, err error) {
+	address, err := coerceHerdrAddress(addressValue)
+	if err != nil {
+		return "", false, err
+	}
+	listArgs, err := workspaceListAddressArgs(address)
+	if err != nil {
+		return "", false, err
+	}
+	out, err := h.Run(listArgs...)
 	if err != nil {
 		return "", false, fmt.Errorf("reaching the instance's herdr through saved machine %s: %w\n%s\n"+
 			"machine forwarding needs herdr 0.9.1 on both ends, and forwarding never starts a "+
@@ -107,7 +133,7 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, crea
 			"predates 0.9.1 (upgrade it); the instance's herdr predates 0.9.1 (run `bivouac "+
 			"provision`); the session's herdr server on the instance is not running, e.g. after a "+
 			"reboot; or the instance is unreachable",
-			machine, err, out)
+			address.MachineID, err, out)
 	}
 	workspaces, err := parseWorkspaceList(out)
 	if err != nil {
@@ -117,12 +143,16 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, crea
 		return existing.ID, false, nil
 	}
 
-	if out, err := h.Run(workspaceCreateArgs(machine, cwd, label)...); err != nil {
+	createArgs, err := workspaceCreateAddressArgs(address, cwd, label)
+	if err != nil {
+		return "", false, err
+	}
+	if out, err := h.Run(createArgs...); err != nil {
 		return "", false, fmt.Errorf("creating the %s workspace on the instance: %w\n%s", label, err, out)
 	}
 	// Read the id back rather than parsing the create reply: one shape to
 	// know instead of two, and the listing is authoritative either way.
-	out, err = h.Run(workspaceListArgs(machine)...)
+	out, err = h.Run(listArgs...)
 	if err != nil {
 		return "", false, fmt.Errorf("listing workspaces after creating %s: %w\n%s", label, err, out)
 	}
@@ -150,7 +180,10 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, crea
 	// the guards above are what keep it narrow: the default label, a single
 	// pane, and only on the run that gave them somewhere better to be.
 	if def, ok := findWorkspace(workspaces, herdrDefaultWorkspaceLabel); ok && def.Panes <= 1 {
-		_, _ = h.Run(workspaceCloseArgs(machine, def.ID)...)
+		closeArgs, closeErr := workspaceCloseAddressArgs(address, def.ID)
+		if closeErr == nil {
+			_, _ = h.Run(closeArgs...)
+		}
 	}
 	return made.ID, true, nil
 }
@@ -160,8 +193,16 @@ func EnsureWorkspace(h herdrRunner, machine, cwd, label string) (id string, crea
 // This is the only part of "switch to my session" bivouac can perform.
 // Selecting the machine itself is client state with no API, so the caller
 // still has to name the sidebar entry for the user to pick.
-func FocusWorkspace(h herdrRunner, machine, id string) error {
-	if out, err := h.Run(workspaceFocusArgs(machine, id)...); err != nil {
+func FocusWorkspace(h herdrRunner, addressValue any, id string) error {
+	address, err := coerceHerdrAddress(addressValue)
+	if err != nil {
+		return err
+	}
+	args, err := workspaceFocusAddressArgs(address, id)
+	if err != nil {
+		return err
+	}
+	if out, err := h.Run(args...); err != nil {
 		return fmt.Errorf("focusing workspace %s on the instance: %w\n%s", id, err, out)
 	}
 	return nil
