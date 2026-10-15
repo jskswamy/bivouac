@@ -6,8 +6,8 @@ This session is on `bivouac/selected-ssh-key`. The user authorised work on
 `cloudlab-1em` and asked for decisions to be recorded for morning review.
 The approved design and ten-task plan remain the implementation contract.
 
-Tasks 1–8 (`cloudlab-1em.1`–`cloudlab-1em.8`) are implemented and tested.
-Tasks 9–10 remain unimplemented. **This is an intermediate implementation, not a completed
+Tasks 1–9 (`cloudlab-1em.1`–`cloudlab-1em.9`) are implemented and tested.
+Task 10 remains unimplemented. **This is an intermediate implementation, not a completed
 user-facing feature.** In particular, account registration, signer selection,
 wizard migration recovery, state and transport propagation still need their
 planned tasks before path-based keys work end to end. Do not mark the epic
@@ -342,6 +342,61 @@ No actual beads/Dolt transport or live cloud/hardware use is claimed. The
 saved beads URL shares the profile alias, but Dolt interoperability still
 requires external verification if that transport ignores OpenSSH config.
 
-Next task: Herdr targets, transport evidence and machine teardown (9).
+### Task 9: Herdr and machine teardown
+
+Direct Herdr and saved machines use the same recorded alias. Recorded
+profile ids still win and user labels are retained; an id targeting a
+different selected alias now produces repair guidance, never another
+machine's credentials. Interrupted recording can recover a uniquely matching
+owned alias even after a sidebar rename. Ambiguous matches fail explicitly.
+
+Selected-state down retains both state and profile after destroy failure,
+allowing a credential-preserving retry. Only confirmed destruction (including
+provider ErrNotFound) removes its saved machines and SSH entry. Other
+machines and account keys are untouched. Legacy destroy-failure semantics
+remain unchanged. Session cleanup leaves the shared SSH profile intact.
+Local cleanup errors identify the alias and profiles.json entry to repair.
+
+- Red: target/cleanup tests failed before implementation
+  (`/tmp/bivouac-task9-red.log`).
+- Green: target/ownership/cleanup/direct argv/changed-host-key regressions and
+  actual Herdr 0.9.4 integration passed
+  (`/tmp/bivouac-task9-green-final.log`). The actual OpenSSH alias rejects a
+  changed server key, including on a nondefault fixture port.
+- Opt-in transport test: `BIVOUAC_HERDR_BIN=/absolute/herdr-0.9.4 go test
+  ./internal/lifecycle -run TestHerdrPersistentSelectedTransport -v`.
+  Downloaded public Linux binary SHA256:
+  `493304fbefb0ed0ea0455f373b47f48d24e8774bc7974f4c916ad2e937675b23`.
+  It creates a real saved machine, exits, then a distinct Herdr process
+  reconnects and queries the remote workspace API through the saved alias.
+  A disposable SSH server accepts only the generated custom key, with eight
+  unrelated fixture agent keys present. A PATH adapter records actual SSH
+  argv and copies Herdr's managed config before deletion; that config
+  includes the persistent user config and resolves IdentitiesOnly plus the
+  selected private path in a separate ssh -G process. The adapter supplies
+  fixture known_hosts and disables lingering multiplexers, not identities.
+  Both actual client/remote versions are 0.9.4; update checks are disabled.
+
+#### Fixture isolation incident and correction
+
+The first opt-in run inherited the hosting pane's HERDR_SOCKET_PATH. Its
+cleanup could therefore reach the hosting server despite isolated HOME and
+HERDR_CONFIG_PATH, interrupting the agent; the user resumed the session.
+This was a test isolation bug, not a product operation or cloud write. The
+first run also used unsupported workspace-list --json syntax and inherited
+an empty XDG_STATE_HOME, which Rust treats as the current directory.
+Removed the two resulting fixture-only catalog/cache files from the checkout.
+
+The fixture now unsets every inherited HERDR_* variable before interaction,
+sets all XDG directories to nonempty isolated paths, and gives its remote an
+explicit socket under its temporary config root. That socket matches the
+explicit default-session path used by Herdr's saved API bridge. Cleanup can
+only address that fixture socket. Its pane shell is /bin/sh, never the user's
+interactive shell configuration. Repeated corrected runs passed without
+restarting or addressing the hosting session and left no fixture files or
+server processes in the checkout. The initial failed experiment is not
+counted as successful isolated transport evidence.
+
+Next task: whole-flow regression and user documentation (10).
 Later tasks must prove ordinary Git and persistent Herdr transport, not only
 argv construction. No external transport integration has been verified here.

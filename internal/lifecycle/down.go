@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -51,7 +53,8 @@ func deregisterTailscale(ctx context.Context, record state.Record) {
 // converges with reality. If Destroy fails for any other reason,
 // state is still cleared (so a stuck record can't block a retry), but
 // the error is still returned so the user knows to check the
-// provider's dashboard.
+// provider's dashboard. Selected-identity records instead retain both state
+// and profile on a failed destroy, so a retry cannot lose their credentials.
 func Down(ctx context.Context, p provider.Provider, store *state.Store, record state.Record, force bool) error {
 	ctx = record.ConnectionContext(ctx)
 	if !force {
@@ -60,19 +63,33 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 		}
 	}
 
-	// Before Destroy, and before either store.Delete below: the machine ids
-	// live in the record being deleted, so after this point nothing knows
-	// which sidebar entries belonged to this instance. Runs on the --force
-	// path too -- force discards work, not tidying.
-	forgetHerdrMachines(ctx, record)
+	// Legacy state historically clears even a failed destroy, so its saved
+	// ids must be tidied first. Selected records retain recoverable state
+	// on failure; their profiles are removed only after confirmed destruction.
+	if record.SSH == nil {
+		forgetHerdrMachines(ctx, record)
+	}
 
 	deregisterTailscale(ctx, record)
 
 	if err := p.Destroy(ctx, record.VMID); err != nil && !errors.Is(err, provider.ErrNotFound) {
+		if record.SSH != nil {
+			return fmt.Errorf("destroying VM %s: %w (state and SSH profile retained -- retry down or check the provider dashboard)", record.VMID, err)
+		}
 		_ = store.Delete(record.Name)
 		return fmt.Errorf("destroying VM %s: %w (state cleared -- check the provider dashboard)", record.VMID, err)
 	}
-	return store.Delete(record.Name)
+	var cleanupErr error
+	if record.SSH != nil {
+		forgetHerdrMachines(ctx, record)
+		profiles, err := sshidentity.DefaultProfileStore()
+		if err != nil {
+			cleanupErr = err
+		} else if err := profiles.Remove(ctx, record.Name); err != nil {
+			cleanupErr = fmt.Errorf("VM destroyed; removing SSH alias %s: %w; repair only this alias and its profiles.json entry under %s", record.SSH.Alias, err, filepath.Join(profiles.ConfigDir, "ssh"))
+		}
+	}
+	return errors.Join(store.Delete(record.Name), cleanupErr)
 }
 
 // rescueBeforeDestroy makes every session's work durable before the instance

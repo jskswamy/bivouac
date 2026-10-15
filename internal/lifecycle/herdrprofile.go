@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 )
 
 // machineProfile is one entry from `herdr machine list --json`: a saved SSH
@@ -125,6 +127,9 @@ func EnsureMachine(h herdrRunner, instance, target, recordedID string) (string, 
 
 	if recordedID != "" {
 		if existing, found := findMachineByID(profiles, recordedID); found {
+			if ownedAliasTarget(target) && existing.Target != target {
+				return "", "", fmt.Errorf("recorded herdr machine %s targets %s instead of selected alias %s; repair the saved profile or remove it by id before retrying", recordedID, existing.Target, target)
+			}
 			if !existing.Enabled {
 				if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
 					return "", "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
@@ -137,7 +142,18 @@ func EnsureMachine(h herdrRunner, instance, target, recordedID string) (string, 
 	}
 
 	label := MachineLabel(instance)
-	if existing, found := findMachineByTargetAndLabel(profiles, target, label); found {
+	existing, found := findMachineByTargetAndLabel(profiles, target, label)
+	if !found && ownedAliasTarget(target) {
+		for _, profile := range profiles {
+			if profile.Target == target {
+				if found {
+					return "", "", fmt.Errorf("multiple herdr profiles target owned alias %s; record the intended id or remove duplicates by id", target)
+				}
+				existing, found = profile, true
+			}
+		}
+	}
+	if found {
 		if !existing.Enabled {
 			if out, err := h.Run(machineEnableArgs(existing.ID)...); err != nil {
 				return "", "", fmt.Errorf("enabling herdr machine %s: %w\n%s", existing.Label, err, out)
@@ -169,6 +185,11 @@ func listMachines(h herdrRunner) ([]machineProfile, error) {
 		return nil, fmt.Errorf("listing herdr machines: %w\n%s", err, out)
 	}
 	return parseMachineList(out)
+}
+
+func ownedAliasTarget(target string) bool {
+	parsed, err := url.Parse(target)
+	return err == nil && parsed.Scheme == "ssh" && strings.HasPrefix(parsed.Hostname(), "bivouac-")
 }
 
 func findMachineByLabel(profiles []machineProfile, label string) (machineProfile, bool) {

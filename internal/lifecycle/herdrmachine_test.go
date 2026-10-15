@@ -349,8 +349,15 @@ func TestInsideHerdr_RoutesRatherThanRefuses(t *testing.T) {
 // instance produces the same string every time -- otherwise every run looks
 // like a new machine and adds a duplicate.
 func TestMachineTarget_IsStableAndSSHShaped(t *testing.T) {
-	got := MachineTarget("subramk", "206.189.140.27")
-	if got != MachineTarget("subramk", "206.189.140.27") {
+	got, err := MachineTarget(context.Background(), "206.189.140.27", "subramk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := MachineTarget(context.Background(), "206.189.140.27", "subramk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != again {
 		t.Error("MachineTarget() is not stable across calls")
 	}
 	if !strings.HasPrefix(got, "ssh://") || !strings.Contains(got, "subramk@206.189.140.27") {

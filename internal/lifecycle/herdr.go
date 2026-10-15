@@ -46,5 +46,9 @@ func Herdr(ctx context.Context, ip, user, session string) error {
 	// Argv-array exec, no local shell; ip is
 	// provider-assigned, never attacker-controlled, and session is a
 	// bivouac session name already checked by lifecycle.CheckSessionName.
-	return tool.Passthrough(ctx, "herdr", herdrArgs(ip, user, session)...)
+	host, _, err := instanceTransport(ctx, ip, user)
+	if err != nil {
+		return err
+	}
+	return tool.Passthrough(ctx, "herdr", herdrArgs(host, user, session)...)
 }

@@ -56,6 +56,17 @@ func TestInstanceGitUsesPersistentAliasAndRealEndpoint(t *testing.T) {
 // The older command/response fixtures cannot model Git's bidirectional stream.
 func gitSSHServer(t *testing.T, key sshkeys.Key, bare string) string {
 	t.Helper()
+	return streamSSHServer(t, key, func(command string) *exec.Cmd {
+		if !strings.HasPrefix(command, "git-upload-pack ") {
+			return nil
+		}
+		// #nosec G204 -- real Git protocol fixture; bare is a disposable repository.
+		return exec.Command("git-upload-pack", bare)
+	})
+}
+
+func streamSSHServer(t *testing.T, key sshkeys.Key, run func(string) *exec.Cmd) string {
+	t.Helper()
 	public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.PublicKey))
 	if err != nil {
 		t.Fatal(err)
@@ -114,13 +125,12 @@ func gitSSHServer(t *testing.T, key sshkeys.Key, bare string) string {
 							if err := ssh.Unmarshal(request.Payload, &input); err != nil {
 								return
 							}
-							if !strings.HasPrefix(input.Command, "git-upload-pack ") {
+							cmd := run(input.Command)
+							if cmd == nil {
 								_ = request.Reply(false, nil)
 								return
 							}
 							_ = request.Reply(true, nil)
-							// #nosec G204 -- real Git protocol fixture; bare is a disposable local repository.
-							cmd := exec.Command("git-upload-pack", bare)
 							cmd.Stdin = channel
 							cmd.Stdout = channel
 							cmd.Stderr = channel.Stderr()
@@ -337,12 +347,13 @@ func TestExternalTransportsShareAlias(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "args")
 	sshScript := "#!/bin/sh\nif [ \"$1\" = -G ]; then exec " + shellQuote(realSSH) + " \"$@\"; fi\nprintf '%s\\n' \"$@\" > " + shellQuote(log) + "\n"
 	rsyncScript := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'rsync  version 3.5.0 protocol version 32'; exit 0; fi\nprintf '%s\\n' \"$@\" > " + shellQuote(log) + "\n"
-	for name, script := range map[string]string{"ssh": sshScript, "rsync": rsyncScript} {
+	for name, script := range map[string]string{"ssh": sshScript, "rsync": rsyncScript, "herdr": rsyncScript} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HERDR_ENV", "")
 	local := t.TempDir()
 	operations := []func() error{
 		func() error { return SSH(ctx, c.PublicIP, c.User, "/repo with spaces", true) },
@@ -351,6 +362,7 @@ func TestExternalTransportsShareAlias(t *testing.T) {
 		func() error { return Forward(ctx, c.PublicIP, c.User, 8080, 8080) },
 		func() error { return Push(ctx, c.PublicIP, c.User, local, "/remote with spaces") },
 		func() error { return Pull(ctx, c.PublicIP, c.User, "/remote with spaces", local) },
+		func() error { return Herdr(ctx, c.PublicIP, c.User, "session") },
 	}
 	for i, operation := range operations {
 		if err := operation(); err != nil {

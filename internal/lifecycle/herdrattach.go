@@ -10,6 +10,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/tool"
 )
 
@@ -31,8 +32,12 @@ func InsideHerdr() bool {
 // Built one way and only here, because profiles are matched on it: a target
 // spelled differently between runs reads as a different machine and adds a
 // duplicate rather than finding the existing one.
-func MachineTarget(user, ip string) string {
-	return "ssh://" + user + "@" + ip
+func MachineTarget(ctx context.Context, ip, user string) (string, error) {
+	host, err := sshidentity.TransportHost(ctx, ip, user)
+	if err != nil {
+		return "", err
+	}
+	return "ssh://" + user + "@" + host, nil
 }
 
 // localHerdr runs herdr on this machine, which is where the saved-machine
@@ -78,7 +83,13 @@ func AttachMachine(ctx context.Context, instance, ip, user, session, repoName, m
 	if _, err := tool.Require("herdr"); err != nil {
 		return "", "", err
 	}
-	target := MachineTarget(user, ip)
+	if _, _, err := instanceTransport(ctx, ip, user); err != nil {
+		return "", "", err
+	}
+	target, err := MachineTarget(ctx, ip, user)
+	if err != nil {
+		return "", "", err
+	}
 	root := RemoteRepoPath(user, session, repoName)
 
 	return attachMachine(ctx, localHerdr{ctx: ctx}, instance, ip, user, target, session, root, machineID, tabs, owned)
