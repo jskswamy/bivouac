@@ -12,6 +12,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
 // Opt in with BIVOUAC_HERDR_BIN=/absolute/path/to/herdr-0.9.4. No cloud or
@@ -21,15 +22,7 @@ func TestHerdrPersistentSelectedTransport(t *testing.T) {
 	if binary == "" {
 		t.Skip("set BIVOUAC_HERDR_BIN to Herdr 0.9.4 for actual SSH integration")
 	}
-	binary, err := filepath.Abs(binary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// #nosec G204 -- explicit opt-in test executable, not product input.
-	version, err := exec.Command(binary, "--version").CombinedOutput()
-	if err != nil || strings.TrimSpace(string(version)) != "herdr 0.9.4" {
-		t.Fatalf("requires Herdr 0.9.4: %s: %v", version, err)
-	}
+	binary = testenv.RequireHerdrBinary(t, binary)
 	ctx, c := transportFixture(t)
 	unrelatedTransportAgent(t)
 	// Short isolated paths also keep Herdr's control sockets below Unix limits.
