@@ -179,7 +179,7 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		return
 	}
 	_, _ = fmt.Fprintf(out, "\n  %s\n", s.header.Render("SESSIONS"))
-	headers := []string{"NAME", "BRANCH", "UNMERGED", "WORKTREE"}
+	headers := []string{"NAME", "BRANCH", "UNMERGED", "WORKTREE", "STATE"}
 	rows := make([][]string, 0, len(record.Sessions))
 	// DescribeSessions, not a DescribeSession loop: each one probes its
 	// instance over the network, so in sequence the report costs the sum of
@@ -191,7 +191,7 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 		} else if info.WorktreeDirty {
 			wtState = "dirty"
 		}
-		rows = append(rows, []string{s.value.Render(info.Name), info.Branch, unmergedLabel(info), wtState})
+		rows = append(rows, []string{s.value.Render(info.Name), info.Branch, unmergedLabel(info), wtState, retirementLabel(info)})
 	}
 	_, _ = fmt.Fprint(out, renderTable(s, headers, rows, nil))
 }
@@ -208,7 +208,21 @@ func printSessions(cmd *cobra.Command, record state.Record) {
 // is still the freshest thing this machine holds -- but says where it came
 // from. A bare "0" from an instance nobody could reach is precisely how a
 // waiting commit went unnoticed.
+func retirementLabel(i lifecycle.SessionInfo) string {
+	if i.RetirementPhase == "" {
+		return "active"
+	}
+	label := i.Operation + "; cleanup " + i.RetirementPhase
+	if i.LastFailure != "" {
+		label += ": " + i.LastFailure
+	}
+	return label
+}
+
 func unmergedLabel(i lifecycle.SessionInfo) string {
+	if i.RetirementPhase != "" && !i.RemoteKnown {
+		return i.Operation + "; cleanup pending"
+	}
 	count := "?"
 	if i.UnmergedKnown {
 		count = fmt.Sprintf("%d", i.Unmerged)

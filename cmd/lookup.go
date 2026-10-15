@@ -270,7 +270,7 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:    "merge [session]",
-		short:  "Replay, sign and accept an agent session's work, then retire the session",
+		short:  "Replay and sign session work, then resumably retire its owned resources",
 		verb:   "session merge",
 		args:   cobra.MaximumNArgs(1),
 		named:  false,
@@ -279,13 +279,13 @@ var lookupCommandSpecs = []lookupCommandSpec{
 	},
 	{
 		use:    "delete [session]",
-		short:  "Discard a session without merging its work, checking the instance first",
+		short:  "Authorise discard, then resumably retire a session's owned resources",
 		verb:   "session delete",
 		args:   cobra.MaximumNArgs(1),
 		named:  false,
 		parent: "session",
 		flags: func(c *cobra.Command) {
-			c.Flags().Bool("force", false, "delete even when the session has unmerged work")
+			c.Flags().Bool("force", false, "authorise discarding work; unreachable cleanup remains pending")
 		},
 		run: runSessionDelete,
 	},

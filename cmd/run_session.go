@@ -185,7 +185,7 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 
 	out := cmd.OutOrStdout()
 	s := newStyles(out)
-	headers := []string{"NAME", "INSTANCE", "BRANCH", "UNMERGED", "WORKTREE"}
+	headers := []string{"NAME", "INSTANCE", "BRANCH", "UNMERGED", "WORKTREE", "STATE"}
 	rows := make([][]string, 0, len(infos))
 	for _, i := range infos {
 		wtState := "clean"
@@ -194,7 +194,7 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 		} else if i.WorktreeDirty {
 			wtState = "dirty"
 		}
-		rows = append(rows, []string{s.value.Render(i.Name), i.Instance, i.Branch, unmergedLabel(i), wtState})
+		rows = append(rows, []string{s.value.Render(i.Name), i.Instance, i.Branch, unmergedLabel(i), wtState, retirementLabel(i)})
 	}
 	_, err = fmt.Fprintf(out, "\n%s", renderTable(s, headers, rows, nil))
 	return err
@@ -202,30 +202,36 @@ func runSessionList(cmd *cobra.Command, name string, args []string) error {
 
 func printSessionListJSON(cmd *cobra.Command, infos []lifecycle.SessionInfo) error {
 	type sessionJSON struct {
-		Name           string `json:"name"`
-		Instance       string `json:"instance"`
-		Branch         string `json:"branch"`
-		WorktreeExists bool   `json:"worktreeExists"`
-		WorktreeDirty  bool   `json:"worktreeDirty"`
-		RemoteKnown    bool   `json:"remoteKnown"`
-		UnmergedKnown  bool   `json:"unmergedKnown"`
-		Unmerged       int    `json:"unmerged"`
-		RemoteAhead    bool   `json:"remoteAhead"`
+		Name            string `json:"name"`
+		Instance        string `json:"instance"`
+		Branch          string `json:"branch"`
+		WorktreeExists  bool   `json:"worktreeExists"`
+		WorktreeDirty   bool   `json:"worktreeDirty"`
+		RemoteKnown     bool   `json:"remoteKnown"`
+		UnmergedKnown   bool   `json:"unmergedKnown"`
+		Unmerged        int    `json:"unmerged"`
+		RemoteAhead     bool   `json:"remoteAhead"`
+		Operation       string `json:"operation,omitempty"`
+		RetirementPhase string `json:"retirementPhase,omitempty"`
+		LastFailure     string `json:"lastFailure,omitempty"`
 	}
 	out := struct {
 		Sessions []sessionJSON `json:"sessions"`
 	}{Sessions: []sessionJSON{}}
 	for _, info := range infos {
 		out.Sessions = append(out.Sessions, sessionJSON{
-			Name:           info.Name,
-			Instance:       info.Instance,
-			Branch:         info.Branch,
-			WorktreeExists: info.WorktreeExists,
-			WorktreeDirty:  info.WorktreeDirty,
-			RemoteKnown:    info.RemoteKnown,
-			UnmergedKnown:  info.UnmergedKnown,
-			Unmerged:       info.Unmerged,
-			RemoteAhead:    info.RemoteAhead,
+			Name:            info.Name,
+			Instance:        info.Instance,
+			Branch:          info.Branch,
+			WorktreeExists:  info.WorktreeExists,
+			WorktreeDirty:   info.WorktreeDirty,
+			RemoteKnown:     info.RemoteKnown,
+			UnmergedKnown:   info.UnmergedKnown,
+			Unmerged:        info.Unmerged,
+			RemoteAhead:     info.RemoteAhead,
+			Operation:       info.Operation,
+			RetirementPhase: info.RetirementPhase,
+			LastFailure:     info.LastFailure,
 		})
 	}
 	return writeJSON(cmd, out)
@@ -269,7 +275,19 @@ func resolveInstanceForSession(cmd *cobra.Command, name string, args []string) (
 		var match state.Record
 		found := 0
 		for _, r := range records {
+			matched := false
 			if _, ok := r.FindSession(args[0]); ok {
+				matched = true
+			}
+			if !matched {
+				for _, receipt := range r.RetirementReceipts {
+					if receipt.Session == args[0] {
+						matched = true
+						break
+					}
+				}
+			}
+			if matched {
 				match = r
 				found++
 			}
@@ -333,23 +351,29 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := progressCtx(cmd)
-	sess, err := resolveSessionArg(cmd, record, args)
+	session := ""
+	if len(args) > 0 {
+		session = args[0]
+	} else {
+		sess, err := resolveSessionArg(cmd, record, args)
+		if err != nil {
+			return err
+		}
+		session = sess.Name
+	}
+	result, err := lifecycle.RetireSession(progressCtx(cmd), store, record.Name, session, lifecycle.RetirementOptions{Operation: state.RetirementMerge})
 	if err != nil {
 		return err
 	}
-	signed, err := lifecycle.MergeSession(ctx, record.IP, record.User, record.Name, sess)
-	if err != nil {
-		return err
+	if result.AlreadyCompleted {
+		cmd.Printf("session %s was already merged and retired\n", session)
+		return nil
 	}
-	if err := forgetMergedSession(store, record, sess.Name); err != nil {
-		return err
+	cmd.Printf("%s: %d commits replayed and signed\n", session, len(result.Signed))
+	for _, signed := range result.Signed {
+		cmd.Printf("  %s\n", signed)
 	}
-	cmd.Printf("%s: %d commits replayed and signed\n", sess.Name, len(signed))
-	for _, s := range signed {
-		cmd.Printf("  %s\n", s)
-	}
-	cmd.Printf("session %s removed from both sides\n", sess.Name)
+	cmd.Printf("session %s removed from both sides\n", session)
 	return nil
 }
 
@@ -372,32 +396,28 @@ func runSessionDelete(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	sess, err := resolveSessionArg(cmd, record, args)
-	if err != nil {
-		return err
+	session := ""
+	if len(args) > 0 {
+		session = args[0]
+	} else {
+		sess, err := resolveSessionArg(cmd, record, args)
+		if err != nil {
+			return err
+		}
+		session = sess.Name
 	}
 	force, err := cmd.Flags().GetBool("force")
 	if err != nil {
 		return err
 	}
-	// The record entry goes whenever the teardown got far enough to return
-	// nil, warning or not. DeleteSession removes the local remote on its way
-	// out, so an entry left behind after that is one nothing can ever rescue
-	// again -- and `down` would refuse on it forever, recommending the --force
-	// that skips the rescue for every other session on the instance too.
-	warning, err := lifecycle.DeleteSession(cmd.Context(), record.IP, record.User, record.Name, sess, force)
+	result, err := lifecycle.RetireSession(progressCtx(cmd), store, record.Name, session, lifecycle.RetirementOptions{Operation: state.RetirementDelete, Force: force})
 	if err != nil {
 		return err
 	}
-	if err := store.Update(record.Name, func(latest *state.Record) error {
-		latest.RemoveSession(sess.Name)
+	if result.AlreadyCompleted {
+		cmd.Printf("session %s was already deleted\n", session)
 		return nil
-	}); err != nil {
-		return err
 	}
-	if warning != "" {
-		cmd.Println(warning)
-	}
-	cmd.Printf("session %s deleted\n", sess.Name)
+	cmd.Printf("session %s deleted\n", session)
 	return nil
 }

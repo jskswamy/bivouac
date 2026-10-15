@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,25 @@ func TestRecreatedSessionDoesNotUseOldReceipt(t *testing.T) {
 	}
 	if _, ok := got.FindRetirementReceipt("auth", repo); ok {
 		t.Fatal("old completion receipt survived active generation replacement")
+	}
+}
+
+func TestCompletedRetirementCommandIsIdempotent(t *testing.T) {
+	repo := newTestRepo(t)
+	record := state.Record{
+		Name: "instance", IP: "127.0.0.1:1", User: "devuser",
+		RetirementReceipts: []state.RetirementReceipt{{
+			Session: "auth", Generation: "00112233445566778899aabbccddeeff", LocalRepo: repo,
+			Operation: state.RetirementMerge, CompletedAt: time.Now(),
+		}},
+	}
+	sessionTestStore(t, record)
+	cmd := sessionTestCmd()
+	if err := runMerge(cmd, "wrong-cwd-derived-name", []string{"auth"}); err != nil {
+		t.Fatalf("completed merge retry = %v", err)
+	}
+	if !strings.Contains(cmd.OutOrStdout().(*bytes.Buffer).String(), "already merged") {
+		t.Fatal("completed retry did not report prior completion")
 	}
 }
 

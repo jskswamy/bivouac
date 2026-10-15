@@ -70,6 +70,18 @@ func Down(ctx context.Context, p provider.Provider, store *state.Store, record s
 	}
 	record = latest
 	ctx = record.ConnectionContext(ctx)
+	var pending []string
+	for _, sess := range record.Sessions {
+		if sess.Retirement != nil {
+			pending = append(pending, sess.Name)
+		}
+	}
+	if len(pending) > 0 {
+		if !force {
+			return fmt.Errorf("instance %s has pending retirement for session(s) %v; resume each retirement before down, or use --force to abandon the recorded cleanup obligations", record.Name, pending)
+		}
+		provider.ReportWarning(ctx, fmt.Sprintf("abandoning pending retirement obligations for session(s) %v because --force was used", pending))
+	}
 	if !force {
 		if err := rescueBeforeDestroy(ctx, record); err != nil {
 			return err
@@ -161,8 +173,5 @@ func forgetHerdrMachines(ctx context.Context, record state.Record) {
 	if err := removeHerdrMachine(localHerdr{ctx: ctx}, record.HerdrMachineID); err != nil {
 		provider.ReportWarning(ctx, "herdr: "+err.Error()+
 			"\nremove it by hand: herdr machine remove "+record.HerdrMachineID)
-	}
-	for _, s := range record.Sessions {
-		CleanupHerdr(ctx, s.HerdrMachineID, "", nil)
 	}
 }

@@ -343,7 +343,7 @@ func TestRecordHerdrMachine_RecordsOnInstance(t *testing.T) {
 	}
 }
 
-func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testing.T) {
+func TestRunSessionDelete_KeepsRecoveryPendingWhenInstanceIsOffline(t *testing.T) {
 	localRepo := t.TempDir()
 	mustGitCmd(t, localRepo, "init", "--quiet")
 
@@ -366,15 +366,13 @@ func TestRunSessionDelete_DropsTheRecordWhenOnlyTheInstanceHalfSurvives(t *testi
 	out := &bytes.Buffer{}
 	cmd.SetOut(out)
 
-	if err := runSessionDelete(cmd, "myinstance", []string{"auth"}); err != nil {
-		t.Fatalf("runSessionDelete() error = %v, want the unreachable instance reported as a warning, not an error", err)
+	err := runSessionDelete(cmd, "myinstance", []string{"auth"})
+	if err == nil || !strings.Contains(err.Error(), "resume with") {
+		t.Fatalf("runSessionDelete() error = %v, want resumable pending cleanup", err)
 	}
 	got, _, _ := store.Get("myinstance")
-	if _, ok := got.FindSession("auth"); ok {
-		t.Error("the session survived in the record after its local remote was torn down -- nothing could ever rescue it again")
-	}
-	if !strings.Contains(out.String(), "/home/devuser/sessions/auth/") {
-		t.Errorf("output = %q, want it to name the directory left behind on the instance", out.String())
+	if _, ok := got.FindSession("auth"); !ok {
+		t.Error("offline forced delete forgot the outstanding remote checkout")
 	}
 }
 
@@ -400,12 +398,13 @@ func TestRunSessionDelete_FindsInstanceBySessionNameWhenCwdGuessIsWrong(t *testi
 
 	// "wrong-instance" is what cwd-based resolution derived; it names no
 	// record at all, so the session name is the only thing that can work.
-	if err := runSessionDelete(cmd, "wrong-instance", []string{"planning"}); err != nil {
-		t.Fatalf("runSessionDelete() error = %v, want the session's own instance found by name", err)
+	err := runSessionDelete(cmd, "wrong-instance", []string{"planning"})
+	if err == nil || strings.Contains(err.Error(), "wrong-instance") {
+		t.Fatalf("runSessionDelete() error = %v, want the session's own instance resolved before pending cleanup", err)
 	}
 	got, _, _ := store.Get("myinstance")
-	if _, ok := got.FindSession("planning"); ok {
-		t.Error("session still recorded after delete -- instance was not resolved by session name")
+	if _, ok := got.FindSession("planning"); !ok {
+		t.Error("pending remote cleanup was forgotten")
 	}
 }
 
@@ -692,7 +691,7 @@ func TestRunMerge_OperatesOnTheSessionsRepoNotTheCwd(t *testing.T) {
 	}
 
 	record := state.Record{Name: "myinstance", IP: "127.0.0.1", User: "devuser"}
-	record.PutSession(state.Session{Name: "solo", LocalRepo: session, Base: base})
+	record.PutSession(state.Session{Name: "solo", LocalRepo: session, Base: base, AttachmentsKnown: true})
 	sessionTestStore(t, record)
 
 	t.Chdir(elsewhere)

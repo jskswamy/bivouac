@@ -505,3 +505,32 @@ func TestDown_SkipsBeadsCheckForEverySessionWhoseRescueFailed(t *testing.T) {
 		}
 	}
 }
+
+func TestDownRefusesPendingRetirementUnlessForced(t *testing.T) {
+	store := setupDownTest(t)
+	record := state.Record{Name: "instance", VMID: "vm"}
+	record.PutSession(state.Session{
+		Name: "auth", LocalRepo: "/repo", Generation: "00112233445566778899aabbccddeeff", AttachmentsKnown: true,
+		Retirement: &state.Retirement{
+			Version: state.SessionLifecycleVersion, Operation: state.RetirementDelete,
+			Phase: state.RetirementPaused, Destination: state.Destination{LocalRepo: "/repo", GitDir: "/repo/.git", Branch: "main"},
+			Effects: map[string]state.RetirementEffect{},
+		},
+	})
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+	p := &fakeProvider{}
+	if err := Down(context.Background(), p, store, record, false); err == nil || !strings.Contains(err.Error(), "pending retirement") {
+		t.Fatalf("Down() = %v, want pending-retirement refusal", err)
+	}
+	if p.destroyed {
+		t.Fatal("VM destroyed despite pending retirement")
+	}
+	if err := Down(context.Background(), p, store, record, true); err != nil {
+		t.Fatalf("Down(force) = %v", err)
+	}
+	if !p.destroyed {
+		t.Fatal("forced down did not destroy VM")
+	}
+}

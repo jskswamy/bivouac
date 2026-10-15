@@ -39,9 +39,12 @@ type SessionInfo struct {
 	// ls-remote returns a SHA, so a tip whose object was never fetched is
 	// provably ahead and not countable. Ahead-without-a-number is the honest
 	// answer there, and it is the one that decides whether to pull.
-	RemoteAhead    bool
-	WorktreeExists bool
-	WorktreeDirty  bool
+	RemoteAhead     bool
+	WorktreeExists  bool
+	WorktreeDirty   bool
+	Operation       string
+	RetirementPhase string
+	LastFailure     string
 }
 
 // DescribeSessions describes every session at once, probing their instances
@@ -75,6 +78,11 @@ func DescribeSession(ctx context.Context, instance string, s state.Session) Sess
 		Name:     s.Name,
 		Branch:   SessionBranch(s.Name),
 	}
+	if s.Retirement != nil {
+		info.Operation = string(s.Retirement.Operation)
+		info.RetirementPhase = string(s.Retirement.Phase)
+		info.LastFailure = s.Retirement.LastFailure
+	}
 
 	local := LocalWorktreePath(s.LocalRepo, s.Name)
 	if fi, err := os.Stat(local); err == nil && fi.IsDir() {
@@ -84,7 +92,9 @@ func DescribeSession(ctx context.Context, instance string, s state.Session) Sess
 		}
 	}
 
-	describeRemote(ctx, &info, s)
+	if s.Retirement == nil || s.Retirement.Effects[state.EffectRemoteCheckout].Status != state.EffectDone {
+		describeRemote(ctx, &info, s)
+	}
 	return info
 }
 

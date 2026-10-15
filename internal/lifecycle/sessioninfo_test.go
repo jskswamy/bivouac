@@ -14,6 +14,24 @@ import (
 // With no session remote configured there is nobody to ask, so this is the
 // offline path: the local branch, counted by patch identity. It is the
 // fallback the reachable cases below replace, not the normal answer.
+func TestSessionStatusShowsRetirementPendingWithoutRemote(t *testing.T) {
+	info := DescribeSession(context.Background(), "inst", state.Session{
+		Name: "auth", LocalRepo: t.TempDir(),
+		Retirement: &state.Retirement{
+			Operation: state.RetirementMerge, Phase: state.RetirementRemoving, LastFailure: "network lost",
+			Effects: map[string]state.RetirementEffect{
+				state.EffectRemoteCheckout: {Status: state.EffectDone},
+			},
+		},
+	})
+	if info.Operation != "merge" || info.RetirementPhase != "removing" || info.LastFailure != "network lost" {
+		t.Fatalf("info = %+v", info)
+	}
+	if info.RemoteKnown || info.UnmergedKnown || info.Unmerged != 0 {
+		t.Fatalf("removed remote reported as zero work: %+v", info)
+	}
+}
+
 func TestDescribeSession_CountsUnmergedByPatchIdentity(t *testing.T) {
 	base := t.TempDir()
 	repo := filepath.Join(base, "repo")
