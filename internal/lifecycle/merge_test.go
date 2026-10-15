@@ -103,6 +103,11 @@ func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
 			}
 		}
 		switch {
+		case strings.Contains(cmd, "rm -rf"):
+			f.mu.Lock()
+			f.removed = true
+			f.mu.Unlock()
+			return "", 0
 		case strings.Contains(cmd, "rev-parse"):
 			f.mu.Lock()
 			f.revParse++
@@ -113,11 +118,6 @@ func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
 				hook(n)
 			}
 			return f.tip(t) + "\n", 0
-		case strings.Contains(cmd, "rm -rf"):
-			f.mu.Lock()
-			f.removed = true
-			f.mu.Unlock()
-			return "", 0
 		default: // the checkpoint, which a real clean tree makes a no-op
 			return "", 0
 		}

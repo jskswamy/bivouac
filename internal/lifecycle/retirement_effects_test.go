@@ -1,0 +1,87 @@
+package lifecycle
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/jskswamy/bivouac/internal/shellcmd"
+	"github.com/jskswamy/bivouac/internal/state"
+)
+
+func TestRetirementRemovalFailureCannotBeMasked(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "session", "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Let later cleanup succeed so it cannot accidentally preserve the
+	// failure status of checkout removal when its guard is missing.
+	if err := os.WriteFile(filepath.Join(bin, "rm"), []byte("#!/bin/sh\nif [ \"$1\" = -rf ]; then exit 9; fi\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Login profiles can reset PATH, so install the failing rm after those
+	// profiles run rather than letting the host's real rm remove the fixture.
+	envFile := filepath.Join(root, "bash-env")
+	if err := os.WriteFile(envFile, []byte("export PATH="+shellcmd.Quote(bin)+":\"$PATH\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("BASH_ENV", envFile)
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, "branch", "tip", true))
+	out, err := cmd.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 9 {
+		t.Fatalf("checked removal error = %v, want rm exit 9: %s", err, out)
+	}
+	if _, err := os.Stat(repo); err != nil {
+		t.Fatalf("failed removal lost checkout: %v", err)
+	}
+}
+
+func TestRetirementDetectsTipMovementBeforeRemoval(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "session", "repo")
+	initRepo(t, repo)
+	branch := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, branch, "not-the-tip", false))
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "session tip moved") {
+		t.Fatalf("command err=%v out=%s", err, out)
+	}
+	if _, err := os.Stat(repo); err != nil {
+		t.Fatalf("tip movement removed checkout: %v", err)
+	}
+}
+
+func TestRetirementAlreadyMissingResourceIsIdempotent(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "missing", "repo")
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, "branch", "tip", false))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("missing checkout: %v: %s", err, out)
+	}
+}
+
+func TestForcedOfflineDeleteKeepsRemoteObligations(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "remote unavailable")
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: "delete", Force: true})
+	if err == nil || result.Completed {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	record, _, getErr := store.Get("instance")
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	sess, ok := record.FindSession("auth")
+	if !ok || sess.Retirement == nil || sess.Retirement.Effects["remote-checkout"].Status == state.EffectDone {
+		t.Fatalf("forced offline retirement forgot remote obligation: %+v", sess)
+	}
+}

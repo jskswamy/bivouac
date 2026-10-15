@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,6 +83,24 @@ func TestFinalGateFindsCloseTimeWrites(t *testing.T) {
 	}
 	if first.SourceTip == second.SourceTip {
 		t.Fatal("final gate missed late remote work")
+	}
+}
+
+func TestRequiredReplayJournalCorruptionFailsClosed(t *testing.T) {
+	f := newSessionFixture(t, 1)
+	record, sess := retirementFixtureState(f)
+	path, err := replayProgressPath(context.Background(), f.repo, f.session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mergeRetirementPolicy().Check(context.Background(), record, sess, false); err == nil || !strings.Contains(err.Error(), "corrupt") {
+		t.Fatalf("Check() = %v, want corrupt-journal refusal", err)
 	}
 }
 

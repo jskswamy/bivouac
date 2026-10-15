@@ -125,7 +125,10 @@ func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, s
 
 func (p retirementPolicy) checkDelete(ctx context.Context, record state.Record, sess state.Session, _ bool) (state.Acceptance, []string, error) {
 	if p.force {
-		head, _ := HeadCommit(ctx, sess.LocalRepo)
+		head, err := HeadCommit(ctx, sess.LocalRepo)
+		if err != nil {
+			head = "discard-authorised"
+		}
 		return state.Acceptance{SourceTip: "discard-authorised", ReplayBase: head, VerifiedHead: head, IssueEvidence: "discard-authorised"}, nil, nil
 	}
 	if err := requireRetirementWorktreesClean(ctx, sess); err != nil {
@@ -173,7 +176,7 @@ func requireRetirementWorktreesClean(ctx context.Context, sess state.Session) er
 		return fmt.Errorf("checking destination worktree: %w\n%s", err, status)
 	}
 	if trimLine(status) != "" {
-		return fmt.Errorf("your working tree has uncommitted or untracked changes")
+		return fmt.Errorf("your working tree has uncommitted changes (including untracked files)")
 	}
 	return requireCleanSessionWorktree(ctx, LocalWorktreePath(sess.LocalRepo, sess.Name))
 }

@@ -109,6 +109,7 @@ type Retirement struct {
 	Phase       RetirementPhase             `json:"phase"`
 	Destination Destination                 `json:"destination"`
 	Accepted    []Acceptance                `json:"accepted,omitempty"`
+	Signed      []string                    `json:"signed,omitempty"`
 	Effects     map[string]RetirementEffect `json:"effects"`
 	LastFailure string                      `json:"last_failure,omitempty"`
 }

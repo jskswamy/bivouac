@@ -251,6 +251,9 @@ func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (st
 }
 
 func replaySignedRange(ctx context.Context, localRepo, ref, revRange, session, onto string) (string, error) {
+	if err := validateReplayProgressFile(ctx, localRepo, session); err != nil {
+		return "", err
+	}
 	list, err := runLocalGit(ctx, localRepo, "rev-list", "--reverse", revRange)
 	if err != nil {
 		return "", fmt.Errorf("listing session commits: %w\n%s", err, list)

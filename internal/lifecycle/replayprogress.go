@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,7 +31,10 @@ import (
 // to survive a crash between two runs, and it becomes meaningless the
 // moment the repository does -- which is exactly the lifetime of the
 // directory it sits in.
+const replayProgressVersion = 1
+
 type replayProgress struct {
+	Version int `json:"version"`
 	// Ref is the session tip the progress was computed against. A
 	// different tip means the commit list has changed underneath the
 	// record and the rest of it describes a plan that no longer exists.
@@ -70,11 +74,34 @@ func replayProgressPath(ctx context.Context, localRepo, session string) (string,
 // error: no record is the ordinary state, and it means "replay the
 // whole range", which is what every run did before this existed.
 //
-// An unreadable or corrupt one is treated the same way. The record is
-// an optimisation over correctness that git already guarantees --
-// replaying from the top is always safe, only sometimes painful -- so
-// failing the merge over it would trade a working fallback for an
-// outage.
+// A missing record is valid before replay starts. Once a record exists it is
+// required safety evidence: unreadable, corrupt, or unsupported contents fail
+// closed rather than silently restarting a replay whose earlier commits may
+// have been resolved by hand.
+func validateReplayProgressFile(ctx context.Context, localRepo, session string) error {
+	path, err := replayProgressPath(ctx, localRepo, session)
+	if err != nil {
+		return err
+	}
+	// #nosec G304 -- replayProgressPath confines this to the repository's
+	// absolute git directory and CheckSessionName validates the suffix.
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading required replay progress: %w", err)
+	}
+	var p replayProgress
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return fmt.Errorf("required replay progress is corrupt: %w", err)
+	}
+	if p.Version != replayProgressVersion || p.Ref == "" || p.Base == "" || p.Onto == "" {
+		return fmt.Errorf("required replay progress is incomplete or has an unsupported version")
+	}
+	return nil
+}
+
 func loadReplayProgress(ctx context.Context, localRepo, session string) (replayProgress, bool) {
 	path, err := replayProgressPath(ctx, localRepo, session)
 	if err != nil {
@@ -102,6 +129,7 @@ func loadReplayProgress(ctx context.Context, localRepo, session string) (replayP
 // improving on, and refusing to merge over it would be worse than the
 // bug.
 func saveReplayProgress(ctx context.Context, localRepo, session string, p replayProgress) error {
+	p.Version = replayProgressVersion
 	path, err := replayProgressPath(ctx, localRepo, session)
 	if err != nil {
 		return err
