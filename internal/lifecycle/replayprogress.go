@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/jskswamy/bivouac/internal/state"
 )
 
 // replayProgress is how far a merge's replay of one session got.
@@ -111,7 +113,7 @@ func saveReplayProgress(ctx context.Context, localRepo, session string, p replay
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0o600)
+	return state.WriteFileAtomic(path, raw, 0o600)
 }
 
 // clearReplayProgress forgets a session's record, once the replay it
@@ -132,12 +134,12 @@ func clearReplayProgress(ctx context.Context, localRepo, session string) {
 // back to the top of the range -- re-conflicting on whatever an earlier
 // run landed by hand, which is the failure the record exists to
 // prevent.
-func restoreReplayProgress(ctx context.Context, localRepo, session string, p replayProgress, had bool) {
+func restoreReplayProgress(ctx context.Context, localRepo, session string, p replayProgress, had bool) error {
 	if !had {
 		clearReplayProgress(ctx, localRepo, session)
-		return
+		return nil
 	}
-	_ = saveReplayProgress(ctx, localRepo, session, p)
+	return saveReplayProgress(ctx, localRepo, session, p)
 }
 
 // resumeAt returns the index in commits the replay should start from,

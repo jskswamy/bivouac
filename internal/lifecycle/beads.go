@@ -225,8 +225,7 @@ func pullBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, s
 func checkBeadsLanded(ctx context.Context, ip, user, localRepo, repo, session string) error {
 	client, err := reconcile.Connect(ctx, ip, user)
 	if err != nil {
-		provider.ReportWarning(ctx, "beads: could not connect to check whether session "+session+"'s issues have landed ("+err.Error()+"); skipping the issue check")
-		return nil
+		return fmt.Errorf("cannot connect to confirm session %s's issues have landed: %w\nrefusing to discard issue work bivouac cannot see", session, err)
 	}
 	defer func() { _ = client.Close() }()
 	return requireBeadsLanded(ctx, client, localRepo, repo, session)

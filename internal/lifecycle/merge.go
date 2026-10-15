@@ -154,7 +154,9 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 				if out, resetErr := runLocalGit(ctx, localRepo, "reset", "--hard", base); resetErr != nil {
 					return nil, fmt.Errorf("%w\n\nthe replayed commits could not be rolled back either (%v)\n%s\nyour branch is at %s and holds unverified commits — reset to %s by hand before merging again", err, resetErr, out, trimLine(after), base)
 				}
-				restoreReplayProgress(ctx, localRepo, session, resume, resuming)
+				if restoreErr := restoreReplayProgress(ctx, localRepo, session, resume, resuming); restoreErr != nil {
+					return nil, fmt.Errorf("%w; restoring required replay progress: %v", err, restoreErr)
+				}
 				return nil, err
 			}
 		}
@@ -245,17 +247,26 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 // record is what carries a replay across runs through that; see
 // replayProgress.
 func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (string, error) {
-	list, err := runLocalGit(ctx, localRepo, "rev-list", "--reverse", "HEAD.."+ref)
+	return replaySignedRange(ctx, localRepo, ref, "HEAD.."+ref, session, onto)
+}
+
+func replaySignedRange(ctx context.Context, localRepo, ref, revRange, session, onto string) (string, error) {
+	list, err := runLocalGit(ctx, localRepo, "rev-list", "--reverse", revRange)
 	if err != nil {
 		return "", fmt.Errorf("listing session commits: %w\n%s", err, list)
 	}
 	commits := nonEmptyLines(list)
+	refOut, err := runLocalGit(ctx, localRepo, "rev-parse", ref)
+	if err != nil {
+		return "", fmt.Errorf("resolving session replay tip: %w\n%s", err, refOut)
+	}
+	refTip := trimLine(refOut)
 
 	head, err := HeadCommit(ctx, localRepo)
 	if err != nil {
 		return "", err
 	}
-	start, base, handFinished := resumeAt(ctx, localRepo, session, ref, head, commits)
+	start, base, handFinished := resumeAt(ctx, localRepo, session, refTip, head, commits)
 	if start > 0 {
 		provider.ReportProgress(ctx, fmt.Sprintf("resuming %s at commit %d of %d", session, start+1, len(commits)))
 	}
@@ -268,7 +279,7 @@ func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (st
 		}
 	}
 
-	progress := replayProgress{Ref: ref, Base: base, Onto: head}
+	progress := replayProgress{Ref: refTip, Base: base, Onto: head}
 	if start > 0 {
 		progress.Done = commits[start-1]
 	}
@@ -278,7 +289,9 @@ func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (st
 		// merge that fails after this point for some unrelated reason
 		// would otherwise see the same mismatch next time and amend an
 		// already-signed commit, churning the branch on every run.
-		_ = saveReplayProgress(ctx, localRepo, session, progress)
+		if err := saveReplayProgress(ctx, localRepo, session, progress); err != nil {
+			return "", fmt.Errorf("saving required replay progress: %w", err)
+		}
 	}
 
 	for _, sha := range commits[start:] {
@@ -294,7 +307,9 @@ func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (st
 			// carrying on and picking this commit up again.
 			progress.Stopped = sha
 			progress.Onto = before
-			_ = saveReplayProgress(ctx, localRepo, session, progress)
+			if saveErr := saveReplayProgress(ctx, localRepo, session, progress); saveErr != nil {
+				return "", fmt.Errorf("replay stopped at %s (%v), and required progress could not be saved: %w", sha[:min(len(sha), 8)], err, saveErr)
+			}
 			return "", fmt.Errorf("replaying %s from session %s onto %s: %w\n%s\nresolve the conflict then `git cherry-pick --continue`, or `git cherry-pick --abort` to back out\nthen `bivouac session merge %s` again -- it picks up from here rather than replaying what has already landed", sha[:min(len(sha), 8)], session, onto, err, out, session)
 		}
 		after, err := HeadCommit(ctx, localRepo)
@@ -315,7 +330,9 @@ func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (st
 		// the only thing that makes it survivable is that the record was
 		// already on disk.
 		progress.Done, progress.Stopped, progress.Onto = sha, "", after
-		_ = saveReplayProgress(ctx, localRepo, session, progress)
+		if err := saveReplayProgress(ctx, localRepo, session, progress); err != nil {
+			return "", fmt.Errorf("saving required replay progress after %s: %w", sha[:min(len(sha), 8)], err)
+		}
 	}
 	return base, nil
 }

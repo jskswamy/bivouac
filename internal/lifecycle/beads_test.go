@@ -430,23 +430,12 @@ func TestWarnDolthubWithoutExternalRemote_SilentWhenModeMatchesTheRequest(t *tes
 // treated as safe inside the one guard whose contract is the opposite.
 // checkBeadsLanded is the shared call site both verbs now use; this proves
 // its Connect failure is never silent.
-func TestCheckBeadsLanded_WarnsRatherThanSkipsSilentlyWhenConnectFails(t *testing.T) {
-	var out, errOut bytes.Buffer
-	ctx := provider.WithOutput(context.Background(), &out, &errOut)
-
-	// Nothing listens here; connection is refused immediately.
-	unreachable := "127.0.0.1:1"
-
-	err := checkBeadsLanded(ctx, unreachable, "devuser", t.TempDir(), "/home/devuser/sessions/s/repo", "s")
-	if err != nil {
-		t.Errorf("checkBeadsLanded() error = %v, want nil -- RescueSession already runs (and fails loudly) "+
-			"immediately above every call site, so this stays best-effort", err)
-	}
-	if errOut.Len() == 0 {
-		t.Fatal("errOut is empty, want a warning naming the skipped issue check")
-	}
-	if !strings.Contains(errOut.String(), "session s's issues have landed") {
-		t.Errorf("errOut = %q, want it to name session s and say its issues may not have landed", errOut.String())
+func TestRetirementIssueConnectionFailureIsUnsafe(t *testing.T) {
+	// Nothing listens here; connection is refused immediately. Retirement
+	// cannot turn that unknown into permission to destroy issue data.
+	err := checkBeadsLanded(context.Background(), "127.0.0.1:1", "devuser", t.TempDir(), "/home/devuser/sessions/s/repo", "s")
+	if err == nil || !strings.Contains(err.Error(), "refusing to discard issue work") {
+		t.Fatalf("checkBeadsLanded() = %v, want fail-closed connection error", err)
 	}
 }
 
