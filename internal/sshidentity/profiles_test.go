@@ -101,12 +101,85 @@ func TestProfilesRejectUserIdentityConflictsAndSymlinks(t *testing.T) {
 	if err := os.Symlink(target, path); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Upsert(context.Background(), c); err == nil {
+	// A symlink to a writable file is followed: the include lands in the
+	// target and the link itself survives.
+	if err := store.Upsert(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(path); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatal("symlink replaced")
 	}
 	raw, err := os.ReadFile(target)
-	if err != nil || string(raw) != "# user content\n" {
-		t.Fatal("symlink target changed")
+	if err != nil || !strings.Contains(string(raw), includeBegin) || !strings.HasSuffix(string(raw), "# user content\n") {
+		t.Fatalf("target not updated: %q %v", raw, err)
+	}
+}
+
+func readOnlySymlinkedConfig(t *testing.T, store ProfileStore, content string) (link, target string) {
+	t.Helper()
+	if err := os.MkdirAll(store.SSHDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target = filepath.Join(t.TempDir(), "config")
+	write(t, target, []byte(content))
+	if err := os.Chmod(target, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	link = filepath.Join(store.SSHDir, "config")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	return link, target
+}
+
+func TestReadOnlyConfigWithoutIncludeExplainsWhatToAdd(t *testing.T) {
+	store, c := profileFixture(t, "machine")
+	_, target := readOnlySymlinkedConfig(t, store, "# managed by home-manager\n")
+	err := store.Upsert(context.Background(), c)
+	managed, _ := filepath.Abs(filepath.Join(store.ConfigDir, "ssh", "config"))
+	if err == nil || !strings.Contains(err.Error(), "Include \""+managed+"\"") {
+		t.Fatalf("want guidance naming the include line, got %v", err)
+	}
+	if raw, _ := os.ReadFile(target); string(raw) != "# managed by home-manager\n" {
+		t.Fatal("read-only target changed")
+	}
+	if _, err := os.Stat(store.ConfigDir); !os.IsNotExist(err) {
+		t.Fatal("failed preflight wrote files")
+	}
+}
+
+func TestReadOnlyConfigWithExistingIncludeIsLeftAlone(t *testing.T) {
+	managedPath := func(s ProfileStore) string {
+		m, _ := filepath.Abs(filepath.Join(s.ConfigDir, "ssh", "config"))
+		return m
+	}
+	// Home Manager joins programs.ssh.includes into one multi-path line.
+	for name, line := range map[string]func(string) string{
+		"single":     func(m string) string { return "Include " + m },
+		"multi-path": func(m string) string { return "Include /elsewhere/config_external " + m },
+	} {
+		t.Run(name, func(t *testing.T) {
+			readOnlyIncludeCase(t, managedPath, line)
+		})
+	}
+}
+
+func readOnlyIncludeCase(t *testing.T, managedPath func(ProfileStore) string, line func(string) string) {
+	store, c := profileFixture(t, "machine")
+	managed := managedPath(store)
+	content := line(managed) + "\nHost personal\n  HostName example.com\n"
+	_, target := readOnlySymlinkedConfig(t, store, content)
+	for i := 0; i < 2; i++ {
+		if err := store.Upsert(context.Background(), c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if raw, _ := os.ReadFile(target); string(raw) != content {
+		t.Fatalf("target changed: %q", raw)
+	}
+	raw, err := os.ReadFile(managed)
+	if err != nil || !strings.Contains(string(raw), "Host "+c.Alias) {
+		t.Fatalf("profile not published: %q %v", raw, err)
 	}
 }
 

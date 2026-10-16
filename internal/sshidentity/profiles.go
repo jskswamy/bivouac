@@ -48,12 +48,98 @@ func readRegular(path string) ([]byte, os.FileMode, error) {
 		return nil, 0, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, 0, fmt.Errorf("SSH config %s must be a regular file, not a symlink; add the bivouac include manually or use a regular config", path)
+		return nil, 0, fmt.Errorf("SSH config %s is not a regular file", path)
 	}
 	// #nosec G304 -- the user/managed SSH configuration path is intentionally read.
 	raw, err := os.ReadFile(path)
 	return raw, info.Mode().Perm(), err
 }
+
+// userConfig is the user's SSH config read through any symlink. Writes go to
+// target, never to the link: replacing a link would detach the file from
+// whatever (Home Manager, a dotfiles repo) manages it.
+type userConfig struct {
+	raw    []byte
+	mode   os.FileMode
+	target string
+	// included is true when the config already pulls in the managed file by
+	// a plain Include line outside the marked block, e.g. declared in Nix.
+	included bool
+}
+
+func (s ProfileStore) readUser() (userConfig, error) {
+	target := s.userPath()
+	if _, err := os.Lstat(target); os.IsNotExist(err) {
+		return userConfig{target: target, mode: 0o600}, nil
+	} else if err != nil {
+		return userConfig{}, err
+	}
+	target, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return userConfig{}, err
+	}
+	raw, mode, err := readRegular(target)
+	if err != nil {
+		return userConfig{}, err
+	}
+	managed, err := filepath.Abs(s.managedPath())
+	if err != nil {
+		return userConfig{}, err
+	}
+	user, included := stripPlainInclude(raw, managed)
+	return userConfig{raw: user, mode: mode, target: target, included: included}, nil
+}
+
+// stripPlainInclude drops the managed file from Include lines, which the
+// profile being checked already supplies inline; leaving it in would count
+// its IdentityFile twice. Include takes several paths (Home Manager joins
+// programs.ssh.includes into one line), so only the managed token goes and
+// the others stay.
+func stripPlainInclude(raw []byte, managed string) ([]byte, bool) {
+	quoted, _ := quoteSSH(managed)
+	var kept []string
+	found := false
+	for _, line := range strings.SplitAfter(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.EqualFold(fields[0], "Include") {
+			kept = append(kept, line)
+			continue
+		}
+		var rest []string
+		for _, f := range fields[1:] {
+			if f == managed || f == quoted {
+				found = true
+				continue
+			}
+			rest = append(rest, f)
+		}
+		if len(rest) > 0 {
+			kept = append(kept, "Include "+strings.Join(rest, " ")+"\n")
+		}
+	}
+	return []byte(strings.Join(kept, "")), found
+}
+
+// needsWrite reports whether bivouac must edit the file, and fails with the
+// line to add when it must but cannot.
+func (s ProfileStore) needsWrite(u userConfig) (bool, error) {
+	if u.included {
+		return false, nil
+	}
+	if u.mode&0o200 != 0 {
+		return true, nil
+	}
+	managed, err := filepath.Abs(s.managedPath())
+	if err != nil {
+		return false, err
+	}
+	quoted, err := quoteSSH(managed)
+	if err != nil {
+		return false, err
+	}
+	return false, fmt.Errorf("SSH config %s is read-only; for bivouac to work, add this line to it:\n\n  Include %s", u.target, quoted)
+}
+
 func stripInclude(raw []byte) ([]byte, error) {
 	begin := bytes.Index(raw, []byte(includeBegin))
 	if begin < 0 {
@@ -73,14 +159,14 @@ func stripInclude(raw []byte) ([]byte, error) {
 // Check uses actual OpenSSH evaluation, not a parser that could overlook
 // additive user IdentityFile directives or Host/Match scope.
 func (s ProfileStore) Check(ctx context.Context, c Connection) error {
-	raw, mode, err := readRegular(s.userPath())
+	u, err := s.readUser()
 	if err != nil {
 		return err
 	}
-	if mode&0o200 == 0 {
-		return fmt.Errorf("user SSH config %s is not writable; add the bivouac include manually or restore write permission", s.userPath())
+	if _, err := s.needsWrite(u); err != nil {
+		return err
 	}
-	user, err := stripInclude(raw)
+	user, err := stripInclude(u.raw)
 	if err != nil {
 		return err
 	}
@@ -258,11 +344,15 @@ func (s ProfileStore) Upsert(ctx context.Context, c Connection) error {
 		return err
 	}
 	defer unlock()
-	raw, mode, err := readRegular(s.userPath())
+	u, err := s.readUser()
 	if err != nil {
 		return err
 	}
-	user, err := stripInclude(raw)
+	write, err := s.needsWrite(u)
+	if err != nil {
+		return err
+	}
+	user, err := stripInclude(u.raw)
 	if err != nil {
 		return err
 	}
@@ -277,7 +367,10 @@ func (s ProfileStore) Upsert(ctx context.Context, c Connection) error {
 	if err := s.publish(profiles); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(s.SSHDir, 0o700); err != nil {
+	if !write {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(u.target), 0o700); err != nil {
 		return err
 	}
 	managed, err := filepath.Abs(s.managedPath())
@@ -289,7 +382,7 @@ func (s ProfileStore) Upsert(ctx context.Context, c Connection) error {
 		return err
 	}
 	block := includeBegin + "Host *\nInclude " + quoted + "\nHost *\n" + includeEnd
-	return atomicFile(s.userPath(), append([]byte(block), user...), mode)
+	return atomicFile(u.target, append([]byte(block), user...), u.mode)
 }
 func (s ProfileStore) Remove(ctx context.Context, name string) error {
 	if _, err := Alias(name); err != nil {

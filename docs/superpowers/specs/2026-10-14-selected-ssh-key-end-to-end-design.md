@@ -304,6 +304,10 @@ machines and sessions:
   it only after confirmation; preserve user content and reset `Host *`
   scope before the original content so an enclosing Host/Match stanza
   cannot accidentally restrict the include.
+  A symlinked `~/.ssh/config` is followed and edited at its target, never
+  replaced. If the target is read-only, bivouac writes nothing: a plain
+  `Include <managed file>` line already present (e.g. from Home Manager)
+  suffices, otherwise the error prints the line to add.
 - New machines add entries, new sessions reuse entries, session deletion
   leaves entries alone, and successful machine destruction removes only
   that machine's owned entry. Keep the shared include for other machines.
