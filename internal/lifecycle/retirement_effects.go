@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/jskswamy/bivouac/internal/beads"
@@ -88,7 +89,7 @@ func removeRemoteCheckout(ctx context.Context, record state.Record, sess state.S
 	if len(sess.Retirement.Accepted) > 0 {
 		expected = sess.Retirement.Accepted[len(sess.Retirement.Accepted)-1].SourceTip
 	}
-	command := removeRepoCheckedCmd(RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name)), SessionBranch(sess.Name), expected, sess.Retirement.Force)
+	command := removeRepoCheckedCmd(SessionDir(record.User, sess.Name), RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name)), SessionBranch(sess.Name), expected, sess.Retirement.Force)
 	out, err := client.Run(command)
 	if err != nil {
 		return fmt.Errorf("removing remote checkout: %w\n%s", err, out)
@@ -97,9 +98,12 @@ func removeRemoteCheckout(ctx context.Context, record state.Record, sess state.S
 }
 
 // removeRepoCheckedCmd makes checkout removal observable and keeps optional
-// parent tidying from masking a failed destructive command.
-func removeRepoCheckedCmd(repo, branch, expectedTip string, discard bool) string {
-	parent := remoteSessionDir(repo)
+// directory tidying from masking a failed destructive command.
+//
+// sessionDir is passed in rather than derived from repo: a repository identity
+// may be owner/repo, which puts the checkout two levels below the directory
+// that holds TASK.md.
+func removeRepoCheckedCmd(sessionDir, repo, branch, expectedTip string, discard bool) string {
 	var checks string
 	if !discard {
 		checks = "actual=$(git -C " + shellcmd.Quote(repo) + " rev-parse " + shellcmd.Quote(branch) + ") || exit $?; " +
@@ -108,9 +112,23 @@ func removeRepoCheckedCmd(repo, branch, expectedTip string, discard bool) string
 	}
 	inner := "if test ! -e " + shellcmd.Quote(repo) + "; then exit 0; fi; " + checks +
 		"rm -rf -- " + shellcmd.Quote(repo) + " || exit $?; " +
-		"rm -f -- " + shellcmd.Quote(parent+"/TASK.md") + " || exit $?; " +
-		"rmdir -- " + shellcmd.Quote(parent) + " 2>/dev/null || true"
-	return shellcmd.LoginShell(inner)
+		"rm -f -- " + shellcmd.Quote(sessionDir+"/TASK.md") + " || exit $?; "
+	// rmdir, not rm -rf: a directory still holding a sibling repository is
+	// left alone, and a failure to tidy must not fail the retirement.
+	for _, dir := range dirsToTidy(sessionDir, repo) {
+		inner += "rmdir -- " + shellcmd.Quote(dir) + " 2>/dev/null; "
+	}
+	return shellcmd.LoginShell(inner + "true")
+}
+
+// dirsToTidy lists the directories between repo and sessionDir, innermost
+// first, ending with sessionDir itself.
+func dirsToTidy(sessionDir, repo string) []string {
+	var dirs []string
+	for dir := path.Dir(repo); strings.HasPrefix(dir, sessionDir+"/"); dir = path.Dir(dir) {
+		dirs = append(dirs, dir)
+	}
+	return append(dirs, sessionDir)
 }
 
 func removeLocalWorktree(ctx context.Context, sess state.Session) error {

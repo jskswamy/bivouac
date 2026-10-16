@@ -35,7 +35,7 @@ func TestRetirementRemovalFailureCannotBeMasked(t *testing.T) {
 	}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("BASH_ENV", envFile)
-	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, "branch", "tip", true))
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(filepath.Dir(repo), repo, "branch", "tip", true))
 	out, err := cmd.CombinedOutput()
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok || exitErr.ExitCode() != 9 {
@@ -50,7 +50,7 @@ func TestRetirementDetectsTipMovementBeforeRemoval(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "session", "repo")
 	initRepo(t, repo)
 	branch := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
-	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, branch, "not-the-tip", false))
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(filepath.Dir(repo), repo, branch, "not-the-tip", false))
 	out, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "session tip moved") {
 		t.Fatalf("command err=%v out=%s", err, out)
@@ -60,9 +60,47 @@ func TestRetirementDetectsTipMovementBeforeRemoval(t *testing.T) {
 	}
 }
 
+// A repository identity can be owner/repo, which puts the checkout two levels
+// below the session directory where TASK.md lives. Retirement must tear down
+// the session directory itself, not the repo's immediate parent.
+func TestRetirementRemovesSessionDirForNestedRepo(t *testing.T) {
+	sessionDir := filepath.Join(t.TempDir(), "sessions", "auth")
+	repo := filepath.Join(sessionDir, "owner", "repo")
+	initRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(sessionDir, "TASK.md"), []byte("task"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(sessionDir, repo, "branch", "tip", true))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checked removal: %v: %s", err, out)
+	}
+	if _, err := os.Stat(sessionDir); !os.IsNotExist(err) {
+		entries, _ := os.ReadDir(sessionDir)
+		t.Fatalf("session dir left behind (stat err=%v, entries=%v)", err, entries)
+	}
+}
+
+func TestRetirementKeepsSessionDirHoldingSiblingRepo(t *testing.T) {
+	sessionDir := filepath.Join(t.TempDir(), "sessions", "auth")
+	repo := filepath.Join(sessionDir, "owner", "repo")
+	sibling := filepath.Join(sessionDir, "other", "repo")
+	initRepo(t, repo)
+	initRepo(t, sibling)
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(sessionDir, repo, "branch", "tip", true))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checked removal: %v: %s", err, out)
+	}
+	if _, err := os.Stat(sibling); err != nil {
+		t.Fatalf("removal touched a sibling repository: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(repo)); !os.IsNotExist(err) {
+		t.Fatalf("emptied owner dir left behind: %v", err)
+	}
+}
+
 func TestRetirementAlreadyMissingResourceIsIdempotent(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "missing", "repo")
-	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(repo, "branch", "tip", false))
+	cmd := exec.Command("bash", "-c", removeRepoCheckedCmd(filepath.Dir(repo), repo, "branch", "tip", false))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("missing checkout: %v: %s", err, out)
 	}
