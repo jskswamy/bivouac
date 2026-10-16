@@ -47,7 +47,9 @@ GoReleaser reads it as the GitHub release header at tag time.
 When a spec describes a user-facing change, the same commit that adds the spec
 also appends a matching entry to `RELEASE_NOTES.md`. At release time, replace
 `## Unreleased` with the version being tagged, commit that stamp, tag and
-publish, then reset `RELEASE_NOTES.md` for the next release.
+publish, then reset `RELEASE_NOTES.md` for the next release. The file holds
+only the release being prepared, because GoReleaser publishes all of it; earlier
+notes live on their GitHub releases.
 
 ## If you are working inside a bivouac session
 
