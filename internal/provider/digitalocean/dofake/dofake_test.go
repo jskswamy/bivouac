@@ -443,6 +443,12 @@ func TestFake_PackerDropletActions(t *testing.T) {
 		t.Fatalf("action get = %+v, %v", a, err)
 	}
 
+	// How the plugin finds the snapshot it just asked for, by name.
+	snaps, _, err := c.Droplets.Snapshots(ctx, d.ID, nil)
+	if err != nil || len(snaps) != 1 || snaps[0].Name != "bivouac-my-dev-2" || snaps[0].Type != "snapshot" {
+		t.Fatalf("droplet snapshots = %+v, %v", snaps, err)
+	}
+
 	got, _, err := c.Droplets.Get(ctx, d.ID)
 	if err != nil || len(got.SnapshotIDs) != 1 {
 		t.Fatalf("droplet snapshot ids = %v, %v", got.SnapshotIDs, err)

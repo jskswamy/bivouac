@@ -24,6 +24,7 @@ func (s *Server) routes() {
 		"DELETE /v2/droplets/{id}":            s.deleteDroplet,
 		"POST /v2/droplets/{id}/actions":      s.dropletAction,
 		"GET /v2/droplets/{id}/actions/{aid}": s.getDropletAction,
+		"GET /v2/droplets/{id}/snapshots":     s.listDropletSnapshots,
 		"GET /v2/actions/{aid}":               s.getAction,
 		"GET /v2/images":                      s.listImages,
 		"GET /v2/images/{id}":                 s.getImage,
@@ -378,6 +379,29 @@ func (s *Server) getDroplet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"droplet": d})
+}
+
+// listDropletSnapshots is how the Packer plugin finds the snapshot its
+// snapshot action made: by name, among the droplet's own snapshots, once
+// the action completes. A snapshot since deleted is left out.
+func (s *Server) listDropletSnapshots(w http.ResponseWriter, r *http.Request) {
+	id, _ := pathID(r, "id")
+	s.mu.Lock()
+	rec, ok := s.droplets[id]
+	var out []godo.Image
+	if ok {
+		for _, imageID := range rec.droplet.SnapshotIDs {
+			if _, live := s.images[imageID]; live {
+				out = append(out, s.readImage(imageID))
+			}
+		}
+	}
+	s.mu.Unlock()
+	if !ok {
+		notFound(w)
+		return
+	}
+	writePage(w, r, "snapshots", out)
 }
 
 func (s *Server) deleteDroplet(w http.ResponseWriter, r *http.Request) {
