@@ -180,6 +180,35 @@ What each tier caught that the earlier interface-level tests did not:
   nothing.
 - `bivouac down` removed the droplet; no VM or tap device was left.
 
+### Tier 3 acceptance run (2026-10-17, DigitalOcean `blr1`)
+
+Run once with a custom-scoped token, after a QEMU rehearsal of the same
+template reference passed. The template was
+`github:jskswamy/bivouac/23c4dd5…?dir=templates#python-x86_64-linux`, a
+published revision from before `moshi-hook` was added: every published
+revision since pins the dead tarball (D13), and this branch's fix is not
+on GitHub yet.
+
+- `bivouac image build --tag acceptance` (`s-2vcpu-4gb`): 285 s. Real
+  snapshot created and tagged with all five markers and the user tag
+  (the token's tag and image scopes sufficed), verified through the API,
+  config written back to `tag:acceptance`. The builder droplet and
+  Packer's temporary key were removed.
+- The closure built on DigitalOcean was the same store path the QEMU
+  rehearsal built (`/nix/store/lid6m01i…-home-manager-generation`).
+- `bivouac up` from `tag:acceptance`: 125 s. No Nix installer in the
+  cloud-init log; the active Home Manager generation was the baked
+  closure; login shell fish; `PermitRootLogin no` in place.
+- `bivouac down`, then the snapshot and the run's registered SSH key were
+  deleted through the API. Nothing else in the account was touched.
+- Cost: about 13 droplet-minutes of `s-2vcpu-4gb` and a snapshot kept
+  for minutes; under $0.05.
+- Finding: right after `DELETE /v2/images/{id}` the image is 404 by ID
+  but still appears in a `tag_name` listing for a while, with no regions
+  and a status other than `available`. Eligibility already rejects such
+  an image, so resolution and retention never use it; `image list` shows
+  it as not ready until the index catches up.
+
 ## Not covered by any tier
 
 - DigitalOcean's billing and quota behaviour.
