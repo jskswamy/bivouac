@@ -13,6 +13,10 @@ import (
 
 const tagRefPrefix = "tag:"
 
+// TagRef is the config image reference that launches tag's newest
+// eligible build, the form Resolve reads back.
+func TagRef(tag string) string { return tagRefPrefix + tag }
+
 // Request is a launch's image reference together with the target it
 // must be compatible with.
 type Request struct{ Ref, Arch, Region, Size, Shell string }
@@ -139,7 +143,7 @@ func ineligible(img provider.Image, s Scope) string {
 		return fmt.Sprintf("built in region %s and available in %s, not %s",
 			mk.Region, strings.Join(img.Regions, ","), s.Region)
 	}
-	if s.Tag != "" && !hasTag(img.Tags, s.Tag) {
+	if s.Tag != "" && !slices.Contains(img.Tags, s.Tag) {
 		return fmt.Sprintf("not tagged %q", s.Tag)
 	}
 	return ""

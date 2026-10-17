@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -109,12 +110,7 @@ func hasStatus(resp *godo.Response, codes ...int) bool {
 	if resp == nil || resp.Response == nil {
 		return false
 	}
-	for _, c := range codes {
-		if resp.StatusCode == c {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(codes, resp.StatusCode)
 }
 
 // imageError wraps a godo failure the way keyError does, and also marks

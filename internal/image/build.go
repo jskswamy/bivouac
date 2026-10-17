@@ -64,7 +64,7 @@ func Build(ctx context.Context, d BuildDeps, o BuildOptions) (BuildResult, error
 	}
 	tag := o.Bundle.Tag
 	res := BuildResult{
-		Reference:  "tag:" + tag,
+		Reference:  TagRef(tag),
 		ConfigPath: o.Bundle.Selected.Path,
 		BundleDir:  o.Bundle.OutputDir,
 	}
@@ -109,12 +109,11 @@ func Build(ctx context.Context, d BuildDeps, o BuildOptions) (BuildResult, error
 	if o.Prune {
 		pr := prune(ctx, d.Images, scope, o.KeepPrevious, art.ID, progress)
 		res.Prune = &pr
-		cleanup := fmt.Sprintf("deleted %d, pending %d", len(pr.Deleted), len(pr.Pending))
 		if pr.Err != nil && failed == nil {
 			failed = created("prune", pr.Err)
 		}
 		if failed != nil {
-			failed.Cleanup = cleanup
+			failed.Cleanup = pr.Summary()
 		}
 	}
 	if failed != nil {

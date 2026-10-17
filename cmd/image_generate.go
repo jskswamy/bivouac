@@ -60,13 +60,8 @@ func runImageGenerate(cmd *cobra.Command, args []string) error {
 	repoFlag, _ := cmd.Flags().GetString("repo")
 	nameFlag, _ := cmd.Flags().GetString("name")
 
-	// Both would otherwise be silently ignored: --config names the file
-	// outright, and a bundle belongs to no instance.
-	if explicit != "" && repoFlag != "" {
-		return errors.New("--config and --repo both choose the config; pass one")
-	}
-	if nameFlag != "" {
-		return errors.New("--name does not apply to image generate: images belong to no instance")
+	if err := checkConfigFlags(explicit, repoFlag, nameFlag, "generate"); err != nil {
+		return err
 	}
 	if err := image.ValidUserTag(tag); err != nil {
 		return err
@@ -109,6 +104,19 @@ func runImageGenerate(cmd *cobra.Command, args []string) error {
 	}
 	_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s\n\nBuild it with Packer from that directory:\n  packer init . && packer validate . && packer build .\n", bundle.Dir)
 	return err
+}
+
+// checkConfigFlags refuses the flag combinations generate and build would
+// otherwise silently ignore: --config names the file outright, so --repo
+// cannot also choose it, and a bundle or image belongs to no instance.
+func checkConfigFlags(explicit, repoFlag, nameFlag, verb string) error {
+	if explicit != "" && repoFlag != "" {
+		return errors.New("--config and --repo both choose the config; pass one")
+	}
+	if nameFlag != "" {
+		return fmt.Errorf("--name does not apply to image %s: images belong to no instance", verb)
+	}
+	return nil
 }
 
 // imageProjectDir finds the repository whose bivouac.pkl is a candidate.

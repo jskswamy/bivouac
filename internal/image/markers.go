@@ -106,12 +106,3 @@ func ValidUserTag(tag string) error {
 	}
 	return nil
 }
-
-func hasTag(tags []string, tag string) bool {
-	for _, t := range tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
-}

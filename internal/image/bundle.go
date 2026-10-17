@@ -28,6 +28,10 @@ import (
 // to have been exercised by anyone yet.
 const PackerPluginVersion = "1.4.1"
 
+// SupportedArch is the only architecture an image can be built for, and
+// so the one a build's arch defaults to.
+const SupportedArch = "x86_64"
+
 // The fixed bundle layout. The builder scripts locate each other and the
 // uploads by these names, so they are not free to change on one side.
 const (
@@ -37,7 +41,6 @@ const (
 	bundleScripts  = "scripts"
 	bundleFlake    = "nix/flake.nix"
 	renderedFlake  = "path:./nix#default"
-	supportedArch  = "x86_64"
 )
 
 //go:embed bundle
@@ -137,13 +140,13 @@ type bundleFile struct {
 func renderBundle(opts BundleOptions, cfg config.Resolved) ([]bundleFile, Metadata, error) {
 	arch := cfg.Arch
 	if arch == "" {
-		arch = supportedArch
+		arch = SupportedArch
 	}
 	// The schema accepts arm64, but the only build source mapped and
 	// tested is DigitalOcean's x86_64 Ubuntu; guessing an ARM source
 	// would produce an image nobody has checked boots.
-	if arch != supportedArch {
-		return nil, Metadata{}, fmt.Errorf("arch %q is not supported for image builds: only %s is (built from %s)", arch, supportedArch, StockSourceX86)
+	if arch != SupportedArch {
+		return nil, Metadata{}, fmt.Errorf("arch %q is not supported for image builds: only %s is (built from %s)", arch, SupportedArch, StockSourceX86)
 	}
 	if err := ValidUserTag(opts.Tag); err != nil {
 		return nil, Metadata{}, err

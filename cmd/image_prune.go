@@ -9,7 +9,6 @@ import (
 
 	term "github.com/charmbracelet/x/term"
 	"github.com/jskswamy/bivouac/internal/image"
-	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -125,8 +124,8 @@ func runImagePrune(cmd *cobra.Command, resolve providerResolver, interactive fun
 			return err
 		}
 		plans = append(plans, plan)
-		res.Groups = append(res.Groups, pruneGroup{Region: s.Region, Arch: s.Arch, Keep: imageIDs(plan.Keep), Delete: imageIDs(plan.Delete)})
-		res.Pending = append(res.Pending, imageIDs(plan.Delete)...)
+		res.Groups = append(res.Groups, pruneGroup{Region: s.Region, Arch: s.Arch, Keep: image.IDs(plan.Keep), Delete: image.IDs(plan.Delete)})
+		res.Pending = append(res.Pending, image.IDs(plan.Delete)...)
 	}
 
 	// The preview is the result of a human dry run, so it goes to stdout
@@ -164,7 +163,7 @@ func runImagePrune(cmd *cobra.Command, resolve providerResolver, interactive fun
 		}
 		res.Pending = r.Pending
 		for _, rest := range plans[i+1:] {
-			res.Pending = append(res.Pending, imageIDs(rest.Delete)...)
+			res.Pending = append(res.Pending, image.IDs(rest.Delete)...)
 		}
 		return reportPruneFailure(cmd, res, r.Err)
 	}
@@ -200,11 +199,8 @@ func finishPrune(cmd *cobra.Command, res imagePruneResult) error {
 // part way has left the account in a state the user must know exactly
 // to retry or clean up by hand.
 func reportPruneFailure(cmd *cobra.Command, res imagePruneResult, cause error) error {
-	op := &image.OpError{
-		Phase:   "prune",
-		Cleanup: fmt.Sprintf("deleted %d, pending %d", len(res.Deleted), len(res.Pending)),
-		Err:     cause,
-	}
+	summary := image.PruneResult{Deleted: res.Deleted, Pending: res.Pending}.Summary()
+	op := &image.OpError{Phase: "prune", Cleanup: summary, Err: cause}
 	if jsonFlag(cmd) {
 		if werr := writeJSON(cmd, imagePruneError{Error: op.Error(), OpError: op, Deleted: res.Deleted, Pending: res.Pending}); werr != nil {
 			return errors.Join(op, werr)
@@ -213,12 +209,4 @@ func reportPruneFailure(cmd *cobra.Command, res imagePruneResult, cause error) e
 	}
 	printf(cmd.ErrOrStderr(), "Deleted: %s\nPending: %s\n", orDash(res.Deleted), orDash(res.Pending))
 	return op
-}
-
-func imageIDs(imgs []provider.Image) []string {
-	out := []string{}
-	for _, img := range imgs {
-		out = append(out, img.ID)
-	}
-	return out
 }

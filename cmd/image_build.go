@@ -113,10 +113,9 @@ func runImageBuild(cmd *cobra.Command, resolve func(context.Context, string) (pr
 		return errors.New("--no-prune and --keep-previous contradict each other; pass one")
 	case keep < 0:
 		return fmt.Errorf("--keep-previous must be zero or more, got %d", keep)
-	case explicit != "" && repoFlag != "":
-		return errors.New("--config and --repo both choose the config; pass one")
-	case nameFlag != "":
-		return errors.New("--name does not apply to image build: images belong to no instance")
+	}
+	if err := checkConfigFlags(explicit, repoFlag, nameFlag, "build"); err != nil {
+		return err
 	}
 	if err := image.ValidUserTag(tag); err != nil {
 		return err
@@ -144,13 +143,9 @@ func runImageBuild(cmd *cobra.Command, resolve func(context.Context, string) (pr
 	if err != nil {
 		return err
 	}
-	p, err := resolve(ctx, token)
+	images, err := imageManagerFrom(ctx, func(ctx context.Context) (provider.Provider, error) { return resolve(ctx, token) })
 	if err != nil {
 		return err
-	}
-	images, ok := p.(provider.ImageManager)
-	if !ok {
-		return errors.New("provider does not support images")
 	}
 
 	progress := cmd.ErrOrStderr()
@@ -218,7 +213,7 @@ func retentionPolicy(tag string, cfg config.Resolved, keep int, prune bool) stri
 	}
 	arch := cfg.Arch
 	if arch == "" {
-		arch = "x86_64"
+		arch = image.SupportedArch
 	}
 	return fmt.Sprintf("Retention: after a verified build, keep the newest %d %s images built in %s for %s "+
 		"(this one and %d previous) and delete older ones; --no-prune keeps them all",

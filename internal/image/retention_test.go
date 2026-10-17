@@ -37,13 +37,13 @@ func TestPlanPrune_KeepMath(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := ids(p.Delete)
+			got := IDs(p.Delete)
 			slices.Sort(got)
 			if !slices.Equal(got, c.wantDelete) {
 				t.Errorf("delete = %v, want %v", got, c.wantDelete)
 			}
 			if len(p.Keep) != 1+c.keep {
-				t.Errorf("keep = %v, want %d images", ids(p.Keep), 1+c.keep)
+				t.Errorf("keep = %v, want %d images", IDs(p.Keep), 1+c.keep)
 			}
 		})
 	}
@@ -55,7 +55,7 @@ func TestPlanPrune_FewerThanKeepDeletesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(p.Delete) != 0 {
-		t.Errorf("delete = %v, want none", ids(p.Delete))
+		t.Errorf("delete = %v, want none", IDs(p.Delete))
 	}
 }
 
@@ -65,10 +65,10 @@ func TestPlanPrune_EqualCreatedDeletesLowerIDFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ids(p.Keep); !slices.Equal(got, []string{"30"}) {
+	if got := IDs(p.Keep); !slices.Equal(got, []string{"30"}) {
 		t.Errorf("keep = %v, want [30]", got)
 	}
-	if got := ids(p.Delete); !slices.Equal(got, []string{"10", "20"}) {
+	if got := IDs(p.Delete); !slices.Equal(got, []string{"10", "20"}) {
 		t.Errorf("delete = %v, want [10 20] (oldest first)", got)
 	}
 }
@@ -90,7 +90,7 @@ func TestPlanPrune_ScopeFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ids(p.Delete); !slices.Equal(got, []string{"5"}) {
+	if got := IDs(p.Delete); !slices.Equal(got, []string{"5"}) {
 		t.Errorf("delete = %v, want only the in-scope [5]", got)
 	}
 }
@@ -107,7 +107,7 @@ func TestPlanPrune_NeverDeletesForeignOrPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ids(p.Delete); !slices.Equal(got, []string{"3", "4"}) {
+	if got := IDs(p.Delete); !slices.Equal(got, []string{"3", "4"}) {
 		t.Errorf("delete = %v, want [3 4]", got)
 	}
 }
@@ -117,11 +117,11 @@ func TestPlanPrune_ProtectedNeverDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(ids(p.Delete), "1") {
-		t.Errorf("protected image 1 in delete set %v", ids(p.Delete))
+	if slices.Contains(IDs(p.Delete), "1") {
+		t.Errorf("protected image 1 in delete set %v", IDs(p.Delete))
 	}
-	if !slices.Contains(ids(p.Keep), "1") {
-		t.Errorf("protected image 1 missing from keep set %v", ids(p.Keep))
+	if !slices.Contains(IDs(p.Keep), "1") {
+		t.Errorf("protected image 1 missing from keep set %v", IDs(p.Keep))
 	}
 }
 
@@ -174,7 +174,7 @@ func TestExecutePrune_DeletesOldestFirst(t *testing.T) {
 	if !slices.Equal(r.Deleted, []string{"1", "2", "3"}) || len(r.Pending) != 0 {
 		t.Errorf("deleted %v pending %v, want [1 2 3] []", r.Deleted, r.Pending)
 	}
-	if got := ids(f.images); !slices.Equal(got, []string{"4", "5"}) {
+	if got := IDs(f.images); !slices.Equal(got, []string{"4", "5"}) {
 		t.Errorf("remaining %v, want retained [4 5] intact", got)
 	}
 }
@@ -251,9 +251,27 @@ func TestExecutePrune_DeleteFailureReportsPartial(t *testing.T) {
 			if !slices.Equal(r.Deleted, []string{"1"}) || !slices.Equal(r.Pending, []string{"2", "3"}) {
 				t.Errorf("deleted %v pending %v, want [1] [2 3]", r.Deleted, r.Pending)
 			}
-			if got := ids(f.images); !slices.Equal(got, []string{"2", "3", "4", "5"}) {
+			if got := IDs(f.images); !slices.Equal(got, []string{"2", "3", "4", "5"}) {
 				t.Errorf("remaining %v, want [2 3 4 5]", got)
 			}
 		})
+	}
+}
+
+func TestPruneResult_Summary(t *testing.T) {
+	r := PruneResult{Deleted: []string{"1"}, Pending: []string{"2", "3"}}
+	if got, want := r.Summary(), "deleted 1, pending 2"; got != want {
+		t.Errorf("Summary() = %q, want %q", got, want)
+	}
+}
+
+// IDs feeds --json output directly, where an empty list must encode as
+// [] rather than null.
+func TestIDs_NeverNil(t *testing.T) {
+	if got := IDs(nil); got == nil || len(got) != 0 {
+		t.Errorf("IDs(nil) = %#v, want an empty non-nil slice", got)
+	}
+	if got := IDs([]provider.Image{{ID: "7"}, {ID: "9"}}); !slices.Equal(got, []string{"7", "9"}) {
+		t.Errorf("IDs = %v, want [7 9]", got)
 	}
 }

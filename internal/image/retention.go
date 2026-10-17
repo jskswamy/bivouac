@@ -85,6 +85,12 @@ type PruneResult struct {
 	Err              error
 }
 
+// Summary is the counts an OpError's Cleanup reports, in the one wording
+// both build and an explicit prune use.
+func (r PruneResult) Summary() string {
+	return fmt.Sprintf("deleted %d, pending %d", len(r.Deleted), len(r.Pending))
+}
+
 // ExecutePrune deletes the plan's images in order, re-reading each one
 // first. The plan may be stale by the time it runs (a confirmation
 // prompt, a concurrent build or a hand edit in the console), so a
@@ -96,7 +102,7 @@ func ExecutePrune(ctx context.Context, m provider.ImageManager, p PrunePlan) Pru
 	var r PruneResult
 	for i, cand := range p.Delete {
 		stop := func(err error) PruneResult {
-			r.Pending = ids(p.Delete[i:])
+			r.Pending = IDs(p.Delete[i:])
 			r.Err = err
 			return r
 		}
@@ -119,8 +125,10 @@ func ExecutePrune(ctx context.Context, m provider.ImageManager, p PrunePlan) Pru
 	return r
 }
 
-func ids(imgs []provider.Image) []string {
-	var out []string
+// IDs lists the images' IDs, as an empty rather than nil slice so that
+// --json output says [] for none.
+func IDs(imgs []provider.Image) []string {
+	out := []string{}
 	for _, img := range imgs {
 		out = append(out, img.ID)
 	}

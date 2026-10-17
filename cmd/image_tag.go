@@ -79,7 +79,7 @@ func runImageTag(cmd *cobra.Command, resolve providerResolver, id, tag string) e
 	if err := m.TagImage(ctx, id, tag); err != nil {
 		return err
 	}
-	res := imageTagResult{ImageID: id, Tag: tag, Reference: "tag:" + tag}
+	res := imageTagResult{ImageID: id, Tag: tag, Reference: image.TagRef(tag)}
 	if jsonFlag(cmd) {
 		return writeJSON(cmd, res)
 	}

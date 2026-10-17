@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/jskswamy/bivouac/internal/provider"
 )
@@ -26,7 +27,7 @@ func (f *fakeImages) ListImages(_ context.Context, tag string) ([]provider.Image
 	f.calls = append(f.calls, "ListImages "+tag)
 	var out []provider.Image
 	for _, img := range f.images {
-		if tag == "" || hasTag(img.Tags, tag) {
+		if tag == "" || slices.Contains(img.Tags, tag) {
 			out = append(out, img)
 		}
 	}

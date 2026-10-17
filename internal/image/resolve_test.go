@@ -305,3 +305,12 @@ func TestSortNewest(t *testing.T) {
 		t.Fatalf("order = %v", ids)
 	}
 }
+
+// TagRef is what build writes into a config and image tag prints; it has
+// to be exactly what Resolve reads back as a tag reference.
+func TestTagRef_RoundTripsThroughResolve(t *testing.T) {
+	tag, ok := strings.CutPrefix(TagRef("my-dev"), tagRefPrefix)
+	if !ok || tag != "my-dev" {
+		t.Fatalf("TagRef(%q) = %q, want the %q prefix Resolve reads", "my-dev", TagRef("my-dev"), tagRefPrefix)
+	}
+}
