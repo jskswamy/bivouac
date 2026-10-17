@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Design
+
+- Drafted user-owned DigitalOcean image support through standalone Packer
+  bundles, stable tags and configurable retention. Design approval and
+  implementation are pending; image commands are not available yet.
+
 ### Fixed
 
 - `up` no longer refuses a symlinked `~/.ssh/config`. A symlink to a writable
