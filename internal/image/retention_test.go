@@ -131,6 +131,21 @@ func TestPlanPrune_NegativeKeepIsError(t *testing.T) {
 	}
 }
 
+func TestPlanPrune_IncompleteScopeIsError(t *testing.T) {
+	for name, s := range map[string]Scope{
+		"no tag":    {Arch: blr.Arch, Region: blr.Region},
+		"no arch":   {Tag: blr.Tag, Region: blr.Region},
+		"no region": {Tag: blr.Tag, Arch: blr.Arch},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, err := PlanPrune(five(), s, 0, "")
+			if err == nil {
+				t.Fatalf("want error, got plan deleting %v", IDs(p.Delete))
+			}
+		})
+	}
+}
+
 func TestGroupScopes(t *testing.T) {
 	nyc := with(snap("7", t0), func(i *provider.Image) {
 		i.Tags = SnapshotTags("my-dev", "x86_64", "nyc3", "fish")

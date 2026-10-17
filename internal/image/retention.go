@@ -31,6 +31,15 @@ func PlanPrune(imgs []provider.Image, s Scope, keepPrevious int, protectedID str
 	if keepPrevious < 0 {
 		return PrunePlan{}, fmt.Errorf("keep-previous must be zero or more, got %d", keepPrevious)
 	}
+	// Eligible skips the tag check for an empty tag, so a scope missing
+	// one would put every tag's builds in this arch and region up for
+	// deletion. Callers validate first; this is the backstop.
+	if err := ValidUserTag(s.Tag); err != nil {
+		return PrunePlan{}, fmt.Errorf("prune scope: %w", err)
+	}
+	if s.Arch == "" || s.Region == "" {
+		return PrunePlan{}, fmt.Errorf("prune scope for tag %s needs both an arch and a region", s.Tag)
+	}
 	var ok []provider.Image
 	for _, img := range imgs {
 		if Eligible(img, s) {
