@@ -18,14 +18,14 @@ var _ provider.ImageManager = (*Provider)(nil)
 // carrying tag when tag is set.
 func (p *Provider) ListImages(ctx context.Context, tag string) ([]provider.Image, error) {
 	var imgs []godo.Image
-	err := paginate(&imgs, func(opt *godo.ListOptions) ([]godo.Image, *godo.Response, error) {
+	err := paginate("listing images", &imgs, func(opt *godo.ListOptions) ([]godo.Image, *godo.Response, error) {
 		if tag == "" {
 			return p.client.Images.ListUser(ctx, opt)
 		}
 		return p.client.Images.ListByTag(ctx, tag, opt)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listing images: %w", err)
+		return nil, err
 	}
 	out := make([]provider.Image, 0, len(imgs))
 	for i := range imgs {
@@ -84,11 +84,11 @@ func (p *Provider) DeleteImage(ctx context.Context, id string) error {
 // SizeDiskGB returns the disk, in GB, that sizeSlug provides.
 func (p *Provider) SizeDiskGB(ctx context.Context, sizeSlug string) (int, error) {
 	var sizes []godo.Size
-	err := paginate(&sizes, func(opt *godo.ListOptions) ([]godo.Size, *godo.Response, error) {
+	err := paginate("listing sizes", &sizes, func(opt *godo.ListOptions) ([]godo.Size, *godo.Response, error) {
 		return p.client.Sizes.List(ctx, opt)
 	})
 	if err != nil {
-		return 0, fmt.Errorf("listing sizes: %w", err)
+		return 0, err
 	}
 	for _, s := range sizes {
 		if s.Slug == sizeSlug {

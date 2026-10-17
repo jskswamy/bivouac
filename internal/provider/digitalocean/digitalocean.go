@@ -138,11 +138,11 @@ func (p *Provider) Destroy(ctx context.Context, id string) error {
 // List returns every droplet on the account.
 func (p *Provider) List(ctx context.Context) ([]provider.VM, error) {
 	var droplets []godo.Droplet
-	err := paginate(&droplets, func(opt *godo.ListOptions) ([]godo.Droplet, *godo.Response, error) {
+	err := paginate("listing droplets", &droplets, func(opt *godo.ListOptions) ([]godo.Droplet, *godo.Response, error) {
 		return p.client.Droplets.List(ctx, opt)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listing droplets: %w", err)
+		return nil, err
 	}
 
 	vms := make([]provider.VM, 0, len(droplets))
@@ -153,13 +153,15 @@ func (p *Provider) List(ctx context.Context) ([]provider.VM, error) {
 }
 
 // paginate loops through every page of a godo list call, appending each
-// page's results to acc.
-func paginate[T any](acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Response, error)) error {
+// page's results to acc. A failed page is reported as what, through
+// keyError while the response is still in hand, so a token refused a
+// listing gives provider.ErrForbidden as every single-resource call does.
+func paginate[T any](what string, acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Response, error)) error {
 	opt := &godo.ListOptions{}
 	for {
 		page, resp, err := fetch(opt)
 		if err != nil {
-			return err
+			return keyError(what, resp, err)
 		}
 		*acc = append(*acc, page...)
 
@@ -168,7 +170,7 @@ func paginate[T any](acc *[]T, fetch func(*godo.ListOptions) ([]T, *godo.Respons
 		}
 		current, err := resp.Links.CurrentPage()
 		if err != nil {
-			return err
+			return fmt.Errorf("%s: %w", what, err)
 		}
 		opt.Page = current + 1
 	}

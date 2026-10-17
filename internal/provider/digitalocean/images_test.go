@@ -208,6 +208,32 @@ func TestDeleteImage_ForbiddenIsErrForbidden(t *testing.T) {
 	}
 }
 
+// The listings a launch makes before it creates anything must say a
+// scoped token was refused just as the single-image calls do; otherwise
+// up reports a bare HTTP status where it could name the permission.
+func TestListings_ForbiddenIsErrForbidden(t *testing.T) {
+	for name, call := range map[string]func(*Provider) error{
+		"ListImages by tag": func(p *Provider) error { _, err := p.ListImages(context.Background(), "my-dev"); return err },
+		"ListImages all":    func(p *Provider) error { _, err := p.ListImages(context.Background(), ""); return err },
+		"SizeDiskGB":        func(p *Provider) error { _, err := p.SizeDiskGB(context.Background(), "s-1vcpu-1gb"); return err },
+		"List droplets":     func(p *Provider) error { _, err := p.List(context.Background()); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, mux := newTestProvider(t)
+			forbid := func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"id":"forbidden","message":"token missing required scope"}`))
+			}
+			mux.HandleFunc("/v2/images", forbid)
+			mux.HandleFunc("/v2/sizes", forbid)
+			mux.HandleFunc("/v2/droplets", forbid)
+			if err := call(p); !provider.IsForbidden(err) {
+				t.Fatalf("error = %v, want forbidden", err)
+			}
+		})
+	}
+}
+
 func TestSizeDiskGB(t *testing.T) {
 	p, mux := newTestProvider(t)
 	mux.HandleFunc("/v2/sizes", func(w http.ResponseWriter, r *http.Request) {
