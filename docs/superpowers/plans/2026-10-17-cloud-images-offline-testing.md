@@ -106,4 +106,6 @@ host (sudo, KVM, bridge) and needs iterative debugging. Package `e2e`,
 gated on `BIVOUAC_E2E_QEMU=1`, implementing D6–D11: a `dofake.Backend`
 that boots QEMU VMs on a bridge from the pinned Ubuntu image with a
 NoCloud seed, real Packer with `DIGITALOCEAN_API_URL` pointed at the fake,
-then the real `bivouac up` from the resulting `tag:` image.
+then the real `bivouac up` from the resulting `tag:` image. Implemented
+in `e2e/`; how to run it is on `TestImageBuildAndLaunch`, and what it
+found is under Findings in the spec.

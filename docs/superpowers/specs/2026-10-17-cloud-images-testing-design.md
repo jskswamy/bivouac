@@ -89,11 +89,13 @@ keys in root's `authorized_keys` and allow root login (`disable_root:
 false`). Ubuntu cloud images refuse root by default; DigitalOcean's do not.
 
 **D8. Base image: the official Ubuntu 24.04 cloud image, pinned.** The
-stand-in for `ubuntu-24-04-x64` is `noble-server-cloudimg-amd64.img` from
-`cloud-images.ubuntu.com`, pinned by SHA256 in the harness and cached
-under `$XDG_CACHE_HOME/bivouac-e2e`, never in the repo. *Difference
-accepted:* DigitalOcean's image adds its droplet agent and its own
-cloud-init datasource; neither is used by bivouac.
+stand-in for `ubuntu-24-04-x64` is `ubuntu-24.04-server-cloudimg-amd64.img`
+from `cloud-images.ubuntu.com/releases/noble/release-20260926/`, pinned by
+SHA256 (`6a81c375…d4d2`) in the harness and cached under
+`~/.cache/bivouac-e2e` (or `$BIVOUAC_E2E_CACHE`), never in the repo. Not
+`$XDG_CACHE_HOME`: the dev shell points that inside the checkout.
+*Difference accepted:* DigitalOcean's image adds its droplet agent and its
+own cloud-init datasource; neither is used by bivouac.
 
 **D9. Snapshots are disk copies.** A `power_off` action shuts the VM down
 through QEMU's monitor; a `snapshot` action flattens the droplet's
@@ -102,11 +104,13 @@ record: `type: snapshot`, `status: available` once the copy completes,
 `min_disk_size` from the disk, the droplet's region. A later droplet
 created from that image ID boots from a fresh overlay on it.
 
-**D10. KVM through an ACL, not a group change.** This VM exposes `vmx`,
-so nested KVM works, but the user is not in the `kvm` group and a group
-change needs a new login. The harness setup grants the current user
-`rw` on `/dev/kvm` with `setfacl`, which lasts until reboot. Without KVM
-the harness refuses to run rather than crawl through TCG for hours.
+**D10. KVM through the `kvm` group, run under `sg kvm`.** This VM
+exposes `vmx`, so nested KVM works. *Revised:* the first choice was a
+`setfacl` grant on `/dev/kvm`, but udev re-applied the device's
+permissions and dropped it the moment the first VM started. The user is
+now in the `kvm` group (`usermod -aG kvm`), and the run goes through
+`sg kvm -c ...`, which picks the group up without a new login. Without
+KVM the harness refuses to run rather than crawl through TCG for hours.
 
 **D11. Tier 2 is never in the default suite.** It is gated on
 `BIVOUAC_E2E_QEMU=1`, lives in its own `e2e` package, and is not run by
@@ -120,6 +124,61 @@ any temporary keys. The token is loaded from `~/sessions/.env` only into
 the environment of the commands that need it, never printed or written
 into the repo. Authorised by the user on 2026-10-17 ("go ahead and do the
 test with digitalocean"), with the cost disclosed beforehand (under $1).
+
+**D13. Tier 2 builds from this checkout's templates, served over git.**
+The built-in `python` template floats on GitHub's default branch, so a
+run would test whatever is published there, not the code under review.
+The harness bare-clones this checkout and serves it with `git
+http-backend` on the bridge address, and the fixture config names it as a
+full template reference (`git+http://10.213.77.1:<port>/bivouac.git?dir=templates#python-x86_64-linux`).
+With no packages or modules to render, that is the same flake reference a
+built-in template expands to, only from a different host. Only committed
+templates are served. Found necessary on the first full run: the
+published template pinned `moshi-hook` 0.3.26, whose CDN tarball now
+answers 404, failing every provision; this branch bumps it to 0.4.31.
+
+**D14. Host changes made for tier 2, all reversible.** On this session
+VM: the `bvce2e0` bridge (`10.213.77.1/24`) and three iptables rules
+scoped to it (a MASQUERADE for the subnet, two FORWARD accepts inserted
+ahead of Docker's and Tailscale's chains); membership of the `kvm` group;
+a 4 GB swapfile `/swap-bivouac-e2e`, because the host had no swap and
+2.8 GB free beside a 2 GB VM. The harness creates the bridge and rules
+idempotently and leaves them in place; taps are removed per VM.
+
+## Findings
+
+What each tier caught that the earlier interface-level tests did not:
+
+- Tier 1: a 403 while listing images or sizes surfaced as a bare HTTP
+  status instead of `provider.ErrForbidden`, so `up` with an
+  under-scoped token gave a raw error (fixed in "Mark a refused image or
+  size listing as forbidden").
+- Tier 1: godo retries a 429 or 5xx up to four times with real backoff,
+  so a single injected failure never reaches the caller; tests inject
+  five, and the persistent-failure cases cost a few seconds.
+- Tier 2: the published `moshi-hook` pin is dead (see D13).
+- Tier 2: the Packer plugin finds its snapshot through
+  `GET /v2/droplets/{id}/snapshots`, a route no plan listed; D2's
+  unknown-route failure named it, and the fake now serves it.
+- Tier 2: a launch from a baked image failed in cloud-init. Ubuntu 24.04
+  starts sshd through `ssh.socket`, so seconds after boot there is no
+  `/run/sshd` for `sshd -t` and no active `ssh.service` to reload; a
+  stock boot only got away with it because the Nix install ran first.
+  Fixed in "Disable root SSH before sshd has ever run". DigitalOcean's own
+  image may or may not use socket activation; the fix holds either way.
+
+### First passing tier 2 run (2026-10-17)
+
+- `bivouac image build` through real Packer 1.15.4 and the DigitalOcean
+  plugin 1.4.1: 4m12s, snapshot tagged with all five markers and the user
+  tag, builder droplet destroyed, temporary key deleted, config written
+  back to `tag:e2e`.
+- `bivouac up` from `tag:e2e`: 1m45s from create to provisioned. The Nix
+  installer did not run, and the active Home Manager generation was the
+  baked closure itself
+  (`/nix/store/zy3l05d9…-home-manager-generation`), so launch rebuilt
+  nothing.
+- `bivouac down` removed the droplet; no VM or tap device was left.
 
 ## Not covered by any tier
 
