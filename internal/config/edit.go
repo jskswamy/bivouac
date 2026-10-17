@@ -32,9 +32,13 @@ const (
 // store, which they cannot write to.
 var nixStorePrefix = "/nix/store/"
 
+// imageDecl counts any `image:` line as a declaration, typed or not, so
+// an annotation imageLiteral cannot follow is refused rather than
+// answered with a second, conflicting image line. imageLiteral accepts
+// only a plain type name between the colon and the equals sign.
 var (
-	imageDecl    = regexp.MustCompile(`^[ \t]*image[ \t]*=`)
-	imageLiteral = regexp.MustCompile(`^([ \t]*image[ \t]*=[ \t]*)"(?:[^"\\]|\\.)*"([ \t]*(?://.*)?)$`)
+	imageDecl    = regexp.MustCompile(`^[ \t]*image[ \t]*[:=]`)
+	imageLiteral = regexp.MustCompile(`^([ \t]*image[ \t]*(?::[ \t]*[A-Za-z_][A-Za-z0-9_.]*\??[ \t]*)?=[ \t]*)"(?:[^"\\]|\\.)*"([ \t]*(?://.*)?)$`)
 )
 
 // SetImage points path's top-level image at ref by editing that one line,

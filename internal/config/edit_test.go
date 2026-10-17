@@ -106,6 +106,37 @@ func TestSetImage_IgnoresNestedAndCommentedImage(t *testing.T) {
 
 // A top-level image that is not a plain string literal is an expression
 // the user wrote on purpose; rewriting it would discard their logic.
+func TestSetImage_ReplacesTypedImage(t *testing.T) {
+	path := writeEditFixture(t, "region = \"blr1\"\nimage: String = \"ubuntu-24-04-x64\" // stock\n", 0o600)
+
+	got, err := SetImage(path, "tag:my-dev")
+	if err != nil || !got.Written {
+		t.Fatalf("SetImage = %+v, %v; want written", got, err)
+	}
+	want := "region = \"blr1\"\nimage: String = \"tag:my-dev\" // stock\n"
+	if after := readFile(t, path); after != want {
+		t.Errorf("file = %q, want %q", after, want)
+	}
+}
+
+// A type annotation the literal pattern cannot follow is still a
+// declaration: appending a second image line would break the module.
+func TestSetImage_RefusesUnfamiliarTypedImage(t *testing.T) {
+	before := "image: String(this == \"x\" || true) = \"ubuntu-24-04-x64\"\n"
+	path := writeEditFixture(t, before, 0o600)
+
+	got, err := SetImage(path, "tag:my-dev")
+	if err != nil {
+		t.Fatalf("SetImage: %v", err)
+	}
+	if got.Written || got.Reason == "" {
+		t.Errorf("outcome = %+v, want not written with a reason", got)
+	}
+	if after := readFile(t, path); after != before {
+		t.Errorf("file changed to %q", after)
+	}
+}
+
 func TestSetImage_RefusesNonLiteralImage(t *testing.T) {
 	before := "image = if (true) \"a\" else \"b\"\n"
 	path := writeEditFixture(t, before, 0o600)
