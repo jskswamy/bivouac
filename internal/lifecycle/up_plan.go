@@ -56,7 +56,7 @@ func PrepareUp(ctx context.Context, name, configPath, repoRoot string, cfg confi
 	if err != nil {
 		return UpPlan{}, err
 	}
-	cloudInit, err := provisioning.RenderCloudInit(user, cfg.Shell)
+	cloudInit, err := provisioning.RenderCloudInit(user, cfg.Shell, provisioning.BootStock)
 	if err != nil {
 		return UpPlan{}, err
 	}
