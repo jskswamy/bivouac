@@ -65,6 +65,19 @@ requirements attributed to the user.
    same scope; no distributed image-management service is introduced.
 5. Use CLI flags for build retention settings initially rather than adding an
    image-policy Pkl object. Persist only the launch reference in config.
+6. Build the closure as the same account name a launch will use, not an
+   arbitrary builder name. The template reads `$USER`/`$HOME` through
+   `--impure` (`reconcile.go`), so `home.username` and `homeDirectory` are
+   inputs to the activation package: a different builder name yields a
+   different package and reuses only the shared package paths. The remote
+   username comes from `identity.RemoteUser()`, so the bundle records it
+   as a build parameter (default: the invoking user's value) and the temporary
+   account is created with that name, then removed in cleanup.
+7. The login shell is baked, because cloud-init decides it once and nothing
+   applies it later (`cloud-init.sh`, `checkLoginShell`). Record the baked
+   shell in the image metadata. A launch whose resolved `shell` differs from
+   the image's fails before creating a VM, naming both values; it does not
+   fall back or install a second shell silently.
 
 The first choice avoids baking a CI runner's home or a personal account's
 application state and prevents arbitrary Home Manager activation scripts from
@@ -289,31 +302,71 @@ copying, image transfer or unrelated image adoption.
 
 ## Existing code seams and scope
 
-Graph exploration of `PrepareUp` and `Reconcile`, verified against current
-source at `a8ad0956958d1b5bf9531fa684314751e6cbf380`, identifies:
+Verified against source at `d592856` (config, provisioning, provider,
+lifecycle, reconcile and godo v1.205.0). Confirmed claims and corrections:
 
-- `internal/config`: shared resolution, sparse field presence and writing.
-  Add image-source selection without requiring a project or duplicating base.
-- `internal/provisioning`: reuse template expansion and Nix rendering; extract
-  software setup from `cloud-init.sh` and add safe image preparation assets.
-- `internal/reconcile`: keep runtime secret placement at runtime. Reuse its
-  pure rendering/validation collaborators rather than invoke `Reconcile`,
-  which assumes instance state and places credentials after activation.
-- `internal/provider/digitalocean`: add a focused image capability for lookup,
-  tags and deletion. Droplet creation currently always uses a slug; pass
-  numeric IDs correctly. Keep provider-specific API details out of the CLI.
-- `internal/lifecycle`: resolve and validate image choice before VM creation,
-  select the boot path and record the concrete image ID.
-- `internal/image` (proposed): bundle generation, Packer invocation and image
-  workflow orchestration. Keep pure artifact generation testable separately
-  from paid cloud operations.
-- `cmd`: thin `image` group, existing progress/table/JSON conventions, metadata
-  and manifest registration; documentation and release notes accompany it.
+- `internal/config`
+  - `mergeConfig` takes `project.Arch`, `project.Image`, `Tailscale` and
+    `Beads` unconditionally, so a base value for any of them is silently
+    dropped. The spec named only image and arch; all four have the defect.
+    `declaredFields(raw)` in `read.go` already detects which fields a file
+    declares and is the presence mechanism to reuse.
+  - `Resolve(path)` loads `path`, then `resolveBasePath` falls back to
+    `DefaultBasePath()`. Given `base.pkl` itself it merges the file with
+    itself and doubles the additive lists, as the spec says. `ResolveBase`
+    is unvalidated and default-path only, so neither fits. Add a
+    single-file entry point that validates once.
+  - `Resolve` and `loadResolved` need the `pkl` CLI. Generate-only therefore
+    requires Pkl but not Packer, a token or Nix. State this.
+  - `write.go` only renders a whole file from sparse `Values`; there is no
+    targeted edit. Writeback for `image` is therefore a new, small
+    primitive. Because the tag reference is set once and survives rebuilds,
+    v1 may print the snippet and edit only a file where a top-level `image`
+    line can be replaced or appended without touching other text.
+  - `docs/config.md` documents `image` as a DigitalOcean slug; update it.
+- `internal/provisioning`
+  - `cloud-init.sh` confirms the spec: Determinate Nix install, apt shell
+    install, `useradd`, key copy from root's `authorized_keys`, sudoers,
+    lingering, then root login disabled. Root's keys are DigitalOcean-seeded
+    at droplet creation, so sanitization must empty them and the baked boot
+    path must still copy the fresh set.
+  - `Render`, `NeedsRender`, `ResolveTemplateRef`, `NixSystem` and
+    `Validate` (which takes a `Runner`) are pure or runner-based and reusable.
+- `internal/reconcile`: `Reconcile` is not reusable (it opens instance
+  state, connects over SSH, places credentials). Reuse only the provisioning
+  collaborators above.
+- `internal/provider` and `digitalocean`
+  - `InstanceSpec.Image` is a string and `Create` sets
+    `godo.DropletCreateImage{Slug: ...}` only. godo marshals the numeric ID
+    only when `ID` is set and `Slug` is empty, so a numeric reference needs
+    explicit parsing in `Create`.
+  - Add image operations as an optional interface asserted at the call site,
+    the pattern `KeyRegistry` already documents, not as methods on
+    `Provider`. Reuse the generic `paginate` helper.
+  - godo exposes `Image.Regions`, `MinDiskSize`, `Status`, `Tags`, `Type`,
+    `ListByTag`, `GetByID`, `Delete`, and tagging through
+    `Tags.TagResources` with `ImageResourceType`. `Images.Update` changes only
+    name, distribution and description, so it cannot add tags. Disk
+    validation needs the size's disk from the Sizes API, because the launch
+    size's disk must be at least the snapshot's `MinDiskSize`.
+- `internal/lifecycle` and `state`
+  - `PrepareUp` renders cloud-init and builds `InstanceSpec{Image:
+    cfg.Image}` and holds no provider. The boot path (stock or baked) is
+    chosen in the rendered user data, so image resolution must happen before
+    `RenderCloudInit`. Either resolve in the `up` command and pass the result
+    in, or give `PrepareUp` an image resolver. The resolution API call must
+    still precede any billable `Create`.
+  - `state.Record` has no image fields. Add `omitempty` requested-reference
+    and resolved-ID fields, so old records still load.
+- `internal/image` (proposed): bundle generation, Packer invocation and
+  workflow orchestration, with pure generation tested apart from paid cloud
+  operations.
+- `cmd`: thin `image` group, existing progress/table/JSON conventions,
+  metadata and manifest registration; documentation and release notes.
 
 Older provisioning specs describe cloud-init as Nix-only. Current code also
 creates the user and configures access, and is authoritative for identifying
-these seams. This design extends that behavior rather than assuming the old
-minimal boot script is still the implementation.
+these seams.
 
 ## Verification required for implementation
 
