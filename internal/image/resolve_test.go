@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -242,6 +243,30 @@ func TestResolve_NumericIDRegionMismatchNamesBoth(t *testing.T) {
 	_, err := Resolve(context.Background(), newFake(img), req("5"))
 	if err == nil || !strings.Contains(err.Error(), "blr1") || !strings.Contains(err.Error(), "nyc1") {
 		t.Fatalf("err = %v, want both regions named", err)
+	}
+}
+
+// A tag built only elsewhere is the likeliest cause of "no image": the
+// error has to say where the tagged builds are, not just where it looked.
+func TestResolve_TagRegionMismatchNamesBoth(t *testing.T) {
+	nyc := with(snap("7", t0), func(i *provider.Image) {
+		i.Regions = []string{"nyc3"}
+		i.Tags = SnapshotTags("my-dev", "x86_64", "nyc3", "fish")
+	})
+	_, err := Resolve(context.Background(), newFake(nyc), req("tag:my-dev"))
+	if err == nil || !strings.Contains(err.Error(), "blr1") || !strings.Contains(err.Error(), "nyc3") || !strings.Contains(err.Error(), "7") {
+		t.Fatalf("err = %v, want both regions and the skipped image named", err)
+	}
+}
+
+func TestResolve_TagSkippedListIsBounded(t *testing.T) {
+	var imgs []provider.Image
+	for i := 1; i <= 8; i++ {
+		imgs = append(imgs, with(snap(fmt.Sprint(i), t0.Add(time.Duration(i)*time.Hour)), func(i *provider.Image) { i.Status = "pending" }))
+	}
+	_, err := Resolve(context.Background(), newFake(imgs...), req("tag:my-dev"))
+	if err == nil || !strings.Contains(err.Error(), "image 8") || strings.Contains(err.Error(), "image 1 ") || !strings.Contains(err.Error(), "5 more") {
+		t.Fatalf("err = %v, want the newest three named and the rest counted", err)
 	}
 }
 

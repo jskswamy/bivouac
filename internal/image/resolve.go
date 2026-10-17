@@ -81,10 +81,33 @@ func newestTagged(ctx context.Context, m provider.ImageManager, tag string, req 
 		}
 	}
 	if len(ok) == 0 {
-		return provider.Image{}, fmt.Errorf("no ready Bivouac image tagged %q for arch %s in region %s", tag, req.Arch, req.Region)
+		return provider.Image{}, fmt.Errorf("no ready Bivouac image tagged %q for arch %s in region %s%s", tag, req.Arch, req.Region, skipped(all, scope))
 	}
 	SortNewest(ok)
 	return ok[0], nil
+}
+
+// maxSkipped bounds how many rejected images an error names: a tag
+// rebuilt daily would otherwise turn one error into a page.
+const maxSkipped = 3
+
+// skipped says why each tagged image was passed over, newest first. The
+// usual answer -- the tag was built in another region -- is otherwise
+// invisible, because the bare error names only where Resolve looked.
+func skipped(all []provider.Image, s Scope) string {
+	if len(all) == 0 {
+		return ""
+	}
+	imgs := slices.Clone(all)
+	SortNewest(imgs)
+	var why []string
+	for _, img := range imgs[:min(len(imgs), maxSkipped)] {
+		why = append(why, fmt.Sprintf("image %s: %s", img.ID, ineligible(img, s)))
+	}
+	if extra := len(imgs) - maxSkipped; extra > 0 {
+		why = append(why, fmt.Sprintf("and %d more", extra))
+	}
+	return "; skipped " + strings.Join(why, "; ")
 }
 
 func validatedID(ctx context.Context, m provider.ImageManager, req Request) (provider.Image, error) {
