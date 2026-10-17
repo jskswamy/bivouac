@@ -10,7 +10,7 @@
 #     https://cdn.getmoshi.app/hook/v<version>/moshi-hook_Linux_<arch>.tar.gz
 { stdenvNoCC, fetchurl }:
 let
-  version = "0.3.26";
+  version = "0.4.31";
 
   # checksums.txt keys releases by Go's GOARCH-ish "arm64"/"x86_64", not the
   # "aarch64-linux" nixpkgs system string -- map explicitly rather than
@@ -18,11 +18,11 @@ let
   assets = {
     x86_64-linux = {
       arch = "x86_64";
-      sha256 = "0l15g3fgwb6c9v9sc0hzw8kykf1haaka1yfa02c1b0l2p1562h82";
+      sha256 = "0zn8gfz2rg6z1nvx04fix790sqcsxmkhwp3h5gd0nmx2imapk6xc";
     };
     aarch64-linux = {
       arch = "arm64";
-      sha256 = "0641lhmkkza5xb2s319m8j4b87rvrvcak73vdr0szrjkn0zp01fi";
+      sha256 = "1dbq28ci3dxqkk99017xpnad2hghbl16491wg2acnk2jyznv29s9";
     };
   };
   asset =
