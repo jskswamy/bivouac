@@ -27,7 +27,7 @@ see "A note on trust" near the end of this doc.
 | `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
 | `template` | `String?` | Yes, after merge | none | Provisioning template: `"python"` or `"docker"`. Anything else is treated as a complete flake reference (`"<url>#<output>"`) and used as-is — see [Templates](#templates) below. |
 | `arch` | `String` | No | `"x86_64"` | Instance CPU architecture: `"x86_64"` or `"arm64"`. Maps to the Nix system used for template/flake resolution. |
-| `image` | `String` | No | `"ubuntu-24-04-x64"` | Base VM image (DigitalOcean slug). Maps directly to `Provider.Create`'s `Image`. |
+| `image` | `String` | No | `"ubuntu-24-04-x64"` | The image a new instance boots from: a stock DigitalOcean slug, a numeric image ID, or `"tag:<name>"` for the newest image you built with that tag. Can live in your base config — see [below](#image). |
 | `tailscale` | `Boolean` | No | `false` | Install `tailscaled` and auto-join the instance to your personal Tailscale network during `up`. Requires `tailscale_authkey` in your personal secrets file — see [below](#tailscale). |
 | `beads` | `"session"\|"dolthub"\|"off"` | No | `"session"` | How the agent's issue database reaches the instance — see [below](#beads). |
 | `shell` | `"fish"\|"zsh"\|"bash"` | No | `"fish"` | The instance user's login shell, set once by cloud-init at creation and never changed afterwards. Can live in your base config — see [below](#shell). |
@@ -132,6 +132,43 @@ different shell.
 
 If the PPA cannot be added, Ubuntu's own fish is used. If the shell fails to
 install or to run, the instance stays on bash and remains reachable.
+
+An instance launched from an image you built gets the shell baked into
+that image instead, so `shell` must match it; see [`image`](#image).
+
+### `image`
+
+One of three forms:
+
+- **A stock DigitalOcean slug**, such as the default `"ubuntu-24-04-x64"`.
+  It is passed to DigitalOcean unchanged, and the instance installs Nix
+  and its shell at first boot.
+- **A positive numeric image ID**, such as `"123456789"`: one image you
+  built with `bivouac image build` or its Packer bundle.
+- **`"tag:<name>"`**, such as `"tag:my-dev"`: the newest eligible image
+  carrying that tag, by creation time and then by ID. This is what
+  `bivouac image build --tag my-dev` writes for you, and because it names
+  the tag rather than an image, rebuilding never changes the file.
+
+An ID or a tag must name a ready Bivouac image: available, carrying the
+full set of Bivouac marker tags, built for this config's `arch`, and
+built in and available in its `region`. Its minimum disk must also fit
+`size`. All of this is checked before any Droplet is created; when it
+fails, `up` names what it wanted and stops. It never copies an image to
+another region, falls back to the stock image, or starts a build.
+
+The login shell is baked into an image, so a launch from an ID or a tag
+also requires `shell` to match the shell the image was built with. A
+mismatch fails before the Droplet is created, naming both shells: change
+`shell`, or build an image for the one you want.
+
+`image` in your base config applies to every project that does not set
+it, so `image = "tag:my-dev"` there launches all your instances from your
+image. A project that sets `image` itself, even to the stock default,
+keeps its own value.
+
+Building, listing, tagging and pruning images are covered in
+[Custom cloud images](images.md).
 
 ### `beads`
 
@@ -411,10 +448,12 @@ base config. If one exists, the two are merged:
 - **Scalars** (`region`, `size`, `template`, `shell`): the project's value
   wins if it set one; otherwise the base's value is used. `shell` falls
   back to `fish` when neither sets it.
-- **`arch`, `image`, `tailscale`, and `beads`**: always the project's
-  resolved value (each has its own schema-level default) -- unlike the
-  scalars above, a personal base config's value for any of these four
-  is never consulted, even if the project doesn't set one explicitly.
+- **`arch`, `image`, `tailscale`, and `beads`**: the same rule, decided by
+  whether the project file declares the field at all. A project that
+  omits one gets the base's value, and the schema default only when
+  neither file sets it. A project that sets one wins even when its value
+  equals the default, so `image = "ubuntu-24-04-x64"` in a project
+  overrides `image = "tag:my-dev"` in your base.
 - **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`,
   `herdrTabs`): additive — your base's entries first, then the
   project's. Nothing is dropped from either side of the merge itself.
@@ -716,4 +755,6 @@ allowed to read or fetch) is a natural hardening step.
 - **"this needs a terminal to ask its questions"** — `bivouac init`, or `up` with no `bivouac.pkl`, was run with stdin redirected or in CI. Run it from a terminal, or write the file by hand.
 - **"pkl CLI not found on PATH"** — install Pkl, or run inside this repo's `nix develop` shell if you're working on bivouac itself.
 - **"must not declare its own `amends` — bivouac manages the schema reference automatically; remove that line"** — your `bivouac.pkl` or base config starts with its own `amends`. Delete that line; bivouac points your file at its own embedded schema automatically.
+- **"no ready Bivouac image tagged "my-dev" for arch x86_64 in region nyc3"** — `image = "tag:my-dev"`, but no available image with that tag and the full set of Bivouac markers was built in and is available in that region for that architecture. Build one there (`bivouac image build --tag my-dev` with that region), or check what exists with `bivouac image list --tag my-dev`. Nothing was created.
+- **"image … was built with login shell fish but the config asks for zsh"** — the image's baked shell differs from `shell`. Set `shell` to the image's, or build an image for your shell. Nothing was created.
 - A Pkl evaluation error (malformed file, wrong type for a field) is passed through with the file path it came from — Pkl's own error message names the exact line and problem.

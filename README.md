@@ -234,6 +234,11 @@ Selecting one permits exactly that package, not unfree software in general.
 See [`docs/config.md`](docs/config.md) for every field, merge rules, examples,
 and error messages.
 
+To launch faster, `bivouac image build --tag my-dev` bakes Nix, your shell
+and your configuration's store closure into a DigitalOcean snapshot in your
+own account, and points `image = "tag:my-dev"` at it. See
+[`docs/images.md`](docs/images.md), including its trust boundary.
+
 ## What gets installed
 
 Templates are Nix/home-manager modules. The built-in templates are:
@@ -288,6 +293,7 @@ stable surface agents can read without scraping human help.
 ## Documentation by task
 
 - **Configure an instance:** [`docs/config.md`](docs/config.md)
+- **Build your own cloud images for faster launches:** [`docs/images.md`](docs/images.md)
 - **Understand the architecture:** [`docs/architecture.md`](docs/architecture.md)
 - **See examples:** [`docs/examples/`](docs/examples/)
 - **Understand design decisions:** [`docs/adr/`](docs/adr/)
