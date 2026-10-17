@@ -41,12 +41,20 @@ func newImagePruneCmd() *cobra.Command {
 	return newImagePruneCmdWithProvider(resolveProvider, terminalIO)
 }
 
-// terminalIO is stricter than isInteractive: the preview and prompt go
-// to the terminal and the answer comes from it, so a redirected stdout
-// (a script capturing the output) is as unattended as a closed stdin.
-func terminalIO() bool { return isInteractive() && term.IsTerminal(os.Stdout.Fd()) }
+// terminalIO is stricter than isInteractive: the answer comes from stdin
+// and the prompt goes to stderr, and the user must see the preview before
+// answering. That is on stdout, except with --json, which moves it to
+// stderr so `--json | jq` in a terminal can still be confirmed.
+func terminalIO(jsonOut bool) bool {
+	return canConfirm(isInteractive(), term.IsTerminal(os.Stdout.Fd()), term.IsTerminal(os.Stderr.Fd()), jsonOut)
+}
 
-func newImagePruneCmdWithProvider(resolve providerResolver, interactive func() bool) *cobra.Command {
+// canConfirm is terminalIO's rule, given which streams are terminals.
+func canConfirm(stdin, stdout, stderr, jsonOut bool) bool {
+	return stdin && stderr && (stdout || jsonOut)
+}
+
+func newImagePruneCmdWithProvider(resolve providerResolver, interactive func(jsonOut bool) bool) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "prune",
 		Short: "Delete older images with a tag, keeping the newest",
@@ -86,7 +94,7 @@ func newImagePruneCmdWithProvider(resolve providerResolver, interactive func() b
 	return c
 }
 
-func runImagePrune(cmd *cobra.Command, resolve providerResolver, interactive func() bool) error {
+func runImagePrune(cmd *cobra.Command, resolve providerResolver, interactive func(jsonOut bool) bool) error {
 	tag, _ := cmd.Flags().GetString("tag")
 	keep, _ := cmd.Flags().GetInt("keep-previous")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -141,7 +149,7 @@ func runImagePrune(cmd *cobra.Command, resolve providerResolver, interactive fun
 	if !yes {
 		// Never wait on a prompt nobody can answer: a hang in CI is
 		// worse than a refusal that names the flag to pass.
-		if !interactive() {
+		if !interactive(jsonFlag(cmd)) {
 			return errors.New("image prune needs confirmation and this is not a terminal: pass --yes to delete without asking, or --dry-run to only list")
 		}
 		printf(cmd.ErrOrStderr(), "Delete %d images? [y/N] ", len(res.Pending))

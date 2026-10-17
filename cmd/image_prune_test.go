@@ -20,7 +20,7 @@ func pruneFixture(t *testing.T) *imageFake {
 
 func execPrune(t *testing.T, p *imageFake, interactive bool, stdin string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	c := newImagePruneCmdWithProvider(fakeResolve(p), func() bool { return interactive })
+	c := newImagePruneCmdWithProvider(fakeResolve(p), func(bool) bool { return interactive })
 	c.SetIn(strings.NewReader(stdin))
 	return execImageSub(t, c, args...)
 }
@@ -139,6 +139,39 @@ func TestImagePrune_PartialFailureJSON(t *testing.T) {
 	// blr1 sorts first, so 11 went; nyc3 deleted 1 then failed on 2.
 	if !slices.Equal(got.Deleted, []string{"11", "1"}) || !slices.Equal(got.Pending, []string{"2"}) {
 		t.Errorf("deleted %v pending %v, want [11 1] and [2]", got.Deleted, got.Pending)
+	}
+}
+
+// The prompt goes to stderr and the answer comes from stdin; the preview
+// goes to stdout unless --json reserves stdout for the document. All the
+// streams the user reads or answers on must be a terminal, and only those.
+func TestCanConfirm(t *testing.T) {
+	for _, c := range []struct {
+		name                         string
+		stdin, stdout, stderr, jsonO bool
+		want                         bool
+	}{
+		{"all terminals", true, true, true, false, true},
+		{"stdin redirected", false, true, true, false, false},
+		{"stderr redirected", true, true, false, false, false},
+		{"stdout redirected hides the preview", true, false, true, false, false},
+		{"--json piped to jq keeps the preview on stderr", true, false, true, true, true},
+		{"--json with stdin redirected", false, false, true, true, false},
+	} {
+		if got := canConfirm(c.stdin, c.stdout, c.stderr, c.jsonO); got != c.want {
+			t.Errorf("%s: canConfirm = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestImagePrune_InteractiveCheckKnowsAboutJSON(t *testing.T) {
+	var gotJSON []bool
+	c := newImagePruneCmdWithProvider(fakeResolve(pruneFixture(t)), func(j bool) bool { gotJSON = append(gotJSON, j); return false })
+	if _, _, err := execImageSub(t, c, "--tag", "my-dev", "--keep-previous", "0", "--json"); err == nil {
+		t.Fatal("prune without a terminal or --yes succeeded")
+	}
+	if !slices.Equal(gotJSON, []bool{true}) {
+		t.Errorf("interactive check called with %v, want [true]", gotJSON)
 	}
 }
 
