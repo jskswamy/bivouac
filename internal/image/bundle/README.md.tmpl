@@ -1,0 +1,56 @@
+# Image bundle: [[ .Tag ]]
+
+A Packer template that builds a DigitalOcean snapshot tagged
+`[[ .Tag ]]`: [[ .Arch ]], built in `[[ .Region ]]`, with [[ .Shell ]] as
+the login shell and the Nix environment prebuilt for the account
+`[[ .Username ]]`.
+
+Bivouac [[ .BivouacVersion ]] generated it, but building needs nothing from
+Bivouac: only Packer and a DigitalOcean API token.
+
+## Build
+
+Put a DigitalOcean API token in the `DIGITALOCEAN_TOKEN` environment
+variable; it is read at run time and never stored here. Then run these from
+this directory, since every path in the template is relative to it:
+
+```sh
+packer init .
+packer validate .
+packer build .
+```
+
+`packer init .` installs the pinned DigitalOcean plugin. The region, size and
+account name are Packer variables, so `packer build -var region=ams3 .`
+builds elsewhere without editing the template. The snapshot's ID is written
+to `packer-manifest.json`.
+
+## What happens
+
+1. A temporary Droplet starts from stock `[[ .SourceImage ]]`, never from an
+   earlier image, and `scripts/bootstrap.sh` installs Nix and the login shell
+   as its user data.
+2. `scripts/wait-bootstrap.sh` waits for that to finish.
+3. `metadata.json`[[ if .Rendered ]], and the rendered Nix configuration
+   in `nix/`,[[ end ]] are uploaded to `/var/lib/bivouac-image/`.
+4. `scripts/build-closure.sh` builds the Home Manager activation package for
+   `[[ .FlakeRef ]]` as a temporary account of that name, and roots it
+   against garbage collection. Nothing is activated.
+5. `scripts/sanitize.sh` removes the temporary account, SSH keys, machine
+   identity, cloud-init state, histories, logs and temporary files.
+6. Packer snapshots the Droplet, tags it and deletes the Droplet.
+
+A standalone Packer run does not prune older images or update any config to
+point at the new one; those are Bivouac operations.
+
+## Trust boundary
+
+Read this before committing or sharing the bundle. The build evaluates and
+builds arbitrary Nix expressions from the configuration above, and they run
+with network access inside the builder. Only build configurations you trust.
+Cleanup removes known machine identity and access state; it cannot find
+secrets that a configuration deliberately embeds in the Nix store, and
+anything placed there ends up in the snapshot.
+
+No credential is written into this directory. The token reaches only Packer
+on the machine running it; it is never sent into the builder.
