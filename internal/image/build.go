@@ -114,6 +114,11 @@ func Build(ctx context.Context, d BuildDeps, o BuildOptions) (BuildResult, error
 		}
 		if failed != nil {
 			failed.Cleanup = pr.Summary()
+			// The error carries one phase, so a prune that failed after a
+			// failed writeback rides along in Cleanup rather than vanish.
+			if pr.Err != nil && failed.Phase != "prune" {
+				failed.Cleanup += fmt.Sprintf(" (prune failed: %v)", pr.Err)
+			}
 		}
 	}
 	if failed != nil {

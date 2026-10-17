@@ -182,6 +182,23 @@ func TestBuild_WritebackErrorStillPrunes(t *testing.T) {
 	}
 }
 
+func TestBuild_WritebackAndPruneFailuresBothReported(t *testing.T) {
+	f := newBuildFixture()
+	f.editErr = errors.New("disk full")
+	f.images.deleteErr = map[string]error{"2": errors.New("403 forbidden")}
+
+	_, err := Build(context.Background(), f.deps(t), buildOpts(t))
+	var op *OpError
+	if !errors.As(err, &op) || op.Phase != "writeback" {
+		t.Fatalf("err = %v, want the writeback OpError", err)
+	}
+	for _, want := range []string{"disk full", "403 forbidden", "deleted 1", "pending 1"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
 func TestBuild_PruneFailureReportsImage(t *testing.T) {
 	f := newBuildFixture()
 	f.images.deleteErr = map[string]error{"2": errors.New("403 forbidden")}
