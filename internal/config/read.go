@@ -2,9 +2,7 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"maps"
-	"os"
 	"regexp"
 	"strings"
 )
@@ -22,19 +20,13 @@ import (
 // never mentioned would make editing one package rewrite the file with
 // lines its author chose to leave out.
 func ReadValues(ctx context.Context, path string) (Values, error) {
-	// #nosec G304 -- path is the bivouac.pkl/base.pkl/preset the caller
-	// asked to read; see loadResolved for the same rationale.
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-	cfg, err := loadResolved(ctx, path)
+	cfg, declared, err := loadResolved(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
 	values := Values{}
-	for name := range declaredFields(raw) {
+	for name := range declared {
 		if v, ok := fieldValue(cfg, name); ok {
 			values[name] = v
 		}

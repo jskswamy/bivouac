@@ -405,7 +405,7 @@ func TestMergeConfig_AgentsAreAdditiveBaseFirst(t *testing.T) {
 	base := Config{Agents: []string{"claude"}}
 	project := Config{Agents: []string{"codex"}}
 
-	got := mergeConfig(base, project).Agents
+	got := mergeConfig(base, project, nil).Agents
 	want := []string{"claude", "codex"}
 	if len(got) != len(want) {
 		t.Fatalf("Agents = %v, want %v", got, want)
@@ -466,7 +466,7 @@ func TestMergeConfig_HerdrTabsAreAdditiveBaseFirst(t *testing.T) {
 	base := Config{HerdrTabs: []HerdrTab{{Label: "agent"}}}
 	project := Config{HerdrTabs: []HerdrTab{{Label: "run"}}}
 
-	got := mergeConfig(base, project).HerdrTabs
+	got := mergeConfig(base, project, nil).HerdrTabs
 	if len(got) != 2 || got[0].Label != "agent" || got[1].Label != "run" {
 		t.Errorf("HerdrTabs = %+v, want [agent run] -- base's tabs are created first", got)
 	}
@@ -610,7 +610,7 @@ beads = "dolthubb"
 func TestMergeConfig_SettingsBaseOnly(t *testing.T) {
 	base := Config{Settings: map[string]any{"a.b": "base-value"}}
 	project := Config{}
-	got := mergeConfig(base, project)
+	got := mergeConfig(base, project, nil)
 	if got.Settings["a.b"] != "base-value" {
 		t.Errorf("Settings[a.b] = %v, want base-value", got.Settings["a.b"])
 	}
@@ -619,7 +619,7 @@ func TestMergeConfig_SettingsBaseOnly(t *testing.T) {
 func TestMergeConfig_SettingsProjectOnly(t *testing.T) {
 	base := Config{}
 	project := Config{Settings: map[string]any{"a.b": "project-value"}}
-	got := mergeConfig(base, project)
+	got := mergeConfig(base, project, nil)
 	if got.Settings["a.b"] != "project-value" {
 		t.Errorf("Settings[a.b] = %v, want project-value", got.Settings["a.b"])
 	}
@@ -628,7 +628,7 @@ func TestMergeConfig_SettingsProjectOnly(t *testing.T) {
 func TestMergeConfig_SettingsProjectOverridesBaseKey(t *testing.T) {
 	base := Config{Settings: map[string]any{"a": "base-value"}}
 	project := Config{Settings: map[string]any{"a": "project-value"}}
-	got := mergeConfig(base, project)
+	got := mergeConfig(base, project, nil)
 	if got.Settings["a"] != "project-value" {
 		t.Errorf("Settings[a] = %v, want project-value (project wins)", got.Settings["a"])
 	}
@@ -637,7 +637,7 @@ func TestMergeConfig_SettingsProjectOverridesBaseKey(t *testing.T) {
 func TestMergeConfig_SettingsProjectAddsNewKey(t *testing.T) {
 	base := Config{Settings: map[string]any{"a": "base-value"}}
 	project := Config{Settings: map[string]any{"b": "project-value"}}
-	got := mergeConfig(base, project)
+	got := mergeConfig(base, project, nil)
 	if got.Settings["a"] != "base-value" {
 		t.Errorf("Settings[a] = %v, want base-value (untouched)", got.Settings["a"])
 	}
@@ -761,5 +761,69 @@ func TestResolve_ShellInTheBaseIsTypeChecked(t *testing.T) {
 
 	if _, err := Resolve(t.Context(), path); err == nil {
 		t.Fatal("Resolve() error = nil, want a type error for a base shell that is not fish, zsh or bash")
+	}
+}
+
+// A project that never mentions arch, image, tailscale or beads still
+// loads with their schema defaults, so the merge has to ask the file
+// whether it declared them. Without that, `image = "tag:my-dev"` in
+// base.pkl would be silently replaced by every project. The explicit
+// rows matter as much: a project writing the default out loud has
+// chosen it, and must beat a base that says otherwise.
+func TestResolve_InheritsUndeclaredScalarsFromBase(t *testing.T) {
+	get := map[string]func(Resolved) any{
+		"arch":      func(r Resolved) any { return r.Arch },
+		"image":     func(r Resolved) any { return r.Image },
+		"tailscale": func(r Resolved) any { return r.Tailscale },
+		"beads":     func(r Resolved) any { return r.Beads },
+	}
+	tests := []struct {
+		name    string
+		field   string
+		base    string
+		project string
+		want    any
+	}{
+		{"image omitted inherits base", "image", `image = "tag:my-dev"`, "", "tag:my-dev"},
+		{"image explicit default wins", "image", `image = "tag:my-dev"`, `image = "ubuntu-24-04-x64"`, "ubuntu-24-04-x64"},
+		{"image explicit other wins", "image", `image = "tag:my-dev"`, `image = "ubuntu-22-04-x64"`, "ubuntu-22-04-x64"},
+		{"image neither declares", "image", "", "", "ubuntu-24-04-x64"},
+
+		{"arch omitted inherits base", "arch", `arch = "arm64"`, "", "arm64"},
+		{"arch explicit default wins", "arch", `arch = "arm64"`, `arch = "x86_64"`, "x86_64"},
+		{"arch neither declares", "arch", "", "", "x86_64"},
+
+		{"tailscale omitted inherits base", "tailscale", `tailscale = true`, "", true},
+		{"tailscale explicit default wins", "tailscale", `tailscale = true`, `tailscale = false`, false},
+		{"tailscale explicit other wins", "tailscale", `tailscale = false`, `tailscale = true`, true},
+		{"tailscale neither declares", "tailscale", "", "", false},
+
+		{"beads omitted inherits base", "beads", `beads = "off"`, "", "off"},
+		{"beads explicit default wins", "beads", `beads = "off"`, `beads = "session"`, "session"},
+		{"beads explicit other wins", "beads", `beads = "off"`, `beads = "dolthub"`, "dolthub"},
+		{"beads neither declares", "beads", "", "", "session"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgHome := filepath.Join(dir, "xdg")
+			if err := os.MkdirAll(filepath.Join(cfgHome, "bivouac"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("XDG_CONFIG_HOME", cfgHome)
+			writeFixture(t, filepath.Join(cfgHome, "bivouac", "base.pkl"),
+				"region = \"nyc3\"\nsize = \"s-1vcpu-1gb\"\n"+tt.base+"\n")
+
+			project := filepath.Join(dir, "bivouac.pkl")
+			writeFixture(t, project, "template = \"python\"\n"+tt.project+"\n")
+
+			cfg, err := Resolve(context.Background(), project)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			if got := get[tt.field](cfg); got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.field, got, tt.want)
+			}
+		})
 	}
 }

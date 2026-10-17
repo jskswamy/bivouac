@@ -31,7 +31,7 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 		return Resolved{}, err
 	}
 
-	project, err := loadResolved(ctx, path)
+	project, projectDeclared, err := loadResolved(ctx, path)
 	if err != nil {
 		return Resolved{}, err
 	}
@@ -46,14 +46,14 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 	var baseKeyErr error
 	merged := project
 	if _, statErr := os.Stat(basePath); statErr == nil {
-		base, err := loadResolved(ctx, basePath)
+		base, _, err := loadResolved(ctx, basePath)
 		if err != nil {
 			return Resolved{}, err
 		}
 		baseKeys, keyErr := configSSHKeyFiles(basePath, base)
 		baseKeyErr = keyErr
 		keyFiles = append(baseKeys, projectKeys...)
-		merged = mergeConfig(base, project)
+		merged = mergeConfig(base, project, projectDeclared)
 	} else if !os.IsNotExist(statErr) {
 		return Resolved{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
 	}
@@ -100,32 +100,37 @@ func ResolveBase(ctx context.Context) (Config, error) {
 	if _, err := tool.Require("pkl"); err != nil {
 		return Config{}, err
 	}
-	return loadResolved(ctx, basePath)
+	base, _, err := loadResolved(ctx, basePath)
+	return base, err
 }
 
 // loadResolved reads path's raw content, injects bivouac's own
 // embedded schema as its amends target (path itself must not declare
 // one), and evaluates the result with an evaluator pointed at
 // pklCacheDir() for its package cache.
-func loadResolved(ctx context.Context, path string) (ret Config, err error) {
+//
+// It also returns the set of fields the file declares, from the same
+// bytes it evaluated: the loaded Config fills schema defaults in, so it
+// alone cannot tell mergeConfig whether the file chose a value.
+func loadResolved(ctx context.Context, path string) (ret Config, declared map[string]struct{}, err error) {
 	// #nosec G304 -- path is the intended bivouac.pkl/base.pkl to load;
 	// reading a caller-supplied config path is this function's entire
 	// job (see docs/config.md's "A note on trust" -- such a file is
 	// already treated as trusted, script-equivalent input).
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("loading %s: %w", path, err)
+		return Config{}, nil, fmt.Errorf("loading %s: %w", path, err)
 	}
 
 	tmpPath, cleanup, err := injectSchema(path, raw)
 	if err != nil {
-		return Config{}, err
+		return Config{}, nil, err
 	}
 	defer cleanup()
 
 	cacheDir, err := pklCacheDir()
 	if err != nil {
-		return Config{}, fmt.Errorf("resolving pkl cache directory: %w", err)
+		return Config{}, nil, fmt.Errorf("resolving pkl cache directory: %w", err)
 	}
 
 	evaluator, err := pkl.NewEvaluator(ctx, pkl.PreconfiguredOptions, func(opts *pkl.EvaluatorOptions) {
@@ -133,9 +138,9 @@ func loadResolved(ctx context.Context, path string) (ret Config, err error) {
 	})
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return Config{}, fmt.Errorf("pkl CLI not found on PATH (run inside `nix develop`, or install it: https://pkl-lang.org/main/current/pkl-cli/index.html#installation): %w", err)
+			return Config{}, nil, fmt.Errorf("pkl CLI not found on PATH (run inside `nix develop`, or install it: https://pkl-lang.org/main/current/pkl-cli/index.html#installation): %w", err)
 		}
-		return Config{}, fmt.Errorf("loading %s: %w", path, err)
+		return Config{}, nil, fmt.Errorf("loading %s: %w", path, err)
 	}
 	defer func() {
 		cerr := evaluator.Close()
@@ -146,27 +151,38 @@ func loadResolved(ctx context.Context, path string) (ret Config, err error) {
 
 	ret, err = Load(ctx, evaluator, pkl.FileSource(tmpPath))
 	if err != nil {
-		err = fmt.Errorf("loading %s: %w", path, err)
+		return Config{}, nil, fmt.Errorf("loading %s: %w", path, err)
 	}
-	return ret, err
+	return ret, declaredFields(raw), nil
 }
 
 // mergeConfig layers project over base: scalars use project's value if
 // set, else base's; lists are additive, base's entries first.
 //
+// Arch, image, tailscale and beads have schema defaults, so a project
+// that never mentions them still loads with a value and "unset" cannot
+// be seen in it. For those four, projectDeclared decides instead:
+// without it, `image = "tag:my-dev"` in a base would be silently
+// replaced by every project's default, and a project writing the
+// default out loud could not override a base that says otherwise.
+//
 // BasePath is intentionally not carried into the returned Config — it's
 // only meaningful for deciding which base file to merge, not as part of
 // the merged output.
-func mergeConfig(base, project Config) Config {
+func mergeConfig(base, project Config, projectDeclared map[string]struct{}) Config {
+	declared := func(field string) bool {
+		_, ok := projectDeclared[field]
+		return ok
+	}
 	return Config{
 		Region:    coalesce(project.Region, base.Region),
 		Size:      coalesce(project.Size, base.Size),
 		Template:  coalesce(project.Template, base.Template),
-		Arch:      project.Arch,
-		Image:     project.Image,
-		Tailscale: project.Tailscale,
+		Arch:      pick(declared(FieldArch), project.Arch, base.Arch),
+		Image:     pick(declared(FieldImage), project.Image, base.Image),
+		Tailscale: pick(declared(FieldTailscale), project.Tailscale, base.Tailscale),
 		Shell:     coalesce(project.Shell, base.Shell),
-		Beads:     project.Beads,
+		Beads:     pick(declared(FieldBeads), project.Beads, base.Beads),
 		SshKeys:   mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
 		Packages:  append(append([]string{}, base.Packages...), project.Packages...),
 		Agents:    append(append([]string{}, base.Agents...), project.Agents...),
@@ -174,6 +190,13 @@ func mergeConfig(base, project Config) Config {
 		HerdrTabs: append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
 		Settings:  mergeSettings(base.Settings, project.Settings),
 	}
+}
+
+func pick[T any](useProject bool, project, base T) T {
+	if useProject {
+		return project
+	}
+	return base
 }
 
 func coalesce(project, base *string) *string {

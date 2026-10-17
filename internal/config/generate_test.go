@@ -16,7 +16,7 @@ func TestLoadResolved_MinimalFixture(t *testing.T) {
 		t.Fatalf("writing fixture: %v", err)
 	}
 
-	cfg, err := loadResolved(context.Background(), fixture)
+	cfg, _, err := loadResolved(context.Background(), fixture)
 	if err != nil {
 		t.Fatalf("loadResolved() error = %v", err)
 	}

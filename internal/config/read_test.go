@@ -253,7 +253,7 @@ func TestFieldDefaults_MatchTheSchema(t *testing.T) {
 	path := filepath.Join(dir, "empty.pkl")
 	writeFixture(t, path, "")
 
-	cfg, err := loadResolved(context.Background(), path)
+	cfg, _, err := loadResolved(context.Background(), path)
 	if err != nil {
 		t.Fatalf("loading an empty config: %v", err)
 	}
