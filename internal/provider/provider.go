@@ -39,6 +39,44 @@ type KeyRegistry interface {
 	CreateKey(ctx context.Context, name, publicKey string) (SSHKey, error)
 }
 
+// ImageManager is implemented by providers that can list, tag and delete
+// the account's own images.
+//
+// Optional for the same reason as KeyRegistry: snapshots are a provider
+// concept, and only the image commands and launch resolution need them,
+// so they assert it where they use it rather than every provider having
+// to stub it.
+type ImageManager interface {
+	// ListImages returns every private image when tag is "", else every
+	// image carrying tag, across all pages. Foreign images are included;
+	// eligibility is the caller's decision.
+	ListImages(ctx context.Context, tag string) ([]Image, error)
+	// GetImage returns ErrImageNotFound when the image is gone.
+	GetImage(ctx context.Context, id string) (Image, error)
+	TagImage(ctx context.Context, id, tag string) error
+	// DeleteImage returns ErrImageNotFound when the image is already gone.
+	DeleteImage(ctx context.Context, id string) error
+	// SizeDiskGB is the disk a size slug provides, which must be at least
+	// an image's MinDiskGB for the image to launch on it.
+	SizeDiskGB(ctx context.Context, sizeSlug string) (int, error)
+}
+
+// Image is one image on the provider account.
+type Image struct {
+	ID        string // numeric, as a string like VM.ID
+	Name      string
+	Created   time.Time
+	Regions   []string
+	MinDiskGB int
+	Status    string // "available" is the only ready value
+	Tags      []string
+	Type      string // "snapshot" for Bivouac builds
+}
+
+// ErrImageNotFound is returned by GetImage/DeleteImage when the image no
+// longer exists.
+var ErrImageNotFound = errors.New("image not found")
+
 // SSHKey is one key registered on the provider account.
 type SSHKey struct {
 	ID          string

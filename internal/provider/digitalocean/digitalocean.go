@@ -130,7 +130,7 @@ func (p *Provider) Create(ctx context.Context, spec provider.InstanceSpec) (prov
 		Name:     spec.Name,
 		Region:   spec.Region,
 		Size:     spec.Size,
-		Image:    godo.DropletCreateImage{Slug: spec.Image},
+		Image:    createImage(spec.Image),
 		SSHKeys:  sshKeys(spec.SSHKeys),
 		UserData: spec.UserData,
 	}
@@ -162,6 +162,17 @@ func (p *Provider) Create(ctx context.Context, spec provider.InstanceSpec) (prov
 		case <-ticker.C:
 		}
 	}
+}
+
+// createImage converts an image reference to godo's request shape: a
+// positive integer is a snapshot ID, anything else a stock slug. godo
+// sends the numeric form only when ID is set and Slug is empty, and the
+// API rejects a snapshot ID passed as a slug.
+func createImage(ref string) godo.DropletCreateImage {
+	if n, err := strconv.Atoi(ref); err == nil && n > 0 {
+		return godo.DropletCreateImage{ID: n}
+	}
+	return godo.DropletCreateImage{Slug: ref}
 }
 
 // sshKeys converts SSH key strings to godo's request shape: a numeric
