@@ -180,7 +180,7 @@ func TestGenerate_HCL(t *testing.T) {
 		`"scripts/wait-bootstrap.sh"`,
 		`"scripts/build-closure.sh"`,
 		`"scripts/sanitize.sh"`,
-		`source      = "metadata.json"`,
+		`content     = jsonencode(merge(jsondecode(file("${path.root}/metadata.json")), { region = var.region, size = var.size, username = var.username }))`,
 		`source      = "nix"`,
 		`destination = "/var/lib/bivouac-image"`,
 	} {
@@ -204,12 +204,19 @@ func TestGenerate_HCL(t *testing.T) {
 		t.Errorf("HCL missing %s\n%s", want, hcl)
 	}
 
+	// metadata.json records the build's variables as run, not the
+	// generated defaults, so a -var override is not misreported on the
+	// image.
+	if strings.Contains(hcl, `source      = "metadata.json"`) {
+		t.Error("metadata.json is uploaded verbatim; its region, size and username would ignore -var overrides")
+	}
+
 	// Packer runs the scripts in order, with the uploads between waiting
 	// for the bootstrap and building the closure.
 	order := []string{
 		"scripts/wait-bootstrap.sh",
 		`source      = "nix"`,
-		`source      = "metadata.json"`,
+		`content     = jsonencode(merge(jsondecode(file("${path.root}/metadata.json")), { region = var.region, size = var.size, username = var.username }))`,
 		"scripts/build-closure.sh",
 		"scripts/sanitize.sh",
 	}

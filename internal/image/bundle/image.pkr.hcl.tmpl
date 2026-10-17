@@ -68,8 +68,10 @@ build {
     destination = "/var/lib/bivouac-image"
   }
 [[ end ]]
+  # The variables as run, not the generated defaults, so an image built
+  # with -var region=... does not record the region it was not built in.
   provisioner "file" {
-    source      = "metadata.json"
+    content     = jsonencode(merge(jsondecode(file("${path.root}/metadata.json")), { region = var.region, size = var.size, username = var.username }))
     destination = "/var/lib/bivouac-image/metadata.json"
   }
 
