@@ -54,6 +54,77 @@ func (p *confirmedUpProvider) Get(context.Context, string) (provider.VM, error) 
 func (p *confirmedUpProvider) List(context.Context) ([]provider.VM, error) {
 	return nil, fmt.Errorf("unexpected list")
 }
+
+// imageUpProvider also manages images, so up resolves a tag: reference
+// against its list. Create is counted rather than failed outright: the
+// test asserts the count, so a regression reports what happened.
+type imageUpProvider struct {
+	confirmedUpProvider
+	images  []provider.Image
+	creates int
+}
+
+func (p *imageUpProvider) Create(context.Context, provider.InstanceSpec) (provider.VM, error) {
+	p.creates++
+	return provider.VM{}, fmt.Errorf("unexpected create")
+}
+func (p *imageUpProvider) ListImages(context.Context, string) ([]provider.Image, error) {
+	return p.images, nil
+}
+func (p *imageUpProvider) GetImage(context.Context, string) (provider.Image, error) {
+	return provider.Image{}, provider.ErrImageNotFound
+}
+func (p *imageUpProvider) TagImage(context.Context, string, string) error { return nil }
+func (p *imageUpProvider) DeleteImage(context.Context, string) error      { return nil }
+func (p *imageUpProvider) SizeDiskGB(context.Context, string) (int, error) {
+	return 25, nil
+}
+
+// A tag with no eligible image must stop up before the confirmation
+// prompt and before anything billable: the only image here carries the
+// tag but none of Bivouac's markers.
+func TestUpCommand_NoEligibleImageFailsBeforeCreate(t *testing.T) {
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	minimalBivouacPkl(t, dir)
+	path := filepath.Join(dir, "bivouac.pkl")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(body, []byte("image = \"tag:my-dev\"\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
+
+	root := newRootCmd()
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "up" {
+			root.RemoveCommand(cmd)
+		}
+	}
+	p := &imageUpProvider{confirmedUpProvider: confirmedUpProvider{t: t}, images: []provider.Image{
+		{ID: "7", Status: "available", Type: "snapshot", Regions: []string{"nyc3"}, Tags: []string{"my-dev"}},
+	}}
+	root.AddCommand(newUpCmdWithProvider(func(context.Context) (provider.Provider, error) { return p, nil }))
+	root.SetArgs([]string{"up", "fixture"})
+	root.SetIn(strings.NewReader("y\n"))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err = root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "my-dev") {
+		t.Fatalf("Execute() error = %v, want no eligible image tagged my-dev", err)
+	}
+	if p.creates != 0 {
+		t.Errorf("Create called %d times, want 0", p.creates)
+	}
+	if strings.Contains(out.String(), "Proceed?") {
+		t.Errorf("output = %q, want the failure before the confirmation prompt", out.String())
+	}
+}
+
 func upRootWithRegistry(t *testing.T) *cobra.Command {
 	root := newRootCmd()
 	for _, cmd := range root.Commands() {

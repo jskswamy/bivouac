@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
 	"github.com/jskswamy/bivouac/internal/provider"
@@ -74,7 +75,17 @@ func newUpCmdWithProvider(resolve func(context.Context) (provider.Provider, erro
 			if err != nil {
 				return err
 			}
-			plan, err := lifecycle.PrepareUp(ctx, name, bivouacPath, root, cfg, keys)
+			// Resolved before the prompt, like the provider: a tag with no
+			// usable image, or one the launch size cannot hold, should stop
+			// here rather than after the user has approved a create that
+			// cannot work. A provider without image support is passed as
+			// nil, which a stock slug never consults.
+			images, _ := p.(provider.ImageManager)
+			img, err := image.Resolve(ctx, images, image.Request{Ref: cfg.Image, Arch: cfg.Arch, Region: cfg.Region, Size: cfg.Size, Shell: cfg.Shell})
+			if err != nil {
+				return err
+			}
+			plan, err := lifecycle.PrepareUp(ctx, name, bivouacPath, root, cfg, keys, img)
 			if err != nil {
 				return err
 			}
@@ -205,7 +216,7 @@ func upSummary(plan lifecycle.UpPlan) string {
 	fmt.Fprintf(&b, "  Size:     %s\n", cfg.Size)
 	fmt.Fprintf(&b, "  Template: %s\n", cfg.Template)
 	if cfg.Image != "" {
-		fmt.Fprintf(&b, "  Image:    %s\n", cfg.Image)
+		fmt.Fprintf(&b, "  Image:    %s\n", imageLabel(cfg.Image, plan.Image))
 	}
 	for _, entry := range plan.Keys.Entries {
 		status := "will be registered as " + entry.AccountName
@@ -226,4 +237,14 @@ func upSummary(plan lifecycle.UpPlan) string {
 	fmt.Fprintf(&b, "  SSH:      %s; install/update one managed SSH include\n", plan.Connection.Alias)
 	b.WriteString("Proceed? [y/N]: ")
 	return b.String()
+}
+
+// imageLabel renders an image reference with the ID it resolved to, when
+// that differs from the reference itself: a tag names whichever build is
+// newest, so only the ID says which one boots.
+func imageLabel(ref string, img image.Resolution) string {
+	if img.Baked && img.Image != "" && img.Image != ref {
+		return ref + " (" + img.Image + ")"
+	}
+	return ref
 }

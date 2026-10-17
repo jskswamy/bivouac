@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
 	"github.com/jskswamy/bivouac/internal/provider"
@@ -94,7 +95,7 @@ func TestSSHWorkflow_SelectedKeyThroughCreationAndReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := lifecycle.PrepareUp(context.Background(), "first", f.project, f.root, cfg, keys)
+	plan, err := lifecycle.PrepareUp(context.Background(), "first", f.project, f.root, cfg, keys, image.Resolution{Requested: cfg.Image, Image: cfg.Image})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestSSHWorkflow_SelectedKeyThroughCreationAndReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondPlan, err := lifecycle.PrepareUp(context.Background(), "second", f.project, f.root, cfg, secondKeys)
+	secondPlan, err := lifecycle.PrepareUp(context.Background(), "second", f.project, f.root, cfg, secondKeys, image.Resolution{Requested: cfg.Image, Image: cfg.Image})
 	if err != nil {
 		t.Fatal(err)
 	}

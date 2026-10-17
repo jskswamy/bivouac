@@ -80,7 +80,10 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) erro
 	connection := plan.Connection
 	connection.PublicIP = vm.IP
 	connection.PreferredHost = vm.IP
-	record := state.Record{Name: plan.Name, Provider: "digitalocean", VMID: vm.ID, IP: vm.IP, Region: vm.Region, Size: vm.Size, Template: plan.Config.Template, User: connection.User, RepoPath: plan.RemotePath, Shell: plan.Config.Shell, SSH: &connection}
+	record := state.Record{Name: plan.Name, Provider: "digitalocean", VMID: vm.ID, IP: vm.IP, Region: vm.Region, Size: vm.Size, Template: plan.Config.Template, User: connection.User, RepoPath: plan.RemotePath, Shell: plan.Config.Shell, SSH: &connection, ImageRef: plan.Image.Requested}
+	if plan.Image.Baked {
+		record.ImageID = plan.Image.Image
+	}
 	if err := store.Put(record); err != nil {
 		if destroyErr := p.Destroy(ctx, vm.ID); destroyErr != nil {
 			return fmt.Errorf("recording instance state failed (%v), and cleanup also failed -- destroy VM %s manually: %w", err, vm.ID, destroyErr)

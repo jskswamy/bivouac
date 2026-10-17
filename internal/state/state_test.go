@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -247,5 +248,46 @@ func TestRecord_ShellRoundTripsAndLegacyRecordsReadBackEmpty(t *testing.T) {
 	}
 	if got, _, _ := s.Get("old"); got.Shell != "" {
 		t.Errorf("Get(old).Shell = %q, want empty for a record with no shell", got.Shell)
+	}
+}
+
+// A record written now must keep both image fields, and one written
+// before they existed -- read from its raw JSON, not a zero Record put
+// through the current encoder -- must load with them empty.
+func TestRecord_ImageFieldsRoundTripAndLegacyJSONLoadsEmpty(t *testing.T) {
+	s := openTestStore(t)
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"old":{"name":"old","provider":"digitalocean","vm_id":"1","ip":"192.0.2.1","region":"blr1","size":"s-1vcpu-1gb","template":"python","user":"me","repo_path":"~/r","tailscale_joined":false,"sessions":[]}}`
+	if err := os.WriteFile(s.path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.Get("old")
+	if err != nil || !ok {
+		t.Fatalf("Get(old) = %v, %v", ok, err)
+	}
+	if got.ImageRef != "" || got.ImageID != "" {
+		t.Errorf("legacy record image = %q/%q, want both empty", got.ImageRef, got.ImageID)
+	}
+
+	if err := s.Put(Record{Name: "new", ImageRef: "tag:my-dev", ImageID: "123456"}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	got, _, err = s.Get("new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ImageRef != "tag:my-dev" || got.ImageID != "123456" {
+		t.Errorf("Get(new) image = %q/%q, want tag:my-dev/123456", got.ImageRef, got.ImageID)
+	}
+	raw, err := os.ReadFile(s.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"image_ref":"tag:my-dev"`, `"image_id":"123456"`} {
+		if !bytes.Contains(bytes.ReplaceAll(raw, []byte(" "), nil), []byte(want)) {
+			t.Errorf("state file lacks %s:\n%s", want, raw)
+		}
 	}
 }

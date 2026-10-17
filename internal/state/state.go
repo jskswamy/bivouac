@@ -33,7 +33,15 @@ type Record struct {
 	// Recorded because nothing applies it afterwards, so a later config
 	// edit can be checked against what the instance actually got. Empty
 	// means the instance predates the field.
-	Shell              string              `json:"shell,omitempty"`
+	Shell string `json:"shell,omitempty"`
+	// ImageRef is the image reference the config named at creation, and
+	// ImageID the image it resolved to when that was a Bivouac-built one.
+	// A tag: reference moves as new builds land, so only the ID says what
+	// this instance actually booted from. ImageID is empty for a stock
+	// slug, which is already concrete; both are empty for instances that
+	// predate the fields.
+	ImageRef           string              `json:"image_ref,omitempty"`
+	ImageID            string              `json:"image_id,omitempty"`
 	Sessions           []Session           `json:"sessions"`
 	RetirementReceipts []RetirementReceipt `json:"retirement_receipts,omitempty"`
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jskswamy/bivouac/internal/config"
+	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
@@ -25,5 +26,13 @@ func TestUpSummary_ShowsApprovedCreation(t *testing.T) {
 	plan.Config.Image = "custom-image-123"
 	if !strings.Contains(upSummary(plan), "custom-image-123") {
 		t.Fatal("image omitted")
+	}
+}
+
+// A tag is not an image: the summary names the one that will boot.
+func TestUpSummary_NamesTheResolvedImage(t *testing.T) {
+	plan := lifecycle.UpPlan{Name: "myrepo", Config: config.Resolved{Config: config.Config{Image: "tag:my-dev"}}, Image: image.Resolution{Requested: "tag:my-dev", Image: "123", Baked: true, Shell: "fish"}}
+	if got := upSummary(plan); !strings.Contains(got, "tag:my-dev (123)") {
+		t.Errorf("summary lacks the resolved image: %s", got)
 	}
 }

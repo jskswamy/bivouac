@@ -37,6 +37,8 @@ func printStatusJSON(cmd *cobra.Command, st lifecycle.InstanceStatus, record sta
 		Template   string `json:"template,omitempty"`
 		User       string `json:"user,omitempty"`
 		RepoPath   string `json:"repoPath,omitempty"`
+		ImageRef   string `json:"image_ref,omitempty"`
+		ImageID    string `json:"image_id,omitempty"`
 		LiveStatus string `json:"liveStatus"`
 		LiveError  string `json:"liveError,omitempty"`
 	}
@@ -58,6 +60,8 @@ func printStatusJSON(cmd *cobra.Command, st lifecycle.InstanceStatus, record sta
 			Template:   record.Template,
 			User:       record.User,
 			RepoPath:   record.RepoPath,
+			ImageRef:   record.ImageRef,
+			ImageID:    record.ImageID,
 			LiveStatus: live,
 			LiveError:  liveErr,
 		},
@@ -102,6 +106,16 @@ func printStatus(cmd *cobra.Command, st lifecycle.InstanceStatus) {
 		repoPath = "unknown (provisioned before this field existed)"
 	}
 	printField(out, s, "RepoPath", repoPath)
+
+	// Old records have no image fields; an empty line would read as an
+	// instance with no image rather than one whose image was never noted.
+	if r.ImageRef != "" {
+		label := r.ImageRef
+		if r.ImageID != "" {
+			label += " (" + r.ImageID + ")"
+		}
+		printField(out, s, "Image", label)
+	}
 }
 
 // printSize writes the Size line, and Template alongside it.

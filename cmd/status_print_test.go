@@ -135,3 +135,50 @@ func TestPrintStatus_MarksTheRecordedSizeWhenNoLiveSizeIsAvailable(t *testing.T)
 		t.Errorf("printStatus() = %q, want the template still reported", got)
 	}
 }
+
+// The image line says what the instance booted from: the reference as
+// configured and, when it was a Bivouac image, the ID it resolved to.
+func TestPrintStatus_ShowsTheImageWhenRecorded(t *testing.T) {
+	c, out := bufferedCmd(t)
+	printStatus(c, lifecycle.InstanceStatus{Record: state.Record{Name: "myrepo", ImageRef: "tag:my-dev", ImageID: "123456"}, LiveStatus: "active"})
+	if !strings.Contains(out.String(), "tag:my-dev (123456)") {
+		t.Errorf("printStatus() = %q, want the image as ref (id)", out.String())
+	}
+
+	c, out = bufferedCmd(t)
+	printStatus(c, lifecycle.InstanceStatus{Record: state.Record{Name: "myrepo", ImageRef: "ubuntu-24-04-x64"}, LiveStatus: "active"})
+	if !strings.Contains(out.String(), "ubuntu-24-04-x64") || strings.Contains(out.String(), "()") {
+		t.Errorf("printStatus() = %q, want a stock ref alone", out.String())
+	}
+}
+
+// Records from before the image fields carry nothing worth a line.
+func TestPrintStatus_OmitsTheImageForOldRecords(t *testing.T) {
+	c, out := bufferedCmd(t)
+	printStatus(c, lifecycle.InstanceStatus{Record: state.Record{Name: "myrepo"}, LiveStatus: "active"})
+	if strings.Contains(out.String(), "Image") {
+		t.Errorf("printStatus() = %q, want no Image line", out.String())
+	}
+}
+
+func TestPrintStatusJSON_IncludesTheImage(t *testing.T) {
+	c, out := bufferedCmd(t)
+	record := state.Record{Name: "myrepo", ImageRef: "tag:my-dev", ImageID: "123456"}
+	if err := printStatusJSON(c, lifecycle.InstanceStatus{Record: record, LiveStatus: "active"}, record); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"image_ref": "tag:my-dev"`, `"image_id": "123456"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("JSON = %s, want %s", out.String(), want)
+		}
+	}
+
+	c, out = bufferedCmd(t)
+	old := state.Record{Name: "myrepo"}
+	if err := printStatusJSON(c, lifecycle.InstanceStatus{Record: old, LiveStatus: "active"}, old); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "image_") {
+		t.Errorf("JSON = %s, want no image fields for an old record", out.String())
+	}
+}
