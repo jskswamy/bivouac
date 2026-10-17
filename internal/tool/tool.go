@@ -6,16 +6,19 @@
 // all, and it is one of the callers, so anything else here would put this
 // out of its reach.
 //
-// Three shapes, because there are three: a guard that says whether a binary
+// Four shapes, because there are four: a guard that says whether a binary
 // is usable and how to get it, a runner that captures what a tool printed,
-// and a passthrough that hands the terminal over to it.
+// a streaming runner with its own environment for long jobs, and a
+// passthrough that hands the terminal over to it.
 package tool
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // install describes a binary bivouac depends on: how to name it in an error
@@ -38,6 +41,9 @@ var known = map[string]install{
 	"sops":  {"sops", devshell},
 	"rsync": {"rsync", devshell},
 	"herdr": {"herdr", "install it: https://herdr.dev/"},
+	// Not in the devshell: bivouac never installs Packer, and image
+	// generate works without it.
+	"packer": {"packer", "install it: https://developer.hashicorp.com/packer/install"},
 	// ssh and bd get no hint: OpenSSH comes with the platform, and a Mac
 	// without bd is a supported configuration that skips rather than fails.
 	"ssh": {"ssh", ""},
@@ -88,6 +94,32 @@ func RunCombined(ctx context.Context, dir, bin string, args ...string) (string, 
 	return string(out), err
 }
 
+// interruptGrace is how long a cancelled RunEnv child has to exit after
+// SIGINT before it is killed. Packer spends this deleting its temporary
+// builder droplet, which is an API round trip or two, not a rebuild.
+const interruptGrace = 2 * time.Minute
+
+// RunEnv runs bin in dir with exactly env as its environment, streaming its
+// output to stdout and stderr as it runs.
+//
+// Exactly env, not env added to this process's: a caller passing a
+// credential needs to know no other copy of it rides along from the
+// invoking shell. A nil env is an empty one.
+//
+// Cancelling ctx sends SIGINT rather than the SIGKILL the other runners
+// use, because the long jobs this is for clean up after themselves when
+// interrupted and cannot when killed. A child that ignores the interrupt
+// is killed after interruptGrace.
+func RunEnv(ctx context.Context, dir string, env []string, stdout, stderr io.Writer, bin string, args ...string) error {
+	cmd := command(ctx, dir, bin, args...)
+	cmd.Env = append([]string{}, env...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = interruptGrace
+	return cmd.Run()
+}
+
 // Passthrough runs bin with this process's own stdin, stdout and stderr, for
 // the commands that hand the terminal over to another program -- ssh, tmux,
 // herdr. No PTY or raw-mode handling of bivouac's own; the child talks to
@@ -100,7 +132,7 @@ func Passthrough(ctx context.Context, bin string, args ...string) error {
 	return cmd.Run()
 }
 
-// command builds the exec.Cmd the three runners share.
+// command builds the exec.Cmd the runners share.
 //
 // Always the argv-array form, never a shell: callers that need a remote
 // shell build that string explicitly with internal/shellcmd, and each such

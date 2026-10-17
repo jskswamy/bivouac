@@ -2,10 +2,12 @@ package tool
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRequire_ReturnsThePathOfAToolThatExists(t *testing.T) {
@@ -116,4 +118,64 @@ func TestRun_HonoursACancelledContext(t *testing.T) {
 	if _, err := Run(ctx, "", "sleep", "30"); err == nil {
 		t.Error("Run() error = nil, want the cancelled context to stop the command")
 	}
+}
+
+// RunEnv's env is the child's whole environment, not an addition to this
+// process's: the Packer runner relies on that to keep a stale token from
+// leaking in alongside the one it means to pass.
+func TestRunEnv_GivesTheChildExactlyTheSuppliedEnvironment(t *testing.T) {
+	t.Setenv("RUNENV_INHERITED", "leaked")
+	dir := t.TempDir()
+	var stdout, stderr strings.Builder
+
+	err := RunEnv(context.Background(), dir, []string{"RUNENV_GIVEN=yes"}, &stdout, &stderr,
+		"sh", "-c", `echo "given=$RUNENV_GIVEN inherited=$RUNENV_INHERITED"; pwd; echo noise >&2`)
+	if err != nil {
+		t.Fatalf("RunEnv() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "given=yes inherited=\n") {
+		t.Errorf("stdout = %q, want only the supplied variable visible", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), dir) {
+		t.Errorf("stdout = %q, want the child run in %s", stdout.String(), dir)
+	}
+	if strings.TrimSpace(stderr.String()) != "noise" {
+		t.Errorf("stderr = %q, want the child's stderr", stderr.String())
+	}
+}
+
+// Cancellation interrupts rather than kills, because Packer deletes its
+// temporary builder on SIGINT and cannot on SIGKILL.
+func TestRunEnv_InterruptsTheChildOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := filepath.Join(t.TempDir(), "ready")
+	var stdout strings.Builder
+
+	done := make(chan error, 1)
+	go func() {
+		done <- RunEnv(ctx, "", []string{"PATH=" + os.Getenv("PATH")}, &stdout, io.Discard, "sh", "-c",
+			`trap 'echo interrupted; exit 130' INT; touch "$0"; while :; do sleep 0.05; done`, ready)
+	}()
+	waitForFile(t, ready)
+	cancel()
+
+	if err := <-done; err == nil {
+		t.Fatal("RunEnv() error = nil, want the cancellation reported")
+	}
+	if !strings.Contains(stdout.String(), "interrupted") {
+		t.Errorf("stdout = %q, want the child to have received SIGINT and cleaned up", stdout.String())
+	}
+}
+
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s never appeared", path)
 }
