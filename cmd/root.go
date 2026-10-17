@@ -45,6 +45,7 @@ func newRootCmdWithBuildInfo(info BuildInfo) *cobra.Command {
 	root.AddCommand(newPresetCmd())
 	root.AddCommand(newProvisionCmd())
 	root.AddCommand(newSecretsCmd())
+	root.AddCommand(newImageCmd())
 	root.AddCommand(newManifestCmd())
 	root.AddCommand(newLookupCommands()...)
 
