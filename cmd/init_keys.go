@@ -9,7 +9,6 @@ import (
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/keyplan"
 	"github.com/jskswamy/bivouac/internal/provider"
-	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/sshkeys"
 	"github.com/jskswamy/bivouac/internal/wizard"
@@ -33,7 +32,7 @@ type keySources struct {
 func defaultKeySources() keySources {
 	return keySources{local: sshkeys.Discover, registry: func(context.Context) (provider.KeyRegistry, error) {
 		if token := os.Getenv("DIGITALOCEAN_TOKEN"); token != "" {
-			p, err := digitalocean.New(token)
+			p, err := newDigitalOcean(token)
 			if err != nil {
 				return nil, err
 			}

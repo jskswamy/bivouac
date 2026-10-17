@@ -11,7 +11,6 @@ import (
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/provider"
-	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +42,7 @@ type packerFunc func(ctx context.Context, dir, token string, progress io.Writer)
 func newImageBuildCmd() *cobra.Command {
 	return newImageBuildCmdWithProvider(
 		func(_ context.Context, token string) (provider.Provider, error) {
-			p, err := digitalocean.New(token)
+			p, err := newDigitalOcean(token)
 			if err != nil {
 				return nil, err
 			}

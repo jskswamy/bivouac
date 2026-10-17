@@ -22,6 +22,9 @@
   tag, region and architecture by default (`--keep-previous`,
   `--no-prune`); only images bivouac built are ever pruned. See
   `docs/images.md`, including what a build trusts.
+- `DIGITALOCEAN_API_URL` points bivouac at a DigitalOcean-compatible API
+  other than DigitalOcean's, as it already does the Packer DigitalOcean
+  plugin. bivouac says on stderr which API it is using whenever it is set.
 
 ### Changed
 

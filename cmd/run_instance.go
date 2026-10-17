@@ -3,7 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -43,12 +46,53 @@ func resolveProvider(ctx context.Context) (provider.Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	p, err := digitalocean.New(token)
+	p, err := newDigitalOcean(token)
 	if err != nil {
 		return nil, err
 	}
 	return p, nil
 }
+
+// apiURLEnv points every DigitalOcean client bivouac builds at another
+// API. The name is the one the Packer DigitalOcean plugin reads, so one
+// variable sends both bivouac and the image build's Packer to the same
+// place -- which is how the end-to-end harness runs the real binary and
+// the real plugin against a fake account.
+const apiURLEnv = "DIGITALOCEAN_API_URL"
+
+// newDigitalOcean is the one place production builds a DigitalOcean
+// provider, so that the API override reaches every command that talks
+// to the account, not only the ones that happen to go through
+// resolveProvider. A provider that silently ignored it would send a
+// test's dummy token to the real API.
+func newDigitalOcean(token string) (*digitalocean.Provider, error) {
+	raw := os.Getenv(apiURLEnv)
+	if raw == "" {
+		return digitalocean.New(token)
+	}
+	p, err := digitalocean.New(token, digitalocean.WithBaseURL(raw))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", apiURLEnv, err)
+	}
+	apiNotice.say("Using DigitalOcean API at " + raw + "\n")
+	return p, nil
+}
+
+// onceNotice prints its first message and drops the rest. The override
+// is announced because an API that is not DigitalOcean's must never be
+// in use silently; once is enough, since one run can build more than
+// one provider (up's SSH-key question builds its own before up does).
+type onceNotice struct {
+	once sync.Once
+	w    io.Writer
+}
+
+func (n *onceNotice) say(msg string) {
+	n.once.Do(func() { _, _ = io.WriteString(n.w, msg) })
+}
+
+// apiNotice goes to stderr so it never mixes into --json output.
+var apiNotice = &onceNotice{w: os.Stderr}
 
 func runDown(cmd *cobra.Command, name string, args []string) error {
 	store, record, err := resolveInstance(cmd, name)

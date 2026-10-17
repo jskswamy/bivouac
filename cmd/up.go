@@ -26,6 +26,15 @@ func newUpCmd() *cobra.Command {
 // Provider resolution is injectable so confirmation tests never reach a live
 // account; the creation orchestration remains the same production path.
 func newUpCmdWithProvider(resolve func(context.Context) (provider.Provider, error)) *cobra.Command {
+	return newUpCmdWith(resolve, lifecycle.DefaultSteps())
+}
+
+// newUpCmdWith also takes the steps that run once the droplet exists.
+// Readiness, provisioning and the tailnet all need SSH to a real
+// machine, so a test that drives the real provider against a fake API
+// substitutes them to get past the create and still exercise everything
+// up sends before it.
+func newUpCmdWith(resolve func(context.Context) (provider.Provider, error), steps lifecycle.Steps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up [name]",
 		Short: "Create the VM, provision it, and bring the instance fully live",
@@ -98,7 +107,7 @@ func newUpCmdWithProvider(resolve func(context.Context) (provider.Provider, erro
 				return nil
 			}
 
-			if err := lifecycle.Up(ctx, p, lifecycle.DefaultSteps(), plan); err != nil {
+			if err := lifecycle.Up(ctx, p, steps, plan); err != nil {
 				return err
 			}
 			cmd.Printf("Instance %s is up\n", name)
