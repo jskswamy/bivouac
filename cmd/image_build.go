@@ -42,7 +42,13 @@ type packerFunc func(ctx context.Context, dir, token string, progress io.Writer)
 
 func newImageBuildCmd() *cobra.Command {
 	return newImageBuildCmdWithProvider(
-		func(_ context.Context, token string) (provider.Provider, error) { return digitalocean.New(token), nil },
+		func(_ context.Context, token string) (provider.Provider, error) {
+			p, err := digitalocean.New(token)
+			if err != nil {
+				return nil, err
+			}
+			return p, nil
+		},
 		image.RunPacker,
 	)
 }

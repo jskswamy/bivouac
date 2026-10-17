@@ -33,7 +33,11 @@ type keySources struct {
 func defaultKeySources() keySources {
 	return keySources{local: sshkeys.Discover, registry: func(context.Context) (provider.KeyRegistry, error) {
 		if token := os.Getenv("DIGITALOCEAN_TOKEN"); token != "" {
-			return digitalocean.New(token), nil
+			p, err := digitalocean.New(token)
+			if err != nil {
+				return nil, err
+			}
+			return p, nil
 		}
 		return nil, nil
 	}}

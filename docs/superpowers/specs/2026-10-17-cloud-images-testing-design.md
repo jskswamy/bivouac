@@ -43,6 +43,12 @@ a sequence (build, tag, list, prune) across calls.
 **D2. Unknown routes fail the test.** Any request the fake does not
 implement gets a 501 and is recorded; the test helper fails on any
 recorded unknown request. Silence would let a new API call go untested.
+A request without a bearer token gets a 401 and is not recorded: other
+processes on a dev VM (seen on a bivouac session VM, most likely
+tailscaled) send two bare `GET /` requests to every new localhost
+listener, which failed whichever contract test owned the port, about
+one run in six. The provider always sends a token, so nothing it sends
+escapes D2.
 
 **D3. Wire shapes come from godo's own types.** The fake marshals
 `godo.Droplet`, `godo.Image`, `godo.Key` and friends inside DigitalOcean's

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/digitalocean/godo"
@@ -18,19 +20,68 @@ import (
 type Provider struct {
 	client *godo.Client
 	// pollInterval must be non-zero: Create's ticker panics on a zero
-	// duration. New() is the only sanctioned way to get a valid default.
+	// duration. New() is the only sanctioned way to get a valid default,
+	// and WithPollInterval refuses a non-positive one.
 	pollInterval time.Duration
 }
 
 var _ provider.Provider = (*Provider)(nil)
 
+// Option adjusts a Provider as New builds it.
+type Option func(*Provider) error
+
 // New builds a Provider authenticated with token. It makes no network
 // call and does not validate the token — auth failures surface on the
 // first real API call.
-func New(token string) *Provider {
-	return &Provider{
+func New(token string, opts ...Option) (*Provider, error) {
+	p := &Provider{
 		client:       godo.NewFromToken(token),
 		pollInterval: 5 * time.Second,
+	}
+	for _, opt := range opts {
+		if err := opt(p); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}
+
+// WithBaseURL points the client at an API other than DigitalOcean's,
+// which is how the fake API and the end-to-end harness stand in for it.
+//
+// godo resolves its relative paths ("v2/images") against the base, so a
+// base without a trailing slash would silently drop its last path
+// segment; the slash is added rather than demanded. Scheme and host are
+// required because url.Parse accepts almost anything, and a bare
+// "localhost:8080" parses as a scheme with no host.
+func WithBaseURL(raw string) Option {
+	return func(p *Provider) error {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return fmt.Errorf("invalid API URL %q: %w", raw, err)
+		}
+		if u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("invalid API URL %q: need a scheme and host, like https://api.example.com", raw)
+		}
+		if !strings.HasSuffix(u.Path, "/") {
+			u.Path += "/"
+		}
+		p.client.BaseURL = u
+		return nil
+	}
+}
+
+// WithPollInterval sets how often Create re-reads a droplet while it
+// waits for it to become active. Tests pass a millisecond so they never
+// wait real time.
+func WithPollInterval(d time.Duration) Option {
+	return func(p *Provider) error {
+		if d <= 0 {
+			// time.NewTicker panics on a non-positive duration.
+			return fmt.Errorf("poll interval must be positive, got %v", d)
+		}
+		p.pollInterval = d
+		return nil
 	}
 }
 

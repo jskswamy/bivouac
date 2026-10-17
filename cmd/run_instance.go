@@ -43,7 +43,11 @@ func resolveProvider(ctx context.Context) (provider.Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return digitalocean.New(token), nil
+	p, err := digitalocean.New(token)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func runDown(cmd *cobra.Command, name string, args []string) error {
