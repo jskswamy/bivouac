@@ -16,5 +16,6 @@ func newImageCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	c.AddCommand(newImageGenerateCmd())
+	c.AddCommand(newImageBuildCmd())
 	return c
 }
