@@ -2,8 +2,9 @@
 
 ## Status
 
-Draft for user approval. Tracked by beads `cloudlab-tjw`.
-No implementation is authorized by this draft.
+Approved 2026-10-17, including all seven proposed implementation choices.
+Tracked by beads `cloudlab-tjw`. Implementation plan:
+`docs/superpowers/plans/2026-10-17-cloud-images.md`.
 
 ## Intent
 

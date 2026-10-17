@@ -3,8 +3,8 @@
 ### Design
 
 - Drafted user-owned DigitalOcean image support through standalone Packer
-  bundles, stable tags and configurable retention. Design approval and
-  implementation are pending; image commands are not available yet.
+  bundles, stable tags and configurable retention. The design is approved
+  and implementation is in progress; image commands are not available yet.
 
 ### Fixed
 
