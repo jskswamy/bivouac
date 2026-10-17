@@ -17,5 +17,8 @@ func newImageCmd() *cobra.Command {
 	}
 	c.AddCommand(newImageGenerateCmd())
 	c.AddCommand(newImageBuildCmd())
+	c.AddCommand(newImageListCmd())
+	c.AddCommand(newImageTagCmd())
+	c.AddCommand(newImagePruneCmd())
 	return c
 }

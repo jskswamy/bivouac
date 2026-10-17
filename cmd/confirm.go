@@ -16,6 +16,13 @@ import (
 // declining is always the safe default.
 func confirm(cmd *cobra.Command, prompt string) (bool, error) {
 	cmd.Print(prompt)
+	return readYes(cmd)
+}
+
+// readYes is confirm's answer half, for a caller that must put the
+// prompt somewhere other than cmd's output -- stderr, when stdout is
+// reserved for a --json result.
+func readYes(cmd *cobra.Command) (bool, error) {
 	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
