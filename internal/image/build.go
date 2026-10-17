@@ -66,7 +66,6 @@ func Build(ctx context.Context, d BuildDeps, o BuildOptions) (BuildResult, error
 	res := BuildResult{
 		Reference:  TagRef(tag),
 		ConfigPath: o.Bundle.Selected.Path,
-		BundleDir:  o.Bundle.OutputDir,
 	}
 	// Checked before anything is generated or built: discovering a bad
 	// retention value only after a twenty-minute build would waste it.
@@ -78,6 +77,10 @@ func Build(ctx context.Context, d BuildDeps, o BuildOptions) (BuildResult, error
 	if err != nil {
 		return res, &OpError{Phase: "generate", Err: err}
 	}
+	// Set only now: before Generate succeeds the directory is absent or
+	// holds the user's own files, and a failure report must not call it
+	// the bundle.
+	res.BundleDir = bundle.Dir
 	art, err := d.Packer(ctx, bundle.Dir, o.Token, progress)
 	if err != nil {
 		var op *OpError

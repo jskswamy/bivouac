@@ -224,14 +224,40 @@ func TestBuild_NegativeKeepFailsBeforeAnything(t *testing.T) {
 	o := buildOpts(t)
 	o.KeepPrevious = -1
 
-	if _, err := Build(context.Background(), f.deps(t), o); err == nil {
+	res, err := Build(context.Background(), f.deps(t), o)
+	if err == nil {
 		t.Fatal("Build succeeded with keep-previous -1")
+	}
+	if res.BundleDir != "" {
+		t.Errorf("BundleDir = %q, want empty: no bundle was written", res.BundleDir)
 	}
 	if len(f.images.calls) != 0 {
 		t.Errorf("calls = %v, want none", f.images.calls)
 	}
 	if _, err := os.Stat(o.Bundle.OutputDir); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("bundle dir created: %v", err)
+	}
+}
+
+// A non-empty --output is refused by Generate. The directory exists but
+// holds the user's files, not a bundle, so it must not be reported as one.
+func TestBuild_GenerateFailureReportsNoBundle(t *testing.T) {
+	f := newBuildFixture()
+	o := buildOpts(t)
+	if err := os.MkdirAll(o.Bundle.OutputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(o.Bundle.OutputDir, "notes.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Build(context.Background(), f.deps(t), o)
+	var op *OpError
+	if !errors.As(err, &op) || op.Phase != "generate" {
+		t.Fatalf("err = %v, want a generate OpError", err)
+	}
+	if res.BundleDir != "" {
+		t.Errorf("BundleDir = %q, want empty: no bundle was written", res.BundleDir)
 	}
 }
 
