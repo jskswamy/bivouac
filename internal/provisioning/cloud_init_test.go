@@ -445,3 +445,26 @@ func TestRenderBootstrap(t *testing.T) {
 		}
 	}
 }
+
+// Ubuntu 24.04 starts sshd through ssh.socket, so until someone first
+// connects there is no /run/sshd -- which `sshd -t` needs -- and no
+// active ssh.service to reload. A baked launch reaches this block within
+// seconds of boot, before any connection, so both must work then.
+func TestRenderCloudInit_RootDisableWorksBeforeSSHDHasRun(t *testing.T) {
+	for _, mode := range []BootMode{BootStock, BootBaked} {
+		got, err := RenderCloudInit("devuser", "bash", mode)
+		if err != nil {
+			t.Fatalf("RenderCloudInit(%v) error = %v", mode, err)
+		}
+		mkdir, check := strings.Index(got, "mkdir -p /run/sshd"), strings.Index(got, "sshd -t")
+		if mkdir < 0 || mkdir > check {
+			t.Errorf("mode %v: /run/sshd is not created before sshd -t", mode)
+		}
+		if strings.Contains(got, "systemctl reload ") {
+			t.Errorf("mode %v: a plain reload fails while ssh.service is inactive under socket activation", mode)
+		}
+		if !strings.Contains(got, "try-reload-or-restart") {
+			t.Errorf("mode %v: want systemctl try-reload-or-restart, which succeeds when sshd is not running", mode)
+		}
+	}
+}

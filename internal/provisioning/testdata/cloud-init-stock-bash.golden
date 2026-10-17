@@ -50,6 +50,13 @@ loginctl enable-linger alice
 # never locks the instance out entirely.
 if [ -s /home/alice/.ssh/authorized_keys ]; then
   echo 'PermitRootLogin no' > /etc/ssh/sshd_config.d/99-bivouac-disable-root.conf
+  # Ubuntu 24.04 starts sshd per connection through ssh.socket, so until
+  # someone first connects there is no privilege separation directory,
+  # which the config check below insists on, and no running service to
+  # reload. A baked image reaches this seconds after boot, before any
+  # connection; a socket-started sshd reads the new config on the next
+  # one anyway.
+  mkdir -p /run/sshd
   sshd -t
-  systemctl reload ssh 2>/dev/null || systemctl reload sshd
+  systemctl try-reload-or-restart ssh 2>/dev/null || systemctl try-reload-or-restart sshd
 fi
