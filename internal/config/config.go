@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/apple/pkl-go/pkl"
@@ -31,42 +32,177 @@ func Resolve(ctx context.Context, path string) (Resolved, error) {
 		return Resolved{}, err
 	}
 
-	project, projectDeclared, err := loadResolved(ctx, path)
+	l, err := loadLayered(ctx, path)
 	if err != nil {
 		return Resolved{}, err
 	}
 
-	basePath, err := resolveBasePath(path, project.BasePath)
-	if err != nil {
-		return Resolved{}, fmt.Errorf("resolving base config path: %w", err)
-	}
-
-	projectKeys, projectKeyErr := configSSHKeyFiles(path, project)
+	projectKeys, projectKeyErr := configSSHKeyFiles(path, l.project)
 	keyFiles := projectKeys
 	var baseKeyErr error
-	merged := project
-	if _, statErr := os.Stat(basePath); statErr == nil {
-		base, _, err := loadResolved(ctx, basePath)
-		if err != nil {
-			return Resolved{}, err
-		}
-		baseKeys, keyErr := configSSHKeyFiles(basePath, base)
+	if l.base != nil {
+		baseKeys, keyErr := configSSHKeyFiles(l.basePath, *l.base)
 		baseKeyErr = keyErr
 		keyFiles = append(baseKeys, projectKeys...)
-		merged = mergeConfig(base, project, projectDeclared)
-	} else if !os.IsNotExist(statErr) {
-		return Resolved{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
 	}
 
 	if err := errors.Join(baseKeyErr, projectKeyErr); err != nil {
 		return Resolved{}, err
 	}
-	if err := validate(merged); err != nil {
+	if err := validate(l.merged); err != nil {
 		return Resolved{}, err
 	}
-	result := resolved(merged)
+	result := resolved(l.merged)
 	result.SSHKeyFiles = keyFiles
 	return result, nil
+}
+
+// layered is a project file merged over its personal base. base is nil
+// when there was nothing to merge: no base file, or the project file is
+// the base file itself.
+type layered struct {
+	project  Config
+	basePath string
+	base     *Config
+	merged   Config
+}
+
+// loadLayered is the load-and-merge half of Resolve, shared with
+// LoadSelected so the two cannot drift apart on how a base is found.
+//
+// A file that resolves to its own base is loaded once and not merged:
+// merging it with itself would double every additive list. Resolve's
+// callers always pass a project bivouac.pkl, so this only changes
+// anything for LoadSelected, which may be handed base.pkl directly.
+func loadLayered(ctx context.Context, path string) (layered, error) {
+	project, projectDeclared, err := loadResolved(ctx, path)
+	if err != nil {
+		return layered{}, err
+	}
+	l := layered{project: project, merged: project}
+
+	basePath, err := resolveBasePath(path, project.BasePath)
+	if err != nil {
+		return layered{}, fmt.Errorf("resolving base config path: %w", err)
+	}
+	l.basePath = basePath
+	if sameFile(path, basePath) {
+		return l, nil
+	}
+	if _, statErr := os.Stat(basePath); statErr == nil {
+		base, _, err := loadResolved(ctx, basePath)
+		if err != nil {
+			return layered{}, err
+		}
+		l.base = &base
+		l.merged = mergeConfig(base, project, projectDeclared)
+	} else if !os.IsNotExist(statErr) {
+		return layered{}, fmt.Errorf("checking base config %s: %w", basePath, statErr)
+	}
+	return l, nil
+}
+
+// SelectionKind says which of LoadSelected's candidates was chosen.
+type SelectionKind string
+
+const (
+	SelectionExplicit SelectionKind = "explicit"
+	SelectionProject  SelectionKind = "project"
+	SelectionBase     SelectionKind = "base"
+)
+
+// Selected is the one config file an image operation works from.
+type Selected struct {
+	Path   string
+	Kind   SelectionKind
+	Config Resolved
+}
+
+// LoadSelected picks exactly one config file for an image operation and
+// loads it: explicit if non-empty, else projectDir/bivouac.pkl, else
+// the personal base.pkl. projectDir may be "" when there is no repo.
+//
+// Selection is by presence, never by validity. A file that exists but
+// fails to load is the answer, not a reason to try the next one: falling
+// through from a broken project config to base would quietly build an
+// image from settings the user did not mean, and an explicit path the
+// user named must never be second-guessed at all.
+//
+// An explicit or project file keeps its normal base inheritance. The
+// base selected on its own (or named explicitly) is loaded exactly once
+// rather than merged with itself; see loadLayered.
+//
+// SSH keys are neither resolved nor required, so Config.SSHKeyFiles is
+// always empty: Packer builds with temporary keys, and a machine with
+// no personal key must still be able to build or generate. Region, size
+// and template are still validated, because the build needs all three.
+//
+// Needs only the pkl CLI. Generating a bundle from the result must not
+// require Packer, a cloud token or Nix, so nothing here touches them.
+func LoadSelected(ctx context.Context, explicit, projectDir string) (Selected, error) {
+	sel, err := selectConfig(explicit, projectDir)
+	if err != nil {
+		return Selected{}, err
+	}
+	if _, err := tool.Require("pkl"); err != nil {
+		return Selected{}, err
+	}
+	l, err := loadLayered(ctx, sel.Path)
+	if err != nil {
+		return Selected{}, err
+	}
+	if err := validate(l.merged); err != nil {
+		return Selected{}, fmt.Errorf("%s: %w", sel.Path, err)
+	}
+	sel.Config = resolved(l.merged)
+	return sel, nil
+}
+
+// selectConfig applies LoadSelected's order by file presence alone.
+func selectConfig(explicit, projectDir string) (Selected, error) {
+	if explicit != "" {
+		if _, err := os.Stat(explicit); err != nil {
+			return Selected{}, fmt.Errorf("config file %s: %w", explicit, err)
+		}
+		return Selected{Path: explicit, Kind: SelectionExplicit}, nil
+	}
+
+	projectLoc := "no project directory"
+	if projectDir != "" {
+		project := filepath.Join(projectDir, "bivouac.pkl")
+		projectLoc = project
+		found, err := exists(project)
+		if err != nil {
+			return Selected{}, err
+		}
+		if found {
+			return Selected{Path: project, Kind: SelectionProject}, nil
+		}
+	}
+
+	base, err := DefaultBasePath()
+	if err != nil {
+		return Selected{}, fmt.Errorf("resolving base config path: %w", err)
+	}
+	found, err := exists(base)
+	if err != nil {
+		return Selected{}, err
+	}
+	if found {
+		return Selected{Path: base, Kind: SelectionBase}, nil
+	}
+	return Selected{}, fmt.Errorf("no config found: pass --config <file>, or create %s or %s", projectLoc, base)
+}
+
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("checking config %s: %w", path, err)
 }
 
 // ResolveBase loads the personal base config on its own, for the one

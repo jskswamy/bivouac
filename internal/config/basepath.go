@@ -60,3 +60,22 @@ func resolveOverridePath(projectDir, override string) (string, error) {
 	}
 	return filepath.Join(projectDir, override), nil
 }
+
+// sameFile reports whether a and b name one file, through symlinks and
+// relative paths. A Home Manager base.pkl is a symlink into /nix/store,
+// so a string compare would miss the commonest way to reach it twice.
+// Paths that cannot be resolved (one does not exist) fall back to their
+// cleaned absolute form, which is still right for the missing-base case.
+func sameFile(a, b string) bool {
+	return canonical(a) == canonical(b)
+}
+
+func canonical(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return filepath.Clean(path)
+}
