@@ -110,7 +110,43 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 		}
 		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
 	}
-	return &Client{conn: ssh.NewClient(sshConn, chans, reqs)}, nil
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	go keepAlive(sshClient, 15*time.Second, 10*time.Second)
+	return &Client{conn: sshClient}, nil
+}
+
+type pinger interface {
+	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
+	Close() error
+}
+
+// keepAlive closes c when it stops answering, so a connection that died
+// silently -- the source address changed under it -- fails its callers in
+// seconds instead of leaving each to wait out the OS's TCP timeout.
+//
+// Any reply counts, including a refusal: OpenSSH answers an unknown request
+// with failure, and that still proves the peer is there. Ends when c does:
+// a closed connection makes the next ping fail.
+func keepAlive(c pinger, every, wait time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for range t.C {
+		res := make(chan error, 1)
+		go func() {
+			_, _, err := c.SendRequest("keepalive@openssh.com", true, nil)
+			res <- err
+		}()
+		select {
+		case err := <-res:
+			if err != nil {
+				_ = c.Close()
+				return
+			}
+		case <-time.After(wait):
+			_ = c.Close()
+			return
+		}
+	}
 }
 
 // EnableAgentForwarding dials the local ssh-agent (SSH_AUTH_SOCK) and
