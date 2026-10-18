@@ -97,6 +97,7 @@ func requireIsolatedHome(t *testing.T) {
 func startFakeSSHServer(t *testing.T, handler func(cmd string, stdin []byte) (output string, exitCode uint32)) string {
 	requireIsolatedHome(t)
 	t.Helper()
+	handler = testenv.AsSystemd(handler)
 	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

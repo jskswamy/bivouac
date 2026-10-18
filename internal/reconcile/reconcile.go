@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jskswamy/bivouac/internal/agentcontext"
 	"github.com/jskswamy/bivouac/internal/config"
@@ -169,7 +170,38 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	// caller can redirect them (e.g. into a bubbletea viewport)
 	// without this function needing to know or care.
 	out, errOut := provider.Output(ctx)
-	output, err := client.RunStreaming(cmd, out, errOut)
+	var output string
+	if needsAgent(cfg) {
+		output, err = client.RunStreaming(cmd, out, errOut)
+	} else {
+		d := &detachedRun{
+			conn: client,
+			dial: func(ctx context.Context) (remote, error) {
+				c, err := Connect(ctx, record.IP, record.User)
+				if err != nil {
+					return nil, err
+				}
+				return c, nil
+			},
+			unit:   "bivouac-provision",
+			out:    out,
+			poll:   2 * time.Second,
+			giveUp: 5 * time.Minute,
+		}
+		output, err = d.run(ctx, innerCmd)
+		if err == nil {
+			// The connection that started the switch may have died during
+			// it. Only on success: a failed run returns below, and a client
+			// replaced by a failed Connect would be nil under the deferred
+			// Close.
+			_ = client.Close()
+			c, cerr := Connect(ctx, record.IP, record.User)
+			if cerr != nil {
+				return fmt.Errorf("reconnecting to %s after the switch: %w", record.IP, cerr)
+			}
+			client = c
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("home-manager switch failed: %w\n%s", err, tail(output, 40))
 	}
@@ -235,4 +267,22 @@ func tail(s string, n int) string {
 		return s
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
+// needsAgent reports whether the switch may fetch over SSH. A forwarded
+// agent lives and dies with the session that requested it, so such a switch
+// cannot run detached and keeps the in-session path.
+func needsAgent(cfg config.Resolved) bool {
+	isSSH := func(url string) bool {
+		return strings.HasPrefix(url, "git+ssh:") || strings.HasPrefix(url, "ssh:") || strings.HasPrefix(url, "git@")
+	}
+	if isSSH(cfg.Template) {
+		return true
+	}
+	for _, f := range cfg.Flakes {
+		if isSSH(f.Url) {
+			return true
+		}
+	}
+	return false
 }

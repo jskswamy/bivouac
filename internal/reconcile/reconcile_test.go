@@ -385,6 +385,14 @@ func TestReconcile_ForwardsAgentDuringSwitch(t *testing.T) {
 		`region = "nyc3"`,
 		`size = "s-1vcpu-1gb"`,
 		`template = "python"`,
+		// A private flake: the in-session switch is the one that can use
+		// the forwarded agent, so this is what keeps the test on that path.
+		`flakes {`,
+		`  new Flake {`,
+		`    url = "git+ssh://git@github.com/me/private"`,
+		`    packages { "cli" }`,
+		`  }`,
+		`}`,
 	}, "\n")+"\n")
 
 	if err := Reconcile(context.Background(), "myinstance", bivouacPath); err != nil {
@@ -481,5 +489,38 @@ func TestReconcile_SwitchBacksUpFilesItWouldOtherwiseClobber(t *testing.T) {
 	}
 	if !strings.Contains(gotCmd, "switch -b bivouac-backup ") {
 		t.Errorf("command = %q, want the switch to pass -b bivouac-backup", gotCmd)
+	}
+}
+
+// A switch that outlasts the caller's context ends the run with an error. It
+// once also panicked: the reconnect that follows a switch failed on the
+// cancelled context, left the client nil, and the deferred Close dereferenced
+// it.
+func TestReconcile_ContextEndsDuringSwitch_ReturnsErrorWithoutPanicking(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "home-manager") {
+			<-release
+		}
+		return "", 0
+	})
+	seedInstance(t, "myinstance", addr)
+
+	dir := t.TempDir()
+	bivouacPath := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, bivouacPath, strings.Join([]string{
+		`region = "nyc3"`,
+		`size = "s-1vcpu-1gb"`,
+		`template = "python"`,
+	}, "\n")+"\n")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := Reconcile(ctx, "myinstance", bivouacPath); err == nil {
+		t.Fatal("Reconcile() error = nil for a switch the context outlasted, want an error")
 	}
 }

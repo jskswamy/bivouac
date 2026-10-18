@@ -42,3 +42,9 @@
 - The built-in templates install `moshi-hook` 0.4.31. Its CDN no longer
   serves 0.3.26, so every provision from the previous pin failed while
   building the Home Manager environment.
+- `up` and `provision` survive a dropped connection. The Home Manager switch
+  now runs under systemd on the instance, and bivouac reconnects to follow it,
+  so switching networks mid-provision no longer ends it with `operation timed
+  out`. Running `provision` again attaches to a switch still in progress. A
+  config with a `git+ssh` flake keeps the old behaviour, because a forwarded
+  agent cannot outlive its connection.
