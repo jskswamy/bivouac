@@ -106,6 +106,36 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 		sess, _ = record.FindSession(session)
 	}
 
+	// An intent exists so a resumed retirement keeps its policy once work has
+	// been accepted or an effect started. One that is still checking, or was
+	// paused before accepting anything, has protected nothing yet -- a merge
+	// refused on its precondition is the case -- so a different operation may
+	// replace it rather than leave the session retirable only by tearing down
+	// the instance.
+	if r := sess.Retirement; r != nil && (r.Operation != options.Operation || r.Force != options.Force) &&
+		(r.Phase == state.RetirementChecking || r.Phase == state.RetirementPaused) &&
+		len(r.Accepted) == 0 && len(r.Effects) == 0 {
+		sess.Retirement = nil
+	}
+
+	// Raising force on the same delete is the user adding authority, not
+	// taking it away, so it is allowed until the cleanup effects begin. The
+	// intent is immutable so an interrupted *forced* delete cannot resume
+	// without its authority; nothing is lost by upgrading a plain one, whose
+	// accepted work was checked under the stricter policy. A plain delete that
+	// passed its work check and then paused on a cleanup step is the case: it
+	// has accepted work, so the replacement above cannot apply to it.
+	if r := sess.Retirement; r != nil && r.Operation == state.RetirementDelete && options.Operation == state.RetirementDelete &&
+		!r.Force && options.Force && r.Phase != state.RetirementRemoving {
+		if err := updateRetirement(store, instance, sess.Generation, func(current *state.Session) error {
+			current.Retirement.Force = true
+			return nil
+		}); err != nil {
+			return RetirementResult{}, err
+		}
+		r.Force = true
+	}
+
 	if sess.Retirement == nil {
 		destination, err := retirementDestinationState(ctx, sess)
 		if err != nil {

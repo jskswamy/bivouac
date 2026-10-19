@@ -242,3 +242,88 @@ func TestMissingJournalEvidenceFailsClosed(t *testing.T) {
 		}
 	}
 }
+
+// A merge refused before it accepted any work has done nothing its recorded
+// intent needs to protect, so it must not strand the session: a forced delete
+// retires it. Seen when the work was applied by hand after merge refused.
+func TestRetirementIntentThatDidNothingCanBeReplaced(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	allow := checkRetirementWork
+	checkRetirementWork = func(policy retirementPolicy, ctx context.Context, record state.Record, sess state.Session, final bool) (state.Acceptance, []string, error) {
+		if policy.operation == state.RetirementMerge {
+			return state.Acceptance{}, nil, errors.New("merge refused")
+		}
+		return allow(policy, ctx, record, sess, final)
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge}); err == nil {
+		t.Fatal("merge was meant to be refused")
+	}
+
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err != nil || !result.Completed {
+		t.Fatalf("forced delete after a refused merge: result=%+v err=%v", result, err)
+	}
+}
+
+// Once work has been accepted the intent is what resumption relies on, so a
+// different operation is still refused.
+func TestRetirementIntentWithAcceptedWorkStaysImmutable(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "cleanup failed")
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge}); err == nil {
+		t.Fatal("merge was meant to pause in cleanup")
+	}
+
+	_, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("delete over accepted merge work = %v, want the immutable-intent refusal", err)
+	}
+}
+
+// A plain delete that passed its work check has accepted work by the time a
+// cleanup step pauses it, so the untouched-intent rule no longer applies. Giving
+// it --force is the user adding authority, not removing it, so it must still be
+// possible until the cleanup effects begin. Seen live: an unforced delete paused
+// on a Herdr workspace it could not prove was its own, and the advice to use
+// --force was then refused as an immutable intent.
+func TestUnforcedDeletePausedInCleanupCanBeUpgradedToForce(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	attempts := 0
+	closeRetirementAttachment = func(context.Context, state.Record, state.HerdrAttachment) error {
+		attempts++
+		if attempts == 1 {
+			return errors.New("herdr unreachable")
+		}
+		return nil
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete}); err == nil {
+		t.Fatal("the plain delete was meant to pause on the failed close")
+	}
+
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err != nil || !result.Completed {
+		t.Fatalf("forced delete over a paused plain delete: result=%+v err=%v", result, err)
+	}
+}
+
+// Authority only ever goes up. Once the cleanup effects have begun the intent
+// is what resumption relies on, so even the upgrade is refused, and so is
+// taking force away.
+func TestRetirementForceIsNotUpgradedOnceEffectsHaveBegun(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "cleanup failed")
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete}); err == nil {
+		t.Fatal("the plain delete was meant to pause in cleanup")
+	}
+
+	_, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("upgrade after effects began = %v, want the immutable-intent refusal", err)
+	}
+}

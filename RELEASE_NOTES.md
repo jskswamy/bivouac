@@ -40,6 +40,12 @@
 
 ### Fixed
 
+- `session delete` retires a session whose `merge` was refused before it
+  accepted any work, instead of insisting you resume the merge. With
+  `--force` it discards the session as usual. A plain `delete` that
+  stopped in cleanup can be given `--force` too. Once removal has begun,
+  or a merge has accepted work, the session keeps its operation, so an
+  interrupted merge or delete resumes under the same rules.
 - `session merge` works after you fold, rebase or re-sign the branch a
   session started from, which is routine when you merge several sessions
   in turn. It replays the commits since the session's recorded start

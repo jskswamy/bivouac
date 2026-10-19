@@ -429,7 +429,12 @@ Two consequences follow from rescuing first. An ordinary delete needs the
 instance reachable and refuses when it is not. `--force` records immutable
 authority to discard work and can complete independent local effects while
 offline, but remote cleanup remains a pending obligation and the command stays
-nonzero until absence is observed. Because rescue checkpoints whatever the
+nonzero until absence is observed. The recorded intent is immutable once work
+has been accepted or an effect has started, with one exception: a plain
+delete can be given `--force` until removal begins, because that only
+adds authority. Before any work is accepted, a refused merge or delete
+is replaced outright, so it leaves the session retirable by
+`delete --force`. Because rescue checkpoints whatever the
 agent left uncommitted, a session with dirty instance-side work refuses to
 delete instead of going quietly. If beads was wired, delete also refuses when
 it cannot confirm the instance's issue edits have landed on the Mac; unknown
