@@ -205,6 +205,9 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 				// the one outcome that cannot do harm, so it is the only
 				// failure force steps over.
 				if !sess.Retirement.Force || !errors.Is(err, errOwnershipUnproven) {
+					if errors.Is(err, errOwnershipUnproven) {
+						err = fmt.Errorf("%w; close the workspace in Herdr yourself and retry, or use --force to leave it open", err)
+					}
 					return result, pauseRetirement(store, instance, sess, err)
 				}
 				provider.ReportWarning(ctx, fmt.Sprintf("herdr: leaving workspace %s open, it can no longer be shown to belong to this session: %v", attachment.Handle, err))

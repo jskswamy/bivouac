@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -346,4 +347,20 @@ func decodeProof(t *testing.T, attachment state.HerdrAttachment) workspaceTermin
 		t.Fatal(err)
 	}
 	return evidence
+}
+
+// The mismatch itself is reported plainly: whether --force is an option is
+// the caller's to say, because the same error is shown on a run that already
+// used it.
+func TestOwnershipMismatchMessageDoesNotMentionForce(t *testing.T) {
+	runner := &ownershipRunner{replies: map[string][]string{
+		"--machine mid pane list --workspace w1": {panesReply("term-foreign")},
+	}}
+	err := verifyWorkspaceOwnership(runner, ownedWorkspaceAttachment(t))
+	if err == nil || !errors.Is(err, errOwnershipUnproven) {
+		t.Fatalf("verifyWorkspaceOwnership() = %v, want errOwnershipUnproven", err)
+	}
+	if strings.Contains(err.Error(), "--force") {
+		t.Errorf("error = %q, want no mention of --force", err.Error())
+	}
 }

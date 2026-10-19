@@ -531,7 +531,7 @@ func verifyWorkspaceOwnership(runner herdrRunner, attachment state.HerdrAttachme
 			return nil
 		}
 	}
-	return fmt.Errorf("workspace %s no longer matches attachment %s ownership proof (its original pane was closed or replaced); close the workspace in Herdr yourself and retry, or use --force to leave it open: %w", attachment.Handle, attachment.ID, errOwnershipUnproven)
+	return fmt.Errorf("workspace %s no longer matches attachment %s ownership proof (its original pane was closed or replaced): %w", attachment.Handle, attachment.ID, errOwnershipUnproven)
 }
 
 func listOwnershipPanes(runner herdrRunner, address state.HerdrAddress, workspace string) ([]ownershipPane, error) {

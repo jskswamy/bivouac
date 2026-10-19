@@ -374,6 +374,44 @@ func TestForcedDeleteStillStopsOnACloseFailure(t *testing.T) {
 	}
 }
 
+// Paused on an unprovable workspace without --force, the way out is named.
+func TestUnforcedDeletePausedOnAnUnprovableWorkspaceSaysHowToProceed(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	closeRetirementAttachment = func(context.Context, state.Record, state.HerdrAttachment) error {
+		return fmt.Errorf("workspace w1 no longer matches: %w", errOwnershipUnproven)
+	}
+	_, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete})
+	if err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("RetireSession() = %v, want a message that names --force", err)
+	}
+}
+
+// A plain delete refused by its guard records an unforced intent before it
+// checks anything. That must not make --force useless afterwards: cherry-picked
+// work always trips the guard, and --force is the only way past it.
+func TestRefusedUnforcedDeleteLeavesTheSessionDeletableWithForce(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	allow := checkRetirementWork
+	checkRetirementWork = func(policy retirementPolicy, ctx context.Context, record state.Record, sess state.Session, final bool) (state.Acceptance, []string, error) {
+		if !policy.force {
+			return state.Acceptance{}, nil, errors.New("4 commit(s) not on your branch")
+		}
+		return allow(policy, ctx, record, sess, final)
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete}); err == nil {
+		t.Fatal("the unforced delete was meant to be refused")
+	}
+
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err != nil || !result.Completed {
+		t.Fatalf("forced delete after a refused plain delete: result=%+v err=%v", result, err)
+	}
+}
+
 // The case the unforced error message points at: paused on a workspace that
 // cannot be proved to be the session's own, then retried with --force as the
 // message says. It must leave the workspace open and finish.
