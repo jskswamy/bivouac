@@ -1,4 +1,4 @@
-## Unreleased
+## v0.3.0
 
 ### Added
 
@@ -37,6 +37,10 @@
   now apply when a project omits them. Previously the project's schema
   default silently replaced them. A project that sets one still wins, even
   with the default value.
+- `bivouac manifest` now describes `session merge` and `session delete` in
+  full and marks both destructive, so an LLM driving the CLI can see when
+  each refuses, what `--force` is for, and that a stopped retirement
+  resumes by running the same command again.
 
 ### Fixed
 
@@ -50,19 +54,22 @@
   The proof is now refreshed after the layout. When it still cannot be
   shown, `delete --force` leaves the workspace open with a warning instead
   of pausing, and a plain `delete` says how to proceed. Nothing it cannot
-  prove is its own is ever closed.
+  prove is its own is ever closed. The leave-open path was exercised on a
+  live instance.
 - `session delete` retires a session whose `merge` was refused before it
   accepted any work, instead of insisting you resume the merge. With
   `--force` it discards the session as usual. A plain `delete` that
   stopped in cleanup can be given `--force` too. Once removal has begun,
   or a merge has accepted work, the session keeps its operation, so an
-  interrupted merge or delete resumes under the same rules.
+  interrupted merge or delete resumes under the same rules. Exercised on a
+  live instance.
 - `session merge` works after you fold, rebase or re-sign the branch a
   session started from, which is routine when you merge several sessions
   in turn. It replays the commits since the session's recorded start
   instead of refusing, so a rewritten branch no longer leaves the session
   paused with nothing to do but `bivouac down`. It still refuses if that
-  start commit has been garbage collected.
+  start commit has been garbage collected. Exercised on a live instance
+  with a rewritten base.
 - `up` no longer refuses a symlinked `~/.ssh/config`. A symlink to a writable
   file is followed and edited in place, leaving the link intact. If the file is
   read-only (for example Home Manager's), `up` leaves it alone when it already
