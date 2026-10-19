@@ -60,7 +60,10 @@ var destinations = map[string]Destination{
 	config.FieldBeads:        Project,
 	config.FieldPackages:     Project,
 	config.FieldAgents:       Project,
-	config.FieldFlakes:       Project,
+	// Project, like packages: the unfree packages worth permitting are the
+	// ones a project's own modules install, so the names travel with it.
+	config.FieldAllowUnfree: Project,
+	config.FieldFlakes:      Project,
 	// Project, not Personal: the motivating case is a per-project
 	// override (a different git identity for one project's commits),
 	// committed with that project the same way packages/flakes are. A
