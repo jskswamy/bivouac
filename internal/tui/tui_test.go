@@ -3,7 +3,11 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jskswamy/bivouac/internal/provider"
 )
@@ -88,5 +92,39 @@ func TestRun_NonTerminal_DoesNotOverrideCallerOutput(t *testing.T) {
 	})
 	if gotOut != nil || gotErrOut != nil {
 		t.Errorf("Output() = (%v, %v), want the caller's attached (nil, nil) to pass through untouched", gotOut, gotErrOut)
+	}
+}
+
+// In a terminal the program owns the tty in raw mode, where Ctrl-C reaches the
+// process as a key rather than SIGINT. Nothing then cancels fn's context, so a
+// long wrapped operation -- following a provision for tens of minutes -- could
+// not be stopped from the keyboard at all.
+func TestRun_CtrlCCancelsFn(t *testing.T) {
+	oldTerm, oldOpts := isTerminal, programOptions
+	in, keys := io.Pipe()
+	isTerminal = func() bool { return true }
+	programOptions = []tea.ProgramOption{tea.WithInput(in), tea.WithOutput(io.Discard)}
+	t.Cleanup(func() { isTerminal, programOptions = oldTerm, oldOpts; _ = keys.Close() })
+
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(context.Background(), "Provisioning", func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				return errors.New("fn was never cancelled")
+			}
+		})
+	}()
+	go func() { _, _ = keys.Write([]byte{0x03}) }() // what a raw-mode terminal sends for Ctrl-C
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run() = %v, want fn cancelled by Ctrl-C", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run() never returned after Ctrl-C")
 	}
 }

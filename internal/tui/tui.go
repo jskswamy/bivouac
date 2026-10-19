@@ -14,6 +14,10 @@ import (
 // needing a real TTY.
 var isTerminal = func() bool { return term.IsTerminal(os.Stdout.Fd()) }
 
+// programOptions is empty outside tests, which use it to feed the program keys
+// and discard its output.
+var programOptions []tea.ProgramOption
+
 // ProgressPrefix marks a line as a progress update rather than a tool's own
 // output. One definition because there is one convention: the cobra commands
 // print it ahead of provider.ReportProgress text, and Run below emits it
@@ -35,7 +39,11 @@ func Run(ctx context.Context, label string, fn func(context.Context) error) erro
 		return fn(ctx)
 	}
 
-	p := tea.NewProgram(newModel(label))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	m := newModel(label)
+	m.interrupt = cancel
+	p := tea.NewProgram(m, programOptions...)
 	ctx = provider.WithOutput(ctx, &programWriter{p}, &programWriter{p})
 	// Without this, ReportProgress calls inside fn would still find
 	// whatever progress callback the caller attached before Run (e.g.

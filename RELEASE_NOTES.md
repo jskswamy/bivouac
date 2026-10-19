@@ -1,85 +1,11 @@
-## v0.3.0
-
-### Added
-
-- `allowUnfreePackages` permits named unfree packages, such as the
-  `terraform` an imported Home Manager module may install, which
-  `bivouac provision` otherwise refuses to evaluate. Names are matched by
-  `nixpkgs.lib.getName` and merged with the selected agents into the same
-  narrow predicate; nothing else unfree is allowed. See `docs/config.md`.
-- Custom cloud images. `bivouac image build --tag my-dev` builds a
-  DigitalOcean snapshot in your own account with Nix, your login shell and
-  your configuration's Nix store closure already in place, then sets
-  `image = "tag:my-dev"` in the config it built from, so `up` skips the
-  slow part of first boot. Machine identity, access and Home Manager
-  activation still happen at every launch. Packer does the build; bivouac
-  never installs it.
-- `bivouac image generate` writes the same build as a standalone Packer
-  bundle you can review, commit and run with plain Packer and a
-  `DIGITALOCEAN_TOKEN`, without bivouac. It needs only `pkl`.
-- `image` accepts a numeric image ID or `tag:<name>` besides a stock slug.
-  A tag picks the newest ready image built for the instance's region and
-  architecture. A missing or incompatible image, a size whose disk is too
-  small, or a `shell` different from the image's fails before any Droplet
-  is created.
-- `bivouac image list`, `image tag` and `image prune` show, promote and
-  delete your images. Builds keep the newest image plus one previous per
-  tag, region and architecture by default (`--keep-previous`,
-  `--no-prune`); only images bivouac built are ever pruned. See
-  `docs/images.md`, including what a build trusts.
-- `DIGITALOCEAN_API_URL` points bivouac at a DigitalOcean-compatible API
-  other than DigitalOcean's, as it already does the Packer DigitalOcean
-  plugin. bivouac says on stderr which API it is using whenever it is set.
-
-### Changed
-
-- `arch`, `image`, `tailscale` and `beads` set in your personal base config
-  now apply when a project omits them. Previously the project's schema
-  default silently replaced them. A project that sets one still wins, even
-  with the default value.
-- `bivouac manifest` now describes `session merge` and `session delete` in
-  full and marks both destructive, so an LLM driving the CLI can see when
-  each refuses, what `--force` is for, and that a stopped retirement
-  resumes by running the same command again.
+## Unreleased
 
 ### Fixed
 
-- `session delete --force` can finish removing a local worktree that git
-  had already unregistered. When an earlier attempt stopped on a file it
-  could not delete, every retry failed with "is not a working tree" and the
-  directory stayed behind. The leftover directory is now removed.
-- `session delete` no longer stops on a Herdr workspace whose original
-  pane was closed or replaced. bivouac records that pane to prove the
-  workspace is its own, and laying out tabs could close it, as could you.
-  The proof is now refreshed after the layout. When it still cannot be
-  shown, `delete --force` leaves the workspace open with a warning instead
-  of pausing, and a plain `delete` says how to proceed. Nothing it cannot
-  prove is its own is ever closed. The leave-open path was exercised on a
-  live instance.
-- `session delete` retires a session whose `merge` was refused before it
-  accepted any work, instead of insisting you resume the merge. With
-  `--force` it discards the session as usual. A plain `delete` that
-  stopped in cleanup can be given `--force` too. Once removal has begun,
-  or a merge has accepted work, the session keeps its operation, so an
-  interrupted merge or delete resumes under the same rules. Exercised on a
-  live instance.
-- `session merge` works after you fold, rebase or re-sign the branch a
-  session started from, which is routine when you merge several sessions
-  in turn. It replays the commits since the session's recorded start
-  instead of refusing, so a rewritten branch no longer leaves the session
-  paused with nothing to do but `bivouac down`. It still refuses if that
-  start commit has been garbage collected. Exercised on a live instance
-  with a rewritten base.
-- `up` no longer refuses a symlinked `~/.ssh/config`. A symlink to a writable
-  file is followed and edited in place, leaving the link intact. If the file is
-  read-only (for example Home Manager's), `up` leaves it alone when it already
-  has `Include <managed config>`, and otherwise prints the line to add.
-- The built-in templates install `moshi-hook` 0.4.31. Its CDN no longer
-  serves 0.3.26, so every provision from the previous pin failed while
-  building the Home Manager environment.
-- `up` and `provision` survive a dropped connection. The Home Manager switch
-  now runs under systemd on the instance, and bivouac reconnects to follow it,
-  so switching networks mid-provision no longer ends it with `operation timed
-  out`. Running `provision` again attaches to a switch still in progress. A
-  config with a `git+ssh` flake keeps the old behaviour, because a forwarded
-  agent cannot outlive its connection.
+- Ctrl-C now stops `up`, `provision` and the other commands that show their
+  progress in the terminal pane. It was ignored there: the pane puts the
+  terminal in raw mode, where Ctrl-C arrives as a key instead of an
+  interrupt, so a provision that ran for a long time could not be stopped
+  from the keyboard. Stopping only detaches from the instance, where the
+  Home Manager switch keeps running; `bivouac provision` attaches to it
+  again.

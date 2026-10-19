@@ -27,12 +27,15 @@ type outputMsg string
 type doneMsg struct{ err error }
 
 type model struct {
-	label    string
-	lines    []string
-	viewport viewport.Model
-	ready    bool
-	done     bool
-	err      error
+	// interrupt cancels the work being rendered. In raw mode Ctrl-C is a key,
+	// not SIGINT, so nothing else would stop it.
+	interrupt func()
+	label     string
+	lines     []string
+	viewport  viewport.Model
+	ready     bool
+	done      bool
+	err       error
 }
 
 func newModel(label string) model {
@@ -62,6 +65,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lines = append(m.lines, line)
 		}
 		m.syncViewport()
+	case tea.KeyMsg:
+		// shortcut: one Ctrl-C asks the work to stop and a second does nothing,
+		// so work that ignores its context cannot be abandoned from here.
+		if msg.Type == tea.KeyCtrlC && m.interrupt != nil {
+			m.interrupt()
+			m.lines = append(m.lines, "interrupted; stopping...")
+			m.syncViewport()
+		}
 	case doneMsg:
 		m.done = true
 		m.err = msg.err
