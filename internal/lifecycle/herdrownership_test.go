@@ -273,3 +273,77 @@ func TestCloseAttachmentObservesAbsence(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Laying out tabs can close the root pane the proof was recorded from, so the
+// proof has to follow the workspace or every later close would be refused.
+func TestRefreshWorkspaceProofFollowsLayout(t *testing.T) {
+	testenv.Isolate(t)
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachment := ownedWorkspaceAttachment(t)
+	const generation = "00112233445566778899aabbccddeeff"
+	record := state.Record{Name: "instance", Sessions: []state.Session{{
+		Name: "auth", Generation: generation, AttachmentsKnown: true, Attachments: []state.HerdrAttachment{attachment},
+	}}}
+	if err := store.Put(record); err != nil {
+		t.Fatal(err)
+	}
+	runner := &ownershipRunner{replies: map[string][]string{
+		"--machine mid pane list --workspace w1": {`{"result":{"panes":[{"pane_id":"w1:p3","terminal_id":"term-new","workspace_id":"w1"}]}}`},
+	}}
+	withAttachmentRunner(t, runner)
+
+	if err := verifyWorkspaceOwnership(runner, attachment); err == nil {
+		t.Fatal("the original root pane is gone, so the old proof should no longer match")
+	}
+	refreshed, err := RefreshWorkspaceProof(context.Background(), store, "instance", generation, attachment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyWorkspaceOwnership(runner, refreshed); err != nil {
+		t.Fatalf("refreshed proof rejected: %v", err)
+	}
+	got, _, _ := store.Get("instance")
+	sess, _ := got.FindSession("auth")
+	if persisted := decodeProof(t, sess.Attachments[0]); persisted != decodeProof(t, refreshed) {
+		t.Errorf("the refreshed proof was not persisted: %+v", persisted)
+	}
+}
+
+func TestRefreshWorkspaceProofKeepsTheOldProofWhenNothingIsLeft(t *testing.T) {
+	testenv.Isolate(t)
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachment := ownedWorkspaceAttachment(t)
+	const generation = "00112233445566778899aabbccddeeff"
+	if err := store.Put(state.Record{Name: "instance", Sessions: []state.Session{{
+		Name: "auth", Generation: generation, AttachmentsKnown: true, Attachments: []state.HerdrAttachment{attachment},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	withAttachmentRunner(t, &ownershipRunner{replies: map[string][]string{
+		"--machine mid pane list --workspace w1": {`{"result":{"panes":[]}}`},
+	}})
+	if _, err := RefreshWorkspaceProof(context.Background(), store, "instance", generation, attachment); err == nil {
+		t.Fatal("refreshed a proof from a workspace with no panes")
+	}
+	got, _, _ := store.Get("instance")
+	sess, _ := got.FindSession("auth")
+	if kept := decodeProof(t, sess.Attachments[0]); kept != decodeProof(t, attachment) {
+		t.Errorf("the proof was overwritten: %+v", kept)
+	}
+}
+
+// decodeProof compares evidence, not bytes: the store re-indents JSON.
+func decodeProof(t *testing.T, attachment state.HerdrAttachment) workspaceTerminalEvidence {
+	t.Helper()
+	var evidence workspaceTerminalEvidence
+	if err := json.Unmarshal(attachment.Proof.Data, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	return evidence
+}

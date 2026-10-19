@@ -25,6 +25,11 @@ type namedSessionEvidence struct {
 	Token   string `json:"token"`
 }
 
+// errOwnershipUnproven marks a workspace that exists but that bivouac can no
+// longer show is its own, as opposed to one it failed to close. Retirement
+// treats the two differently under --force.
+var errOwnershipUnproven = errors.New("ownership cannot be proved")
+
 type workspaceTerminalEvidence struct {
 	PaneID     string `json:"paneId"`
 	TerminalID string `json:"terminalId"`
@@ -280,6 +285,32 @@ func updateAttachment(store *state.Store, instance, generation string, attachmen
 	})
 }
 
+// RefreshWorkspaceProof re-records the proof from a pane the workspace has now.
+//
+// The proof is the workspace's root pane and terminal, and laying out tabs
+// can close exactly that pane. Left alone, ownership could then never be
+// proved again and the workspace could not be closed. Call it right after a
+// layout that follows a successful ownership check: the check is what makes
+// the panes read here ours, so refreshing without one would vouch for
+// whatever the handle points at. Anything the consumer closes by hand
+// between two such calls is still unprovable, which is why retirement does
+// not depend on this alone.
+func RefreshWorkspaceProof(ctx context.Context, store *state.Store, instance, generation string, attachment state.HerdrAttachment) (state.HerdrAttachment, error) {
+	panes, err := listOwnershipPanes(attachmentHerdrRunner(ctx), attachment.Address, attachment.Handle)
+	if err != nil {
+		return attachment, err
+	}
+	if len(panes) == 0 {
+		return attachment, fmt.Errorf("workspace %s has no panes to record ownership from", attachment.Handle)
+	}
+	proof, err := json.Marshal(workspaceTerminalEvidence{PaneID: panes[0].ID, TerminalID: panes[0].TerminalID})
+	if err != nil {
+		return attachment, err
+	}
+	attachment.Proof = state.OwnershipProof{Scheme: workspaceTerminalProof, Data: proof}
+	return attachment, updateAttachment(store, instance, generation, attachment)
+}
+
 // BeginDirectSessionAttachment records authority before the interactive
 // client can create its named server. The caller marks it active only after
 // Herdr confirms that attachment succeeded.
@@ -500,7 +531,7 @@ func verifyWorkspaceOwnership(runner herdrRunner, attachment state.HerdrAttachme
 			return nil
 		}
 	}
-	return fmt.Errorf("workspace %s no longer matches attachment %s ownership proof", attachment.Handle, attachment.ID)
+	return fmt.Errorf("workspace %s no longer matches attachment %s ownership proof (its original pane was closed or replaced); close the workspace in Herdr yourself and retry, or use --force to leave it open: %w", attachment.Handle, attachment.ID, errOwnershipUnproven)
 }
 
 func listOwnershipPanes(runner herdrRunner, address state.HerdrAddress, workspace string) ([]ownershipPane, error) {

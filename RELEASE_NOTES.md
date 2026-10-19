@@ -40,6 +40,13 @@
 
 ### Fixed
 
+- `session delete` no longer stops on a Herdr workspace whose original
+  pane was closed or replaced. bivouac records that pane to prove the
+  workspace is its own, and laying out tabs could close it, as could you.
+  The proof is now refreshed after the layout. When it still cannot be
+  shown, `delete --force` leaves the workspace open with a warning instead
+  of pausing, and a plain `delete` says how to proceed. Nothing it cannot
+  prove is its own is ever closed.
 - `session delete` retires a session whose `merge` was refused before it
   accepted any work, instead of insisting you resume the merge. With
   `--force` it discards the session as usual. A plain `delete` that

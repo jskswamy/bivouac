@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,5 +326,70 @@ func TestRetirementForceIsNotUpgradedOnceEffectsHaveBegun(t *testing.T) {
 	_, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
 	if err == nil || !strings.Contains(err.Error(), "immutable") {
 		t.Fatalf("upgrade after effects began = %v, want the immutable-intent refusal", err)
+	}
+}
+
+// The consumer can close or replace panes by hand, so ownership of a Herdr
+// workspace may be unprovable. A forced delete then leaves the workspace open
+// rather than blocking on it -- skipping a close can never close something
+// that is not ours -- while an unforced delete stays paused.
+func TestForcedDeleteSkipsAnUnprovableWorkspace(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		force bool
+		want  bool
+	}{
+		{"forced", true, true},
+		{"unforced", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, _, _ := retirementCoordinatorFixture(t)
+			var events []string
+			withRetirementSeams(t, &events, "")
+			closeRetirementAttachment = func(context.Context, state.Record, state.HerdrAttachment) error {
+				return fmt.Errorf("workspace w1 no longer matches: %w", errOwnershipUnproven)
+			}
+			result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: tc.force})
+			if tc.want && (err != nil || !result.Completed) {
+				t.Fatalf("forced delete: result=%+v err=%v", result, err)
+			}
+			if !tc.want && err == nil {
+				t.Fatal("an unforced delete went past an unprovable workspace")
+			}
+		})
+	}
+}
+
+// Anything other than "cannot prove it is ours" still blocks, forced or not:
+// a failed close of a workspace that is ours must not be papered over.
+func TestForcedDeleteStillStopsOnACloseFailure(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	closeRetirementAttachment = func(context.Context, state.Record, state.HerdrAttachment) error {
+		return errors.New("herdr unreachable")
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true}); err == nil {
+		t.Fatal("a forced delete ignored a real close failure")
+	}
+}
+
+// The case the unforced error message points at: paused on a workspace that
+// cannot be proved to be the session's own, then retried with --force as the
+// message says. It must leave the workspace open and finish.
+func TestUnforcedDeletePausedOnAnUnprovableWorkspaceFinishesWithForce(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	closeRetirementAttachment = func(context.Context, state.Record, state.HerdrAttachment) error {
+		return fmt.Errorf("workspace w1 no longer matches: %w", errOwnershipUnproven)
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete}); err == nil {
+		t.Fatal("the plain delete was meant to pause on the unprovable workspace")
+	}
+
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, Force: true})
+	if err != nil || !result.Completed {
+		t.Fatalf("--force after the pause the message recommends: result=%+v err=%v", result, err)
 	}
 }

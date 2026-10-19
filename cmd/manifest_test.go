@@ -187,3 +187,21 @@ func TestManifest_SessionMergeTellsAnLLMHowItBehaves(t *testing.T) {
 		}
 	}
 }
+
+// An LLM drives session delete from the manifest alone, so what it reads there
+// has to carry which refusals --force is for, that a stopped retirement
+// resumes by re-running, and that nothing is closed that bivouac cannot prove
+// is its own.
+func TestManifest_SessionDeleteTellsAnLLMHowItBehaves(t *testing.T) {
+	manifest := buildManifest(newRootCmd())
+
+	del := findTool(t, manifest, "bivouac_session_delete")
+	if !del.Metadata.Destructive || !del.Metadata.Network || !del.Metadata.RequiresInstance {
+		t.Errorf("session delete metadata = %+v, want destructive, network, requires instance", del.Metadata)
+	}
+	for _, want := range []string{"--force", "cherry-pick", "resum", "retirementPhase", "left open", "cannot prove"} {
+		if !strings.Contains(del.Description, want) {
+			t.Errorf("session delete description lacks %q:\n%s", want, del.Description)
+		}
+	}
+}

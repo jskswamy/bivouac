@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -199,7 +200,14 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 				return result, err
 			}
 			if err := closeRetirementAttachment(record.ConnectionContext(ctx), record, attachment); err != nil {
-				return result, pauseRetirement(store, instance, sess, err)
+				// --force authorises discarding the session, not closing
+				// something that may not be ours. Leaving the workspace open is
+				// the one outcome that cannot do harm, so it is the only
+				// failure force steps over.
+				if !sess.Retirement.Force || !errors.Is(err, errOwnershipUnproven) {
+					return result, pauseRetirement(store, instance, sess, err)
+				}
+				provider.ReportWarning(ctx, fmt.Sprintf("herdr: leaving workspace %s open, it can no longer be shown to belong to this session: %v", attachment.Handle, err))
 			}
 			if err := completeAttachmentEffect(store, instance, sess.Generation, attachment.ID, key); err != nil {
 				return result, err

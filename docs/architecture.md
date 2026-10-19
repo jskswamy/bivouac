@@ -408,7 +408,11 @@ safety property:
 6. Close every recorded Herdr attachment only after querying its exact saved
    server and matching its opaque ownership proof. Workspace labels and reused
    public IDs are never cleanup authority; unreachable or ambiguous ownership
-   leaves retirement pending.
+   leaves retirement pending. The proof is the workspace's root pane and
+   terminal, refreshed after tabs are laid out, because layout can close that
+   pane and so can the user. When it no longer matches, a plain delete pauses
+   and a forced one leaves the workspace open with a warning: skipping a close
+   cannot close something that is not ours.
 7. Re-checkpoint and re-read the instance-side tip after closure. The agent or
    a detached writer may have produced late work while signing or closing; a
    descendant tip is accepted without replaying the already accepted range.

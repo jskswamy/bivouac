@@ -312,8 +312,44 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:    runMerge,
 	},
 	{
-		use:    "delete [session]",
-		short:  "Authorise discard, then resumably retire a session's owned resources",
+		use:   "delete [session]",
+		short: "Authorise discard, then resumably retire a session's owned resources",
+		long: "Retire a session without merging it: its checkout on the instance, its\n" +
+			"local worktree and branch, and its Herdr workspace.\n\n" +
+			"Without --force it refuses when the session has commits that are not\n" +
+			"on your current branch, or issue changes that have not landed here.\n" +
+			"Work applied by hand (a cherry-pick, or after a rebase, re-sign or\n" +
+			"fold) has different commit hashes, so it counts as not on your branch:\n" +
+			"check the work is there yourself, then use --force.\n\n" +
+			"--force authorises discarding the session's work. It also steps over a\n" +
+			"Herdr workspace bivouac can no longer show belongs to this session\n" +
+			"(its original pane was closed or replaced): that workspace is left open\n" +
+			"with a warning and the rest of the delete continues. bivouac never\n" +
+			"closes a workspace it cannot prove is its own.\n\n" +
+			"Retirement is resumable. If it stops, the session is left paused and\n" +
+			"`bivouac session list --json` shows retirementPhase and lastFailure;\n" +
+			"running the same command again continues from there. A merge or delete\n" +
+			"refused before it accepted any work does not lock the session: run\n" +
+			"`delete --force`. A plain delete that stopped in cleanup can be given\n" +
+			"--force too. Once removal has begun, or a merge has accepted work, the\n" +
+			"session keeps its operation: finish it with the command that started it.",
+		metadata: commandMetadata{
+			Title:            "Discard a session and retire its resources",
+			Network:          true,
+			Destructive:      true,
+			RequiresInstance: true,
+			RequiresRepo:     true,
+			SideEffects: []string{
+				"removes the session checkout, local worktree and branch",
+				"closes the session's Herdr workspace when it can be proved to be the session's own",
+			},
+			Related: []string{"bivouac_session_merge", "bivouac_session_pull", "bivouac_session_list"},
+			Arguments: []argumentMetadata{{
+				Name:        "session",
+				Description: "Session to delete; optional when only one is live",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
 		verb:   "session delete",
 		args:   cobra.MaximumNArgs(1),
 		named:  false,

@@ -137,6 +137,10 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 				if err != nil {
 					provider.ReportWarning(ctx, "herdr: laying out tabs: "+err.Error())
 				}
+				// The layout may have closed the root pane the proof names.
+				if _, err := lifecycle.RefreshWorkspaceProof(ctx, store, record.Name, generation, attachment); err != nil {
+					provider.ReportWarning(ctx, "herdr: recording workspace ownership: "+err.Error())
+				}
 			}
 		}
 		cmd.Printf("%s is in your herdr sidebar — select it to attach\n", record.Name)
