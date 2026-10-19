@@ -24,7 +24,7 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 		return nil, err
 	}
 
-	if err := requireBaseStillReachable(ctx, localRepo, sessionBase, session); err != nil {
+	if err := requireBaseExists(ctx, localRepo, sessionBase, session); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 	}
 	base := trimLine(head)
 
-	count, err := runLocalGit(ctx, localRepo, countRangeArgs("HEAD.."+ref)...)
+	count, err := runLocalGit(ctx, localRepo, countRangeArgs(sessionReplayRange(sessionBase, ref))...)
 	if err != nil {
 		return nil, fmt.Errorf("counting session commits: %w\n%s", err, count)
 	}
@@ -114,7 +114,7 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 		// that started it was, so the commits an interrupted run landed are
 		// verified by the run that finishes the job instead of going
 		// unchecked because they predate its own HEAD.
-		replayBase, err := replaySigned(ctx, localRepo, ref, session, onto)
+		replayBase, err := replaySigned(ctx, localRepo, ref, sessionBase, session, onto)
 		if err != nil {
 			return nil, err
 		}
@@ -246,8 +246,8 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 // the earlier diffs assume and they conflict instead of dropping. The progress
 // record is what carries a replay across runs through that; see
 // replayProgress.
-func replaySigned(ctx context.Context, localRepo, ref, session, onto string) (string, error) {
-	return replaySignedRange(ctx, localRepo, ref, "HEAD.."+ref, session, onto)
+func replaySigned(ctx context.Context, localRepo, ref, sessionBase, session, onto string) (string, error) {
+	return replaySignedRange(ctx, localRepo, ref, sessionReplayRange(sessionBase, ref), session, onto)
 }
 
 func replaySignedRange(ctx context.Context, localRepo, ref, revRange, session, onto string) (string, error) {
@@ -388,31 +388,38 @@ func cleanReplayedMessage(ctx context.Context, localRepo string) error {
 	return nil
 }
 
-// requireBaseStillReachable refuses when the branch a session was started from
-// has been rewritten underneath it.
+// requireBaseExists refuses when the commit a session was started from is
+// gone from this repository, because the replay range is anchored on it.
 //
-// merge computes its replay range as HEAD..<session ref>, which is only
-// correct while the session's base is still an ancestor of HEAD. A rebase,
-// amend, squash or re-sign gives every base commit a new SHA, so the recorded
-// base becomes unreachable and the range silently widens to include a
-// pre-rewrite copy of the whole branch history. Nothing about that is visible
-// in the commit count, so merge would replay it.
+// The range is <base>..<session ref>, not HEAD..<session ref>. The latter is
+// only the session's own commits while the base is an ancestor of HEAD; a
+// rebase, amend, squash or re-sign gives every base commit a new SHA and the
+// range silently widens to a pre-rewrite copy of the whole branch history.
+// Anchoring on the recorded base gives the same commits when the branch only
+// moved forward and the right ones when it was rewritten, so the rewrite no
+// longer needs refusing -- only the base disappearing does, which happens
+// after a rewrite plus gc.
 //
 // An empty base means the session predates this field; there is nothing to
-// check, and refusing would strand sessions that are otherwise fine.
-func requireBaseStillReachable(ctx context.Context, localRepo, sessionBase, session string) error {
+// anchor on, so the range falls back to HEAD and refusing would only strand
+// sessions that are otherwise fine.
+func requireBaseExists(ctx context.Context, localRepo, sessionBase, session string) error {
 	if sessionBase == "" {
 		return nil
 	}
-	// cat-file first: after a rewrite plus gc the base can be gone entirely,
-	// and merge-base would then fail with git's own opaque message.
 	if _, err := runLocalGit(ctx, localRepo, "cat-file", "-e", sessionBase+"^{commit}"); err != nil {
 		return fmt.Errorf("session %s started from %s, which no longer exists in this repository — the branch was rewritten and then garbage collected\nthe session's own commits are still on the instance; `bivouac session pull %s` fetches them so you can replay them by hand", session, sessionBase, session)
 	}
-	if _, err := runLocalGit(ctx, localRepo, "merge-base", "--is-ancestor", sessionBase, "HEAD"); err != nil {
-		return fmt.Errorf("session %s started from %s, which is no longer an ancestor of HEAD — this branch was rewritten (rebase, amend, squash or re-sign) while the session was open\nreplaying now would re-apply the pre-rewrite history as well as the session's own work\n`bivouac session pull %s` fetches the session safely; cherry-pick its commits onto the rewritten branch by hand, then `bivouac down` to retire the instance", session, sessionBase, session)
-	}
 	return nil
+}
+
+// sessionReplayRange is the commits a session added, anchored on its base so
+// a rewritten HEAD cannot widen it. See requireBaseExists.
+func sessionReplayRange(sessionBase, ref string) string {
+	if sessionBase == "" {
+		return "HEAD.." + ref
+	}
+	return sessionBase + ".." + ref
 }
 
 // requireCleanSessionWorktree refuses when the local session worktree holds

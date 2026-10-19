@@ -40,6 +40,12 @@
 
 ### Fixed
 
+- `session merge` works after you fold, rebase or re-sign the branch a
+  session started from, which is routine when you merge several sessions
+  in turn. It replays the commits since the session's recorded start
+  instead of refusing, so a rewritten branch no longer leaves the session
+  paused with nothing to do but `bivouac down`. It still refuses if that
+  start commit has been garbage collected.
 - `up` no longer refuses a symlinked `~/.ssh/config`. A symlink to a writable
   file is followed and edited in place, leaving the link intact. If the file is
   read-only (for example Home Manager's), `up` leaves it alone when it already

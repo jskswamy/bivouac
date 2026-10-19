@@ -295,19 +295,18 @@ func TestMergeSession_RetiresASessionWithNoNewCommits(t *testing.T) {
 	}
 }
 
-// Rewriting the branch a session was started from must be caught, not
-// replayed.
+// Rewriting the branch a session was started from must not widen the replay.
 //
-// merge computes its range as HEAD..<session ref>, which is only correct while
-// the session's base is still an ancestor of HEAD. A rebase, amend, squash or
-// re-sign gives every base commit a new SHA, so the old base is unreachable
-// and the range silently widens to include a pre-rewrite copy of the entire
-// branch history.
+// The range used to be HEAD..<session ref>, which is only right while the
+// session's base is an ancestor of HEAD. A rebase, amend, squash or re-sign
+// gives every base commit a new SHA, so that range pulled in a pre-rewrite
+// copy of the entire branch history. It is now <base>..<session ref>, which
+// is the session's own commits whatever happened to HEAD.
 //
 // Hit for real: a session started from main at 12b52ec, main was then
 // re-signed to 84e2047 with identical trees, and HEAD..<ref> went from one
-// commit to eight. Nothing warned.
-func TestMergeSession_RefusesWhenTheBaseWasRewritten(t *testing.T) {
+// commit to eight.
+func TestMergeSession_ReplaysOnlyItsOwnCommitsWhenTheBaseWasRewritten(t *testing.T) {
 	f := newSessionFixture(t, 1)
 
 	// Rewrite the branch the session was started from, exactly as an amend or
@@ -315,20 +314,33 @@ func TestMergeSession_RefusesWhenTheBaseWasRewritten(t *testing.T) {
 	//
 	// The message must change. A commit object hashes tree, parents, identity,
 	// message and timestamp, so `--amend --no-edit` inside the same second
-	// reproduces the object byte for byte and the SHA does not move -- which
-	// made this test flaky until the guard below caught it.
+	// reproduces the object byte for byte and the SHA does not move.
 	mustGit(t, f.repo, "commit", "--amend", "--allow-empty", "-m", "first, rewritten")
-	rewritten := gitOut(t, f.repo, "rev-parse", "HEAD")
-	if rewritten == f.base {
+	if gitOut(t, f.repo, "rev-parse", "HEAD") == f.base {
 		t.Fatal("the amend did not change the SHA; this test would prove nothing")
 	}
 
-	_, err := f.merge(t)
-	if err == nil {
-		t.Fatal("MergeSession() = nil, want a refusal after the base was rewritten")
+	if _, err := f.merge(t); err != nil {
+		t.Fatalf("MergeSession() = %v, want the session's commit replayed onto the rewritten branch", err)
 	}
-	if !strings.Contains(err.Error(), f.base) {
-		t.Errorf("error = %q, want it to name the recorded base %s", err.Error(), f.base)
+	if !f.sessionRemoved() {
+		t.Error("the session was not retired")
+	}
+	// The rewritten base plus the one session commit: a widened range would
+	// also have replayed the pre-rewrite base.
+	if got := gitOut(t, f.repo, "rev-list", "--count", "HEAD"); got != "2" {
+		t.Errorf("HEAD has %s commits, want 2 (rewritten base + the session's one)", got)
+	}
+}
+
+// A base that no longer exists at all -- rewritten and then garbage
+// collected -- leaves nothing to anchor the range on, so that still refuses.
+func TestMergeSession_RefusesWhenTheBaseIsGone(t *testing.T) {
+	f := newSessionFixture(t, 1)
+	f.base = strings.Repeat("0", 40)
+
+	if _, err := f.merge(t); err == nil || !strings.Contains(err.Error(), "no longer exists") {
+		t.Fatalf("MergeSession() = %v, want a refusal naming the missing base", err)
 	}
 	if f.sessionRemoved() {
 		t.Error("the session was retired despite the refusal")

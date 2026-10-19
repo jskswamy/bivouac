@@ -60,7 +60,7 @@ func (p retirementPolicy) Validate(ctx context.Context, _ state.Record, sess sta
 }
 
 func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, sess state.Session, _ bool) (state.Acceptance, []string, error) {
-	if err := requireBaseStillReachable(ctx, sess.LocalRepo, sess.Base, sess.Name); err != nil {
+	if err := requireBaseExists(ctx, sess.LocalRepo, sess.Base, sess.Name); err != nil {
 		return state.Acceptance{}, nil, err
 	}
 	if err := requireRetirementWorktreesClean(ctx, sess); err != nil {
@@ -80,7 +80,7 @@ func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, s
 	if sess.Retirement != nil && sess.Retirement.Destination.Branch != "" && sess.Retirement.Destination.Branch != branch {
 		return state.Acceptance{}, nil, fmt.Errorf("retirement destination branch changed from %s to %s", sess.Retirement.Destination.Branch, branch)
 	}
-	revRange := "HEAD.." + ref
+	revRange := sessionReplayRange(sess.Base, ref)
 	if sess.Retirement != nil && len(sess.Retirement.Accepted) > 0 {
 		prior := sess.Retirement.Accepted[len(sess.Retirement.Accepted)-1]
 		if err := p.Validate(ctx, record, sess, prior); err != nil {

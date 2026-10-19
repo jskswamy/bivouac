@@ -170,3 +170,20 @@ func TestHerdrHelpMentionsLLMRelevantBehavior(t *testing.T) {
 		}
 	}
 }
+
+// An LLM drives session merge from the manifest alone, so what it reads there
+// has to carry how the command behaves: that a rewritten branch is fine, when
+// it refuses, and that a stopped retirement resumes by re-running.
+func TestManifest_SessionMergeTellsAnLLMHowItBehaves(t *testing.T) {
+	manifest := buildManifest(newRootCmd())
+
+	merge := findTool(t, manifest, "bivouac_session_merge")
+	if !merge.Metadata.Destructive || !merge.Metadata.Network || !merge.Metadata.RequiresInstance {
+		t.Errorf("session merge metadata = %+v, want destructive, network, requires instance", merge.Metadata)
+	}
+	for _, want := range []string{"rebas", "garbage collected", "resum", "session delete --force"} {
+		if !strings.Contains(merge.Description, want) {
+			t.Errorf("session merge description lacks %q:\n%s", want, merge.Description)
+		}
+	}
+}

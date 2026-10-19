@@ -118,3 +118,23 @@ func TestDeletePolicyForceIsExplicitDiscardAuthority(t *testing.T) {
 		t.Fatalf("forced acceptance = %+v", accepted)
 	}
 }
+
+// The live merge path must not widen its range when the base was rewritten:
+// folding or re-signing the user's branch after another session merged is the
+// ordinary way to get here.
+func TestMergePolicyReplaysOnlySessionCommitsAfterBaseRewrite(t *testing.T) {
+	f := newSessionFixture(t, 1)
+	record, sess := retirementFixtureState(f)
+	mustGit(t, f.repo, "commit", "--amend", "--allow-empty", "-m", "first, rewritten")
+
+	_, signed, err := mergeRetirementPolicy().Check(context.Background(), record, sess, false)
+	if err != nil {
+		t.Fatalf("Check() = %v, want the session's commit replayed", err)
+	}
+	if len(signed) != 1 {
+		t.Errorf("signed = %v, want only the session's own commit", signed)
+	}
+	if got := gitOut(t, f.repo, "rev-list", "--count", "HEAD"); got != "2" {
+		t.Errorf("HEAD has %s commits, want 2 (rewritten base + the session's one)", got)
+	}
+}

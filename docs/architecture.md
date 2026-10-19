@@ -376,7 +376,11 @@ safety property:
 2. Rescue (checkpoint + fetch + verify) as above, then pull beads issues home
    the same way `session pull` does — before the replay, since merge is about
    to delete the session repository the issue database rides in.
-3. `git cherry-pick --empty=drop -S HEAD..<ref>` onto the current branch, one
+3. `git cherry-pick --empty=drop -S <base>..<ref>` onto the current branch, where
+   `<base>` is the commit the session started from, so a branch folded,
+   rebased or re-signed since is not replayed twice (`HEAD..<ref>` would then
+   include a pre-rewrite copy of its history). Merge refuses only when that
+   base no longer exists. One
    commit at a time so a conflict names the commit it happened on and each
    message can be stripped of agent attribution once its commit exists.
    Cherry-pick rather than rebase because the session ref lives outside

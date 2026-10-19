@@ -269,8 +269,42 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:    runPull,
 	},
 	{
-		use:    "merge [session]",
-		short:  "Replay and sign session work, then resumably retire its owned resources",
+		use:   "merge [session]",
+		short: "Replay and sign session work, then resumably retire its owned resources",
+		long: "Replay the session's commits onto your current branch, signing each\n" +
+			"with your key, then retire the session: its checkout on the instance,\n" +
+			"its local worktree and branch, and its Herdr workspace.\n\n" +
+			"Commits are replayed from the commit the session started from, so\n" +
+			"folding, rebasing or re-signing your branch after the session began is\n" +
+			"fine. Merge refuses only when that start commit no longer exists in\n" +
+			"this repository (rewritten, then garbage collected). Then run\n" +
+			"`bivouac session pull`, apply the commits by hand, and retire the\n" +
+			"session with `bivouac session delete --force`.\n\n" +
+			"It refuses while your working tree or the session worktree has\n" +
+			"uncommitted changes. A conflict stops it naming the commit: resolve\n" +
+			"it, `git cherry-pick --continue`, and run merge again; it resumes\n" +
+			"rather than replaying what already landed.\n\n" +
+			"Retirement is resumable. If it stops, the session is left paused and\n" +
+			"`bivouac session list --json` shows retirementPhase and lastFailure;\n" +
+			"running the same command again continues from there.",
+		metadata: commandMetadata{
+			Title:            "Replay and sign session work, then retire the session",
+			Network:          true,
+			Destructive:      true,
+			RequiresInstance: true,
+			RequiresRepo:     true,
+			SideEffects: []string{
+				"adds signed commits to the current branch",
+				"removes the session checkout, local worktree and branch",
+				"closes the session's Herdr workspace",
+			},
+			Related: []string{"bivouac_session_pull", "bivouac_session_delete", "bivouac_session_list"},
+			Arguments: []argumentMetadata{{
+				Name:        "session",
+				Description: "Session to merge; optional when only one is live",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
 		verb:   "session merge",
 		args:   cobra.MaximumNArgs(1),
 		named:  false,
