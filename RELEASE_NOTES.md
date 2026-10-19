@@ -40,6 +40,10 @@
 
 ### Fixed
 
+- `session delete --force` can finish removing a local worktree that git
+  had already unregistered. When an earlier attempt stopped on a file it
+  could not delete, every retry failed with "is not a working tree" and the
+  directory stayed behind. The leftover directory is now removed.
 - `session delete` no longer stops on a Herdr workspace whose original
   pane was closed or replaced. bivouac records that pane to prove the
   workspace is its own, and laying out tabs could close it, as could you.

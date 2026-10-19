@@ -150,6 +150,19 @@ func removeLocalWorktree(ctx context.Context, sess state.Session) error {
 	}
 	args = append(args, local)
 	if out, err := runLocalGit(ctx, sess.LocalRepo, args...); err != nil {
+		// git unregisters the worktree before it deletes the files, so a
+		// removal that stopped on one it could not delete leaves a directory
+		// git no longer knows. Retrying git then fails for good; finish the
+		// deletion ourselves. Forced only: without --force the cleanliness
+		// check above is what vouched for the contents, and it cannot have
+		// passed for a checkout git no longer recognises.
+		if sess.Retirement.Force && strings.Contains(out, "is not a working tree") {
+			if rmErr := os.RemoveAll(local); rmErr != nil {
+				return fmt.Errorf("removing local worktree %s: %w", local, rmErr)
+			}
+			_, _ = runLocalGit(ctx, sess.LocalRepo, "worktree", "prune")
+			return nil
+		}
 		return fmt.Errorf("removing local worktree %s: %w\n%s", local, err, out)
 	}
 	_, _ = runLocalGit(ctx, sess.LocalRepo, "worktree", "prune")

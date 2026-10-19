@@ -123,3 +123,30 @@ func TestForcedOfflineDeleteKeepsRemoteObligations(t *testing.T) {
 		t.Fatalf("forced offline retirement forgot remote obligation: %+v", sess)
 	}
 }
+
+// A retry after git has already dropped the worktree registration -- the
+// removal got as far as unregistering and then stopped on a file it could not
+// delete -- must finish the job instead of failing on "is not a working tree"
+// forever while the effect stays intended.
+func TestRemoveLocalWorktreeFinishesAnAlreadyUnregisteredCheckout(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initRepo(t, repo)
+	if err := excludeWorktreeDir(context.Background(), repo); err != nil {
+		t.Fatal(err)
+	}
+	local := LocalWorktreePath(repo, "auth")
+	mustGit(t, repo, "worktree", "add", "--quiet", "-B", SessionBranch("auth"), local)
+	writeAndCommit(t, local, "leftover.txt", "x", "work")
+	// The state git leaves behind: directory present, registration gone.
+	if err := os.RemoveAll(filepath.Join(repo, ".git", "worktrees")); err != nil {
+		t.Fatal(err)
+	}
+	sess := state.Session{Name: "auth", LocalRepo: repo, Retirement: &state.Retirement{Operation: state.RetirementDelete, Force: true}}
+
+	if err := removeLocalWorktree(context.Background(), sess); err != nil {
+		t.Fatalf("removeLocalWorktree() = %v, want the leftover directory removed", err)
+	}
+	if _, err := os.Stat(local); !os.IsNotExist(err) {
+		t.Errorf("the checkout directory is still there: %v", err)
+	}
+}
