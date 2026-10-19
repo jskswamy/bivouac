@@ -311,20 +311,21 @@ func mergeConfig(base, project Config, projectDeclared map[string]struct{}) Conf
 		return ok
 	}
 	return Config{
-		Region:    coalesce(project.Region, base.Region),
-		Size:      coalesce(project.Size, base.Size),
-		Template:  coalesce(project.Template, base.Template),
-		Arch:      pick(declared(FieldArch), project.Arch, base.Arch),
-		Image:     pick(declared(FieldImage), project.Image, base.Image),
-		Tailscale: pick(declared(FieldTailscale), project.Tailscale, base.Tailscale),
-		Shell:     coalesce(project.Shell, base.Shell),
-		Beads:     pick(declared(FieldBeads), project.Beads, base.Beads),
-		SshKeys:   mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
-		Packages:  append(append([]string{}, base.Packages...), project.Packages...),
-		Agents:    append(append([]string{}, base.Agents...), project.Agents...),
-		Flakes:    append(append([]Flake{}, base.Flakes...), project.Flakes...),
-		HerdrTabs: append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
-		Settings:  mergeSettings(base.Settings, project.Settings),
+		Region:              coalesce(project.Region, base.Region),
+		Size:                coalesce(project.Size, base.Size),
+		Template:            coalesce(project.Template, base.Template),
+		Arch:                pick(declared(FieldArch), project.Arch, base.Arch),
+		Image:               pick(declared(FieldImage), project.Image, base.Image),
+		Tailscale:           pick(declared(FieldTailscale), project.Tailscale, base.Tailscale),
+		Shell:               coalesce(project.Shell, base.Shell),
+		Beads:               pick(declared(FieldBeads), project.Beads, base.Beads),
+		SshKeys:             mergeStringSlicePtrs(base.SshKeys, project.SshKeys),
+		Packages:            append(append([]string{}, base.Packages...), project.Packages...),
+		Agents:              append(append([]string{}, base.Agents...), project.Agents...),
+		AllowUnfreePackages: append(append([]string{}, base.AllowUnfreePackages...), project.AllowUnfreePackages...),
+		Flakes:              append(append([]Flake{}, base.Flakes...), project.Flakes...),
+		HerdrTabs:           append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
+		Settings:            mergeSettings(base.Settings, project.Settings),
 	}
 }
 

@@ -34,6 +34,7 @@ see "A note on trust" near the end of this doc.
 | `sshKeys` | `Listing<String>?` | No | none | Public-key file paths. `bivouac init` selects them; `up` resolves account keys and registers missing public keys only after confirmation. See [SSH keys](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
 | `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
+| `allowUnfreePackages` | `Listing<String>` | No | empty | Unfree packages to permit by name, for ones that arrive through an imported module rather than `agents` — see [below](#allowunfreepackages). Merges additively like `packages`. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and a `modules` listing naming dotted paths into that flake's `homeManagerModules` to pull (e.g. `"tools.git"` for one tool, `"git-tools"` for a top-level group). |
 | `herdrTabs` | `Listing<HerdrTab>` (`{label, panes}`; each pane `{label, command?, cwd?}`) | No | empty | Tabs and panes `bivouac herdr` lays out in the session's workspace when run inside herdr. Merges additively like `packages`, base's tabs first. See [herdr tabs](#herdr-tabs). |
@@ -83,6 +84,27 @@ asked for. It does not switch unfree software on in general, so an
 unfree package listed in `packages` is still refused.
 
 Anything not on this list still goes in `packages` as usual.
+
+### `allowUnfreePackages`
+
+Names unfree packages nixpkgs may evaluate even though you did not list
+them yourself, typically because an imported module installs them. For
+example, `jskswamy/nix-modules`' `tools.nvim` brings in Terraform, whose
+`bsl11` licence nixpkgs otherwise refuses:
+
+```pkl
+allowUnfreePackages {
+  "terraform"
+}
+```
+
+Names are matched by `nixpkgs.lib.getName`, so they are package names
+(`terraform`), not flake input names or attribute paths. They are
+merged with the unfree agents you selected into the same narrow
+`allowUnfreePredicate`: duplicates collapse, anything unlisted is still
+refused, and unfree software is never switched on wholesale. Base and
+project lists append, base first. A name outside letters, digits and
+`_+.-` is rejected before anything is rendered.
 
 ### `tailscale`
 
@@ -454,7 +476,7 @@ base config. If one exists, the two are merged:
   neither file sets it. A project that sets one wins even when its value
   equals the default, so `image = "ubuntu-24-04-x64"` in a project
   overrides `image = "tag:my-dev"` in your base.
-- **Lists** (`sshKeys`, `packages`, `agents`, `flakes`, `instructions`,
+- **Lists** (`sshKeys`, `packages`, `agents`, `allowUnfreePackages`, `flakes`, `instructions`,
   `herdrTabs`): additive — your base's entries first, then the
   project's. Nothing is dropped from either side of the merge itself.
   `herdrTabs` has one further rule of its own after merging: a later

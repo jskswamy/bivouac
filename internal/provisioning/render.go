@@ -3,6 +3,7 @@ package provisioning
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ import (
 // nothing, so the template's default stands and the tailscaled unit is
 // never installed -- the flag silently does nothing at all.
 func NeedsRender(cfg config.Config) bool {
-	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0 || len(cfg.Settings) > 0
+	return len(cfg.Packages) > 0 || len(cfg.Flakes) > 0 || cfg.Tailscale || len(cfg.Agents) > 0 || len(cfg.AllowUnfreePackages) > 0 || len(cfg.Settings) > 0
 }
 
 // NixpkgsRef is the nixpkgs the rendered flake pins, and so the one a
@@ -155,6 +156,11 @@ func Render(cfg config.Config, templateRef string) (string, error) {
 		Flakes:         cfg.Flakes,
 		Settings:       cfg.Settings,
 	}
+	// Sorted and deduplicated so the generated flake is stable however the
+	// base and project lists were ordered.
+	data.UnfreePackages = append(data.UnfreePackages, cfg.AllowUnfreePackages...)
+	slices.Sort(data.UnfreePackages)
+	data.UnfreePackages = slices.Compact(data.UnfreePackages)
 	if err := validateRenderData(data); err != nil {
 		return "", err
 	}
@@ -277,6 +283,11 @@ func validateRenderData(data renderData) error {
 	}
 	for _, pkg := range data.Packages {
 		if err := validateNixIdent("package", pkg); err != nil {
+			return err
+		}
+	}
+	for _, pkg := range data.UnfreePackages {
+		if err := validateNixIdent("unfree package", pkg); err != nil {
 			return err
 		}
 	}

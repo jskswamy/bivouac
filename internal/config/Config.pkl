@@ -58,6 +58,16 @@ packages: Listing<String> = new Listing {}
 /// unfree software in general.
 agents: Listing<"claude"|"codex"|"copilot"|"cursor"|"opencode"|"pi"> = new Listing {}
 
+/// Unfree packages to permit by name, as matched by `nixpkgs.lib.getName`
+/// (e.g. `terraform`) -- not flake input names or attribute paths.
+///
+/// For packages that arrive indirectly, such as through an imported
+/// home-manager module, which nixpkgs would otherwise refuse to evaluate.
+/// Merged with the selected `agents`' allowances into one narrow
+/// predicate; unfree software in general stays refused. Additive like
+/// `packages`: base's names come first.
+allowUnfreePackages: Listing<String> = new Listing {}
+
 /// Markdown files whose contents are delivered to every configured
 /// coding agent on the instance.
 ///

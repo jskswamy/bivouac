@@ -52,6 +52,10 @@ type Config struct {
 	// a second copy here would only drift.
 	Beads string `pkl:"beads"`
 
+	// Public-key file paths only; fingerprints and account key IDs are rejected
+	// during local resolution. Relative paths use this config's directory;
+	// ~/ expands to the local home directory. Base/project lists are additive.
+	// Kept as strings so init can read legacy entries and help replace them.
 	SshKeys *[]string `pkl:"sshKeys"`
 
 	Packages []string `pkl:"packages"`
@@ -66,6 +70,16 @@ type Config struct {
 	// cannot set it). Selecting them permits exactly those packages, not
 	// unfree software in general.
 	Agents []string `pkl:"agents"`
+
+	// Unfree packages to permit by name, as matched by `nixpkgs.lib.getName`
+	// (e.g. `terraform`) -- not flake input names or attribute paths.
+	//
+	// For packages that arrive indirectly, such as through an imported
+	// home-manager module, which nixpkgs would otherwise refuse to evaluate.
+	// Merged with the selected `agents`' allowances into one narrow
+	// predicate; unfree software in general stays refused. Additive like
+	// `packages`: base's names come first.
+	AllowUnfreePackages []string `pkl:"allowUnfreePackages"`
 
 	// Markdown files whose contents are delivered to every configured
 	// coding agent on the instance.

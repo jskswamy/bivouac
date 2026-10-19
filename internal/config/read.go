@@ -64,6 +64,8 @@ func fieldValue(c Config, name string) (any, bool) {
 		return append([]string{}, c.Packages...), true
 	case FieldAgents:
 		return append([]string{}, c.Agents...), true
+	case FieldAllowUnfree:
+		return append([]string{}, c.AllowUnfreePackages...), true
 	case FieldInstructions:
 		return append([]string{}, c.Instructions...), true
 	case FieldFlakes:
@@ -99,6 +101,7 @@ var fieldDefaults = map[string]any{
 	FieldBeads:        "session",
 	FieldPackages:     []string{},
 	FieldAgents:       []string{},
+	FieldAllowUnfree:  []string{},
 	FieldInstructions: []string{},
 	FieldFlakes:       []Flake{},
 	FieldSettings:     map[string]any{},

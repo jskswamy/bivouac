@@ -36,6 +36,7 @@ const (
 	FieldSSHKeys      = "sshKeys"
 	FieldPackages     = "packages"
 	FieldAgents       = "agents"
+	FieldAllowUnfree  = "allowUnfreePackages"
 	FieldInstructions = "instructions"
 	FieldFlakes       = "flakes"
 	FieldSettings     = "settings"
@@ -57,6 +58,7 @@ var fieldOrder = []string{
 	FieldSSHKeys,
 	FieldPackages,
 	FieldAgents,
+	FieldAllowUnfree,
 	FieldInstructions,
 	FieldFlakes,
 	FieldSettings,
@@ -84,6 +86,7 @@ var fieldKinds = map[string]fieldKind{
 	FieldSSHKeys:      kindStringList,
 	FieldPackages:     kindStringList,
 	FieldAgents:       kindStringList,
+	FieldAllowUnfree:  kindStringList,
 	FieldInstructions: kindStringList,
 	FieldFlakes:       kindFlakeList,
 	FieldSettings:     kindSettingsMap,

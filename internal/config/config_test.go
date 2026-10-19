@@ -827,3 +827,14 @@ func TestResolve_InheritsUndeclaredScalarsFromBase(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeConfig_AllowUnfreePackagesAreAdditiveBaseFirst(t *testing.T) {
+	base := Config{AllowUnfreePackages: []string{"terraform"}}
+	project := Config{AllowUnfreePackages: []string{"vault"}}
+
+	got := mergeConfig(base, project, nil).AllowUnfreePackages
+	want := []string{"terraform", "vault"}
+	if !equalStrings(got, want) {
+		t.Fatalf("AllowUnfreePackages = %v, want %v", got, want)
+	}
+}

@@ -499,3 +499,35 @@ func TestNixValue_PlainStringSlice(t *testing.T) {
 		t.Errorf("nixValue() = %q, want %q", got, `[ "x" "y" ]`)
 	}
 }
+
+// allowUnfreePackages permits named non-agent packages -- typically ones an
+// imported module installs -- merged with the selected agents' allowances,
+// deduplicated and in a stable order so the generated flake does not churn.
+func TestRender_AllowUnfreePackages_MergedWithAgentsDeduped(t *testing.T) {
+	cfg := config.Config{
+		Arch:                "x86_64",
+		Agents:              []string{"claude"},
+		AllowUnfreePackages: []string{"terraform", "claude-code", "terraform"},
+	}
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(out, `getName pkg) [ "claude-code" "terraform" ]`) {
+		t.Errorf("want sorted, deduplicated allowlist:\n%s", out)
+	}
+}
+
+func TestRender_AllowUnfreePackages_AloneRendersAFlake(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", AllowUnfreePackages: []string{"terraform"}}
+	if !NeedsRender(cfg) {
+		t.Error("NeedsRender = false; the allowlist has no effect without a rendered flake")
+	}
+}
+
+func TestRender_AllowUnfreePackages_RejectsUnsafeNames(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", AllowUnfreePackages: []string{`x" ]; evil`}}
+	if _, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux"); err == nil {
+		t.Error("Render() accepted a name that could break out of the Nix string")
+	}
+}

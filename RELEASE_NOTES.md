@@ -2,6 +2,11 @@
 
 ### Added
 
+- `allowUnfreePackages` permits named unfree packages, such as the
+  `terraform` an imported Home Manager module may install, which
+  `bivouac provision` otherwise refuses to evaluate. Names are matched by
+  `nixpkgs.lib.getName` and merged with the selected agents into the same
+  narrow predicate; nothing else unfree is allowed. See `docs/config.md`.
 - Custom cloud images. `bivouac image build --tag my-dev` builds a
   DigitalOcean snapshot in your own account with Nix, your login shell and
   your configuration's Nix store closure already in place, then sets
