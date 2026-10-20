@@ -2,6 +2,7 @@ package state
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -289,5 +290,32 @@ func TestRecord_ImageFieldsRoundTripAndLegacyJSONLoadsEmpty(t *testing.T) {
 		if !bytes.Contains(bytes.ReplaceAll(raw, []byte(" "), nil), []byte(want)) {
 			t.Errorf("state file lacks %s:\n%s", want, raw)
 		}
+	}
+}
+
+func TestSessionBeadsRoundTrip(t *testing.T) {
+	in := Session{Name: "s", Beads: &SessionBeads{StartCommit: "c0", Issue: "e", Planned: []string{"e", "e.1"}}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Session
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Fatalf("got %+v, want %+v", out, in)
+	}
+}
+
+// A session that predates issue reporting must keep marshalling without the
+// key, so older records stay byte-for-byte what they were.
+func TestSessionWithoutBeadsOmitsKey(t *testing.T) {
+	raw, err := json.Marshal(Session{Name: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"beads"`)) {
+		t.Fatalf("unexpected beads key: %s", raw)
 	}
 }

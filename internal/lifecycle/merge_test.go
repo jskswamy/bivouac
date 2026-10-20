@@ -103,6 +103,9 @@ func newSessionFixture(t *testing.T, agentCommits int) *sessionFixture {
 			}
 		}
 		switch {
+		case strings.Contains(cmd, "status") && strings.Contains(cmd, "--json"):
+			// Pull parses this to pin the commit it brings home.
+			return `{"commit":"abc123def"}`, 0
 		case strings.Contains(cmd, "rm -rf"):
 			f.mu.Lock()
 			f.removed = true
@@ -138,8 +141,9 @@ func (f *sessionFixture) sessionRemoved() bool {
 
 func (f *sessionFixture) pull(t *testing.T) ([]string, error) {
 	t.Helper()
-	return PullSession(context.Background(), f.addr, "devuser", f.repoName,
+	commits, _, err := PullSession(context.Background(), f.addr, "devuser", f.repoName,
 		state.Session{Name: f.session, LocalRepo: f.repo, Base: f.base})
+	return commits, err
 }
 
 func (f *sessionFixture) merge(t *testing.T) ([]string, error) {

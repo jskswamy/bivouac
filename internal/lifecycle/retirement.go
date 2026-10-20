@@ -13,6 +13,10 @@ import (
 type RetirementOptions struct {
 	Operation state.RetirementOperation
 	Force     bool
+	// AcceptUnsynced is merge's --accept-unsynced: go ahead past session
+	// issues that did not land, recording which. Merge only, as Force is
+	// delete only.
+	AcceptUnsynced bool
 }
 
 type RetirementResult struct {
@@ -20,6 +24,9 @@ type RetirementResult struct {
 	AlreadyCompleted bool
 	Phase            state.RetirementPhase
 	Signed           []string
+	// Issues is the receipt from the last accepted check, nil when the
+	// session had no issue verification.
+	Issues *state.IssueReceipt
 }
 
 type RetirementError struct {
@@ -53,6 +60,9 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 	}
 	if options.Force && options.Operation != state.RetirementDelete {
 		return RetirementResult{}, fmt.Errorf("force is valid only for delete")
+	}
+	if options.AcceptUnsynced && options.Operation != state.RetirementMerge {
+		return RetirementResult{}, fmt.Errorf("accept-unsynced is valid only for merge")
 	}
 	instanceRelease, err := store.LockInstance(ctx, instance, false)
 	if err != nil {
@@ -159,7 +169,7 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 			fmt.Errorf("session already has immutable %s retirement intent (force=%t)", sess.Retirement.Operation, sess.Retirement.Force))
 	}
 
-	policy := mergeRetirementPolicy()
+	policy := mergeRetirementPolicy(options.AcceptUnsynced)
 	if options.Operation == state.RetirementDelete {
 		policy = deleteRetirementPolicy(sess.Retirement.Force)
 	}
@@ -178,7 +188,7 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 			} else {
 				current.Retirement.Phase = state.RetirementClosing
 			}
-			current.Retirement.LastFailure = ""
+			clearRetirementFailure(current.Retirement)
 			return nil
 		}); err != nil {
 			return result, err
@@ -234,6 +244,7 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 			appendAcceptance(current.Retirement, accepted)
 			current.Retirement.Signed = appendUnique(current.Retirement.Signed, signed...)
 			current.Retirement.Phase = state.RetirementRemoving
+			clearRetirementFailure(current.Retirement)
 			return nil
 		}); err != nil {
 			return result, err
@@ -269,7 +280,7 @@ func RetireSession(ctx context.Context, store *state.Store, instance, session st
 		if err := store.CompleteRetirement(instance, sess.Generation, receipt); err != nil {
 			return result, err
 		}
-		return RetirementResult{Completed: true, Phase: state.RetirementRemoving, Signed: receipt.Signed}, nil
+		return RetirementResult{Completed: true, Phase: state.RetirementRemoving, Signed: receipt.Signed, Issues: accepted.Issues}, nil
 	}
 	return result, retirementFailure(options.Operation, session, sess.Retirement.Phase, errors.New("retirement paused"))
 }
@@ -396,12 +407,24 @@ func pauseRetirement(store *state.Store, instance string, sess state.Session, ca
 	recordErr := updateRetirement(store, instance, sess.Generation, func(current *state.Session) error {
 		current.Retirement.Phase = phase
 		current.Retirement.LastFailure = cause.Error()
+		current.Retirement.PausedOn = ""
+		if errors.Is(cause, ErrIssuesUnsynced) {
+			current.Retirement.PausedOn = state.PausedOnIssues
+		}
 		return nil
 	})
 	if recordErr != nil {
 		cause = errors.Join(cause, fmt.Errorf("recording retirement failure: %w", recordErr))
 	}
 	return retirementFailure(sess.Retirement.Operation, sess.Name, phase, cause)
+}
+
+// clearRetirementFailure forgets why the last run stopped, once a check has
+// passed: a resumed retirement that got past the problem must not keep
+// reporting it in list and status.
+func clearRetirementFailure(retirement *state.Retirement) {
+	retirement.LastFailure = ""
+	retirement.PausedOn = ""
 }
 
 func retirementFailure(operation state.RetirementOperation, session string, phase state.RetirementPhase, cause error) error {

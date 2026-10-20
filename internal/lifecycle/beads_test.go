@@ -100,7 +100,7 @@ func TestPullBeads_IsSilentWhenBeadsWasNeverWiredForTheSession(t *testing.T) {
 	// had beads, must stay silent forever after -- pull runs on every
 	// checkpoint and a warning per pull would train the user to ignore them.
 	// A nil client would panic if anything downstream ran.
-	if synced := pullBeads(ctx, nil, t.TempDir(), "/home/u/sessions/s/repo", "s"); !synced {
+	if _, synced := pullBeads(ctx, nil, t.TempDir(), "/home/u/sessions/s/repo", "s"); !synced {
 		t.Error("pullBeads() = false, want true — nothing to sync is not a failed sync, " +
 			"and merge decides whether to warn about losing issues from this")
 	}
@@ -192,6 +192,9 @@ func TestRequireBeadsLanded_PassesOnceIssuesHaveLanded(t *testing.T) {
 	// Seed already pushed, so the local `bd dolt pull` that follows has
 	// nothing new to bring home and succeeds too.
 	addr := startFakeSSHServer(t, func(cmd string, _ []byte) (string, uint32) {
+		if strings.Contains(cmd, "status") && strings.Contains(cmd, "--json") {
+			return `{"commit":"abc123def"}`, 0
+		}
 		return "", 0
 	})
 	client, err := reconcile.Connect(context.Background(), addr, "devuser")

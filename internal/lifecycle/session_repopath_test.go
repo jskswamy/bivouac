@@ -41,7 +41,7 @@ func TestSessionOperations_UseRecordedRepoPath(t *testing.T) {
 				var err error
 				switch operation {
 				case "pull":
-					_, err = PullSession(context.Background(), f.addr, "devuser", instance, sess)
+					_, _, err = PullSession(context.Background(), f.addr, "devuser", instance, sess)
 				case "merge":
 					_, err = MergeSession(context.Background(), f.addr, "devuser", instance, sess)
 				default:

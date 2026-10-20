@@ -431,3 +431,147 @@ func TestUnforcedDeletePausedOnAnUnprovableWorkspaceFinishesWithForce(t *testing
 		t.Fatalf("--force after the pause the message recommends: result=%+v err=%v", result, err)
 	}
 }
+
+func retirementOf(t *testing.T, store *state.Store) state.Retirement {
+	t.Helper()
+	record, _, err := store.Get("instance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, ok := record.FindSession("auth")
+	if !ok || sess.Retirement == nil {
+		t.Fatalf("session auth has no retirement: %+v", sess)
+	}
+	return *sess.Retirement
+}
+
+// Unsynced issues pause the merge, and the reason is recorded so list and
+// status can say why without parsing LastFailure.
+func TestIssueFailurePausesOnIssues(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	checkRetirementWork = func(retirementPolicy, context.Context, state.Record, state.Session, bool) (state.Acceptance, []string, error) {
+		return state.Acceptance{}, nil, fmt.Errorf("session auth: %w: x", ErrIssuesUnsynced)
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge}); !errors.Is(err, ErrIssuesUnsynced) {
+		t.Fatalf("err = %v, want ErrIssuesUnsynced", err)
+	}
+	r := retirementOf(t, store)
+	if r.Phase != state.RetirementPaused || r.PausedOn != state.PausedOnIssues || r.LastFailure == "" {
+		t.Fatalf("retirement = %+v", r)
+	}
+}
+
+func TestOtherFailureLeavesPausedOnEmpty(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	checkRetirementWork = func(retirementPolicy, context.Context, state.Record, state.Session, bool) (state.Acceptance, []string, error) {
+		return state.Acceptance{}, nil, errors.New("working tree dirty")
+	}
+	_, _ = RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge})
+	if r := retirementOf(t, store); r.Phase != state.RetirementPaused || r.PausedOn != "" {
+		t.Fatalf("retirement = %+v", r)
+	}
+}
+
+// Resuming from an issues pause re-runs the check from the top; once it
+// passes, the reason and the failure must both go, or list would keep
+// reporting a pause that is over.
+func TestResumedCheckClearsIssuePause(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	pass := checkRetirementWork
+	checkRetirementWork = func(retirementPolicy, context.Context, state.Record, state.Session, bool) (state.Acceptance, []string, error) {
+		return state.Acceptance{}, nil, fmt.Errorf("%w: a", ErrIssuesUnsynced)
+	}
+	_, _ = RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge})
+
+	var seen []state.Retirement
+	checkRetirementWork = func(policy retirementPolicy, ctx context.Context, record state.Record, sess state.Session, final bool) (state.Acceptance, []string, error) {
+		if final {
+			seen = append(seen, *sess.Retirement)
+		}
+		return pass(policy, ctx, record, sess, final)
+	}
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge})
+	if err != nil || !result.Completed {
+		t.Fatalf("resume result=%+v err=%v", result, err)
+	}
+	if len(seen) != 1 || seen[0].PausedOn != "" || seen[0].LastFailure != "" {
+		t.Fatalf("state after the passing check = %+v", seen)
+	}
+}
+
+// The final-check transition clears the reason too, so no route out of a
+// passing check can carry a stale pause into removal.
+func TestFinalCheckClearsIssuePause(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	if err := store.Update("instance", func(record *state.Record) error {
+		sess, _ := record.FindSession("auth")
+		head := gitOut(t, sess.LocalRepo, "rev-parse", "HEAD")
+		sess.Attachments[0].Phase = state.AttachmentClosed
+		sess.Retirement = &state.Retirement{
+			Version: state.SessionLifecycleVersion, Operation: state.RetirementMerge,
+			Phase:       state.RetirementFinalCheck,
+			Destination: state.Destination{LocalRepo: sess.LocalRepo, GitDir: sess.LocalRepo + "/.git", Branch: "main"},
+			Accepted:    []state.Acceptance{{SourceTip: "s", ReplayBase: head, VerifiedHead: head}},
+			Effects:     map[string]state.RetirementEffect{"herdr:owned": {Status: state.EffectDone}},
+			PausedOn:    state.PausedOnIssues, LastFailure: "stale",
+		}
+		record.PutSession(sess)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var seen *state.Retirement
+	validateRetirementWork = func(_ retirementPolicy, _ context.Context, _ state.Record, sess state.Session, _ state.Acceptance) error {
+		r := *sess.Retirement
+		seen = &r
+		return nil
+	}
+	if _, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge}); err != nil {
+		t.Fatal(err)
+	}
+	if seen == nil || seen.PausedOn != "" || seen.LastFailure != "" {
+		t.Fatalf("state after final check = %+v", seen)
+	}
+}
+
+func TestAcceptUnsyncedIsMergeOnly(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	_, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementDelete, AcceptUnsynced: true})
+	if err == nil || !strings.Contains(err.Error(), "accept-unsynced") {
+		t.Fatalf("err = %v, want refusal", err)
+	}
+}
+
+// The override reaches the policy, and the receipt of the last acceptance
+// comes back for the command to print.
+func TestMergeCarriesAcceptUnsyncedAndReceipt(t *testing.T) {
+	store, _, _ := retirementCoordinatorFixture(t)
+	var events []string
+	withRetirementSeams(t, &events, "")
+	pass := checkRetirementWork
+	var accepted []bool
+	checkRetirementWork = func(policy retirementPolicy, ctx context.Context, record state.Record, sess state.Session, final bool) (state.Acceptance, []string, error) {
+		accepted = append(accepted, policy.acceptUnsynced)
+		a, signed, err := pass(policy, ctx, record, sess, final)
+		a.Issues = &state.IssueReceipt{Created: len(accepted)}
+		return a, signed, err
+	}
+	result, err := RetireSession(context.Background(), store, "instance", "auth", RetirementOptions{Operation: state.RetirementMerge, AcceptUnsynced: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accepted) != 2 || !accepted[0] || !accepted[1] {
+		t.Fatalf("policy acceptUnsynced per check = %v", accepted)
+	}
+	if result.Issues == nil || result.Issues.Created != 2 {
+		t.Fatalf("result.Issues = %+v, want the final check's receipt", result.Issues)
+	}
+}

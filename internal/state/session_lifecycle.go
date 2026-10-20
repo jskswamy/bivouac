@@ -96,7 +96,41 @@ type Acceptance struct {
 	ReplayBase    string `json:"replay_base"`
 	VerifiedHead  string `json:"verified_head"`
 	IssueEvidence string `json:"issue_evidence,omitempty"`
+	// Issues is what the merge's issue check found, kept with the evidence
+	// so the command that finishes the retirement can print it even when an
+	// earlier run did the checking.
+	Issues *IssueReceipt `json:"issues,omitempty"`
 }
+
+// IssueReceipt summarises a session's issue changes and which of them have
+// not reached the local database. Accepted marks a merge that went ahead
+// past those with --accept-unsynced.
+type IssueReceipt struct {
+	Created  int             `json:"created"`
+	Closed   int             `json:"closed"`
+	Updated  int             `json:"updated"`
+	Removed  int             `json:"removed"`
+	Unsynced []UnsyncedIssue `json:"unsynced,omitempty"`
+	Accepted bool            `json:"accepted,omitempty"`
+}
+
+// UnsyncedIssue is one change the local database does not hold. Times are
+// RFC 3339 strings so the record stays a plain value; LocalUpdated is empty
+// when the issue is missing locally or the local database was unreadable,
+// and Sync says which.
+type UnsyncedIssue struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Sync            string `json:"sync"`
+	InstanceUpdated string `json:"instance_updated,omitempty"`
+	LocalUpdated    string `json:"local_updated,omitempty"`
+}
+
+// PausedOnIssues is the Retirement.PausedOn reason for a merge waiting on
+// issues that have not landed. A reason rather than a phase: a new phase
+// would have to be taught to the validator, both resume checks and both
+// attach guards, and an older binary would reject the state file.
+const PausedOnIssues = "issues"
 
 type RetirementEffect struct {
 	Status EffectStatus `json:"status"`
@@ -112,6 +146,9 @@ type Retirement struct {
 	Signed      []string                    `json:"signed,omitempty"`
 	Effects     map[string]RetirementEffect `json:"effects"`
 	LastFailure string                      `json:"last_failure,omitempty"`
+	// PausedOn names why a paused retirement stopped when the reason is one
+	// the user acts on differently (see PausedOnIssues); empty otherwise.
+	PausedOn string `json:"paused_on,omitempty"`
 }
 
 type RetirementReceipt struct {

@@ -54,3 +54,34 @@ func versionCmd(repo string) string {
 func claimCmd(repo, id string) string {
 	return instanceCmd(repo, "update", id, "--claim")
 }
+
+// vcStatusCmd reads the instance database's current commit. The JSON form is
+// the only one with a stable shape to parse.
+func vcStatusCmd(repo string) string {
+	return instanceCmd(repo, "vc", "status", "--json")
+}
+
+// diffCmd lists issue-level changes between two database commits. bd accepts
+// only commit hashes or branch names here -- HEAD~n is rejected -- which is
+// why callers record a hash at session start.
+func diffCmd(repo, from, to string) string {
+	return instanceCmd(repo, "diff", from, to, "--json")
+}
+
+// showCmd reads one issue; bd answers with a one-element array.
+func showCmd(repo, id string) string {
+	return instanceCmd(repo, "show", id, "--json")
+}
+
+func showAtCmd(repo, commit string, ids []string) string {
+	args := []string{"show", "--as-of", commit, "--json"}
+	for _, id := range ids {
+		args = append(args, "--id", id)
+	}
+	return instanceCmd(repo, args...)
+}
+
+// childrenCmd lists an issue's direct children, closed ones included.
+func childrenCmd(repo, id string) string {
+	return instanceCmd(repo, "children", id, "--json")
+}

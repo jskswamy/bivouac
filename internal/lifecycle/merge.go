@@ -73,7 +73,7 @@ func MergeSession(ctx context.Context, ip, user, instanceName string, sess state
 	// thing that strands a user's commits on a box they then have to salvage
 	// by hand. Saying plainly what is at stake is the honest middle.
 	if client, err := reconcile.Connect(ctx, ip, user); err == nil {
-		synced := pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
+		_, synced := pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
 		_ = client.Close()
 		if !synced {
 			provider.ReportWarning(ctx, fmt.Sprintf("beads: merge removes the session repository, and its issue database with it — any issue edits that did not sync are about to be lost; fix the problem and `bivouac session pull %s` first to keep them", session))

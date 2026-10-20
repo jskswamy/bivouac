@@ -2,9 +2,11 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jskswamy/bivouac/internal/beads"
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/state"
 )
@@ -12,10 +14,14 @@ import (
 type retirementPolicy struct {
 	operation state.RetirementOperation
 	force     bool
+	// acceptUnsynced is merge's --accept-unsynced. Not part of the recorded
+	// intent: it is a decision about the issues seen on this run, and a
+	// resume without it simply checks again.
+	acceptUnsynced bool
 }
 
-func mergeRetirementPolicy() retirementPolicy {
-	return retirementPolicy{operation: state.RetirementMerge}
+func mergeRetirementPolicy(acceptUnsynced bool) retirementPolicy {
+	return retirementPolicy{operation: state.RetirementMerge, acceptUnsynced: acceptUnsynced}
 }
 
 func deleteRetirementPolicy(force bool) retirementPolicy {
@@ -59,7 +65,7 @@ func (p retirementPolicy) Validate(ctx context.Context, _ state.Record, sess sta
 	return nil
 }
 
-func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, sess state.Session, _ bool) (state.Acceptance, []string, error) {
+func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, sess state.Session, final bool) (state.Acceptance, []string, error) {
 	if err := requireBaseExists(ctx, sess.LocalRepo, sess.Base, sess.Name); err != nil {
 		return state.Acceptance{}, nil, err
 	}
@@ -70,7 +76,8 @@ func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, s
 	if err != nil {
 		return state.Acceptance{}, nil, err
 	}
-	if err := pullBeadsRequired(record.ConnectionContext(ctx), record, sess); err != nil {
+	evidence, receipt, err := pullBeadsRequired(record.ConnectionContext(ctx), record, sess, p.acceptUnsynced, final)
+	if err != nil {
 		return state.Acceptance{}, nil, err
 	}
 	branch, base, err := retirementDestination(ctx, sess.LocalRepo)
@@ -87,6 +94,9 @@ func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, s
 			return state.Acceptance{}, nil, err
 		}
 		if prior.SourceTip == tip {
+			// The issues were just verified again; record this run's
+			// answer, not the one the prior acceptance was made on.
+			prior.IssueEvidence, prior.Issues = evidence, receipt
 			return prior, nil, nil
 		}
 		if !isAncestor(ctx, sess.LocalRepo, prior.SourceTip, tip) {
@@ -120,7 +130,7 @@ func (p retirementPolicy) checkMerge(ctx context.Context, record state.Record, s
 	if err != nil {
 		return state.Acceptance{}, nil, err
 	}
-	return state.Acceptance{SourceTip: tip, ReplayBase: replayBase, VerifiedHead: head, IssueEvidence: "pulled"}, signed, nil
+	return state.Acceptance{SourceTip: tip, ReplayBase: replayBase, VerifiedHead: head, IssueEvidence: evidence, Issues: receipt}, signed, nil
 }
 
 func (p retirementPolicy) checkDelete(ctx context.Context, record state.Record, sess state.Session, _ bool) (state.Acceptance, []string, error) {
@@ -181,17 +191,80 @@ func requireRetirementWorktreesClean(ctx context.Context, sess state.Session) er
 	return requireCleanSessionWorktree(ctx, LocalWorktreePath(sess.LocalRepo, sess.Name))
 }
 
-func pullBeadsRequired(ctx context.Context, record state.Record, sess state.Session) error {
-	if !beads.Wired(ctx, sess.LocalRepo, sess.Name) {
-		return nil
+// issueClient is the part of *reconcile.Client that pullBeadsRequired uses.
+type issueClient interface {
+	beadsRunner
+	Close() error
+}
+
+// pullBeadsRequired's outside dependencies, swappable because its choice of
+// branch is the one thing standing between merge and deleting the only copy
+// of a session's issues, and that choice is otherwise reachable only over a
+// live SSH connection with a real bd on both ends. pullBeads reads beadsWired
+// and pullIssues too, so the unrecorded branch is driven by the same fakes.
+var (
+	connectIssues = func(ctx context.Context, ip, user string) (issueClient, error) {
+		client, err := reconcile.Connect(ctx, ip, user)
+		if err != nil {
+			// A nil *Client inside a non-nil interface would pass a
+			// nil check the caller never makes; return a true nil.
+			return nil, err
+		}
+		return client, nil
 	}
-	client, err := reconcile.Connect(ctx, record.IP, record.User)
+	beadsWired     = beads.Wired
+	beadsAvailable = beads.Available
+	pullIssues     = func(ctx context.Context, localRepo, session string, client beadsRunner, repo string) (string, error) {
+		return beads.Pull(ctx, localRepo, session, client, repo)
+	}
+)
+
+// pullBeadsRequired brings the session's issues home and, for a session
+// with a start record, verifies they all landed before merge may go on to
+// delete the instance's copy.
+//
+// The gate is the start record or beads.Wired. A record proves beads was set
+// up whatever the local bd can say today, so a record with no usable local bd
+// verifies (every answer unknown) instead of skipping; skipping would delete
+// the only copy of the issues. Sessions without a record keep the old
+// behaviour exactly: pull if wired, evidence "pulled", no receipt.
+//
+// A pull failure always pauses: with nothing pulled there is nothing to
+// compare, so --accept-unsynced has nothing to accept.
+func pullBeadsRequired(ctx context.Context, record state.Record, sess state.Session, accept, final bool) (string, *state.IssueReceipt, error) {
+	if sess.Beads == nil && !beadsWired(ctx, sess.LocalRepo, sess.Name) {
+		return "pulled", nil, nil
+	}
+	client, err := connectIssues(ctx, record.IP, record.User)
 	if err != nil {
-		return fmt.Errorf("connecting to pull session %s issue data: %w", sess.Name, err)
+		return "", nil, issuePause(sess.Name, fmt.Errorf("connecting to pull issue data: %w", err), "", final)
 	}
 	defer func() { _ = client.Close() }()
-	if !pullBeads(ctx, client, sess.LocalRepo, RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name)), sess.Name) {
-		return fmt.Errorf("session %s issue data did not sync; retirement is paused", sess.Name)
+	repo := RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name))
+
+	if sess.Beads == nil {
+		if _, ok := pullBeads(ctx, client, sess.LocalRepo, repo, sess.Name); !ok {
+			return "", nil, issuePause(sess.Name, errors.New("issue data did not sync"), "", final)
+		}
+		return "pulled", nil, nil
 	}
-	return nil
+
+	// Without a local bd there is nothing to pull into; the instance's
+	// current commit stands in for the pin so the diff still lists what is
+	// at risk, every entry unknown.
+	localAvailable := beadsAvailable()
+	var pinned string
+	if localAvailable {
+		// beads.Pull, not pullBeads: pullBeads stays quiet when Wired is
+		// false, and here the start record has already said beads is in use.
+		provider.ReportProgress(ctx, "pulling issues from "+sess.Name)
+		pinned, err = pullIssues(ctx, sess.LocalRepo, sess.Name, client, repo)
+	} else {
+		pinned, err = beads.InstanceCommit(client, repo)
+	}
+	if err != nil {
+		return "", nil, issuePause(sess.Name, err, "", final)
+	}
+	receipt, verifyErr := verifyIssues(ctx, client, sess.LocalRepo, repo, *sess.Beads, pinned, localAvailable)
+	return gateIssues(sess.Name, receipt, verifyErr, pinned, accept, final)
 }

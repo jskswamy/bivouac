@@ -286,7 +286,15 @@ var lookupCommandSpecs = []lookupCommandSpec{
 			"rather than replaying what already landed.\n\n" +
 			"Retirement is resumable. If it stops, the session is left paused and\n" +
 			"`bivouac session list --json` shows retirementPhase and lastFailure;\n" +
-			"running the same command again continues from there.",
+			"running the same command again continues from there.\n\n" +
+			"For a session that records where its issues started, merge pulls the\n" +
+			"agent's issues and checks every one the session touched has landed\n" +
+			"here before deleting the instance's copy. If any has not, or bivouac\n" +
+			"cannot tell (no local bd, or the instance's issue history was\n" +
+			"rewritten), merge pauses with pausedOn \"issues\" and names them; run\n" +
+			"merge again once they land. Some gaps never close, such as an issue\n" +
+			"deleted here: --accept-unsynced merges anyway and lists them. It\n" +
+			"never steps over a pull that failed, nor any commit check.",
 		metadata: commandMetadata{
 			Title:            "Replay and sign session work, then retire the session",
 			Network:          true,
@@ -309,7 +317,10 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		args:   cobra.MaximumNArgs(1),
 		named:  false,
 		parent: "session",
-		run:    runMerge,
+		flags: func(c *cobra.Command) {
+			c.Flags().Bool("accept-unsynced", false, "merge even if some of the session's issues did not sync; lists them")
+		},
+		run: runMerge,
 	},
 	{
 		use:   "delete [session]",

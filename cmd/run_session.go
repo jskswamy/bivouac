@@ -57,6 +57,41 @@ func markIssueStarted(ctx context.Context, ip, user, localRepo, repo, session, i
 	}
 }
 
+// recordBeadsStart saves where the session's issue database stood at start,
+// the baseline for every later issue report.
+//
+// Best-effort, like the rest of beads setup: a session that cannot record
+// one still starts, and is then indistinguishable from one that predates
+// issue reporting -- which is exactly how pull and merge will treat it.
+func recordBeadsStart(ctx context.Context, store *state.Store, record state.Record, localRepo, repo, session, issue string) {
+	if !beads.Wired(ctx, localRepo, session) {
+		return
+	}
+	err := func() error {
+		client, err := reconcile.Connect(ctx, record.IP, record.User)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = client.Close() }()
+		start, err := lifecycle.ReadBeadsStart(client, repo, issue)
+		if err != nil {
+			return err
+		}
+		return store.Update(record.Name, func(latest *state.Record) error {
+			sess, ok := latest.FindSession(session)
+			if !ok {
+				return fmt.Errorf("session %s is no longer recorded", session)
+			}
+			sess.Beads = &start
+			latest.PutSession(sess)
+			return nil
+		})
+	}()
+	if err != nil {
+		provider.ReportWarning(ctx, "beads: could not record where this session started; it will report as predating issue reporting: "+err.Error())
+	}
+}
+
 // runSessionStart backs `bivouac session start <name>`. Cobra resolves the
 // verb now, so there is no hand-rolled dispatch here and no unknown-subcommand
 // error to maintain -- an unrecognised verb gets cobra's own suggestion.
@@ -148,8 +183,12 @@ func runSessionStart(cmd *cobra.Command, name string, args []string) error {
 	if err := lifecycle.StartSession(ctx, record.IP, record.User, root, repoPath, session, beadsModeFor(ctx, root), taskText); err != nil {
 		return err
 	}
+	remoteRepo := lifecycle.RemoteRepoPath(record.User, session, repoPath)
+	// Before the claim, so the claim is the session's first change rather
+	// than part of the baseline every report diffs against.
+	recordBeadsStart(ctx, store, record, root, remoteRepo, session, issue)
 	if issue != "" {
-		markIssueStarted(ctx, record.IP, record.User, root, lifecycle.RemoteRepoPath(record.User, session, repoPath), session, issue)
+		markIssueStarted(ctx, record.IP, record.User, root, remoteRepo, session, issue)
 	}
 	cmd.Printf("Session %s started on %s\n", session, name)
 	cmd.Printf("\nLocal   %s\n", lifecycle.LocalWorktreePath(root, session))
@@ -214,6 +253,7 @@ func printSessionListJSON(cmd *cobra.Command, infos []lifecycle.SessionInfo) err
 		Operation       string `json:"operation,omitempty"`
 		RetirementPhase string `json:"retirementPhase,omitempty"`
 		LastFailure     string `json:"lastFailure,omitempty"`
+		PausedOn        string `json:"pausedOn,omitempty"`
 	}
 	out := struct {
 		Sessions []sessionJSON `json:"sessions"`
@@ -232,6 +272,7 @@ func printSessionListJSON(cmd *cobra.Command, infos []lifecycle.SessionInfo) err
 			Operation:       info.Operation,
 			RetirementPhase: info.RetirementPhase,
 			LastFailure:     info.LastFailure,
+			PausedOn:        info.PausedOn,
 		})
 	}
 	return writeJSON(cmd, out)
@@ -329,18 +370,22 @@ func runPull(cmd *cobra.Command, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	commits, err := lifecycle.PullSession(ctx, record.IP, record.User, record.Name, sess)
+	commits, receipt, err := lifecycle.PullSession(ctx, record.IP, record.User, record.Name, sess)
 	if err != nil {
 		return err
 	}
 	if len(commits) == 0 {
 		cmd.Printf("%s: up to date\n", sess.Name)
+		// Issues move independently of commits: an agent that only
+		// triaged still has something to report.
+		printIssueReceipt(cmd.OutOrStderr(), sess.Name, receipt)
 		return nil
 	}
 	cmd.Printf("%s: %d new commits\n", sess.Name, len(commits))
 	for _, c := range commits {
 		cmd.Printf("  %s\n", c)
 	}
+	printIssueReceipt(cmd.OutOrStderr(), sess.Name, receipt)
 	cmd.Printf("\nReview  git log HEAD..%s\n", "bivouac-"+sess.Name+"/"+lifecycle.SessionBranch(sess.Name))
 	cmd.Printf("Accept  bivouac session merge %s\n", sess.Name)
 	return nil
@@ -361,7 +406,18 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 		}
 		session = sess.Name
 	}
-	result, err := lifecycle.RetireSession(progressCtx(cmd), store, record.Name, session, lifecycle.RetirementOptions{Operation: state.RetirementMerge})
+	acceptUnsynced, err := cmd.Flags().GetBool("accept-unsynced")
+	if err != nil {
+		return err
+	}
+	// Read before retiring: a completed merge removes the session from the
+	// record, and the reminder below needs the repository it merged into.
+	var localRepo string
+	if sess, ok := record.FindSession(session); ok {
+		localRepo = sess.LocalRepo
+	}
+	ctx := progressCtx(cmd)
+	result, err := lifecycle.RetireSession(ctx, store, record.Name, session, lifecycle.RetirementOptions{Operation: state.RetirementMerge, AcceptUnsynced: acceptUnsynced})
 	if err != nil {
 		return err
 	}
@@ -373,8 +429,25 @@ func runMerge(cmd *cobra.Command, name string, args []string) error {
 	for _, signed := range result.Signed {
 		cmd.Printf("  %s\n", signed)
 	}
+	printIssueReceipt(cmd.OutOrStderr(), session, result.Issues)
 	cmd.Printf("session %s removed from both sides\n", session)
+	if result.Issues != nil && issuesHaveOwnRemote(ctx, localRepo) {
+		// A reminder, not a check: whether that push has happened is not
+		// something bivouac can cheaply tell.
+		cmd.Println("issues are only local until you `bd dolt push`")
+	}
 	return nil
+}
+
+// issuesHaveOwnRemote reports whether the repository the session merged into
+// syncs its issues somewhere else, so the issues merge just brought home are
+// not shared until the user pushes them.
+func issuesHaveOwnRemote(ctx context.Context, localRepo string) bool {
+	if localRepo == "" {
+		return false
+	}
+	detected, err := beads.Detect(ctx, localRepo)
+	return err == nil && (detected.Mode == beads.ModeGit || detected.Mode == beads.ModeExternal)
 }
 
 // forgetMergedSession drops a merged session from the instance's record.

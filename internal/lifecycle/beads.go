@@ -199,19 +199,23 @@ func warnDolthubWithoutExternalRemote(ctx context.Context, beadsMode config.Bead
 // remote is the whole test -- pull, merge, delete and down never resolve a
 // config, and a session started while beads was off must stay off for the
 // rest of its life whatever bivouac.pkl says now.
-func pullBeads(ctx context.Context, client *reconcile.Client, localRepo, repo, session string) bool {
-	if !beads.Wired(ctx, localRepo, session) {
+//
+// pinned is the instance commit the pull brought home, empty when beads was
+// never wired.
+func pullBeads(ctx context.Context, client beadsRunner, localRepo, repo, session string) (pinned string, ok bool) {
+	if !beadsWired(ctx, localRepo, session) {
 		// Nothing to sync is not a failed sync: a caller weighing what it is
 		// about to destroy must not be told issues are at risk when the
 		// session never had any.
-		return true
+		return "", true
 	}
 	provider.ReportProgress(ctx, "pulling issues from "+session)
-	if err := beads.Pull(ctx, localRepo, session, client, repo); err != nil {
+	pinned, err := pullIssues(ctx, localRepo, session, client, repo)
+	if err != nil {
 		provider.ReportWarning(ctx, "beads: "+err.Error())
-		return false
+		return "", false
 	}
-	return true
+	return pinned, true
 }
 
 // checkBeadsLanded connects to the instance and runs requireBeadsLanded,

@@ -20,6 +20,8 @@ type fakeRunner struct {
 	failOut  string // what the failing call writes; "boom" when unset
 }
 
+const fakeCommit = "abc123def"
+
 func newFakeRunner() *fakeRunner {
 	return &fakeRunner{failAt: -1}
 }
@@ -32,6 +34,11 @@ func (f *fakeRunner) Run(cmd string) (string, error) {
 			return f.failOut, f.failErr
 		}
 		return "boom", f.failErr
+	}
+	// Pull reads the instance commit before pushing and must parse it, so
+	// the fake answers that one command with real JSON rather than "ok".
+	if strings.Contains(cmd, "status") && strings.Contains(cmd, "--json") {
+		return `{"commit":"` + fakeCommit + `"}`, nil
 	}
 	return "ok", nil
 }
@@ -251,7 +258,7 @@ func TestUnpulled_ReturnsFalseOnlyOnFullSuccess(t *testing.T) {
 		t.Error("Unpulled() = true, want false after a successful sync")
 	}
 
-	want := []string{pushCmd("/repo")}
+	want := []string{vcStatusCmd("/repo"), pushCmd("/repo")}
 	if !slices.Equal(fr.commands, want) {
 		t.Fatalf("instance commands = %v, want %v (the instance-side push must actually run)", fr.commands, want)
 	}
@@ -259,7 +266,7 @@ func TestUnpulled_ReturnsFalseOnlyOnFullSuccess(t *testing.T) {
 
 func TestUnpulled_ReturnsTrueAndErrorWhenTheInstancePushFails(t *testing.T) {
 	fr := newFakeRunner()
-	fr.failAt = 0
+	fr.failAt = 1 // index 0 is the vc status read
 	fr.failErr = errors.New("ssh connection reset")
 
 	// localRepo is never touched: Pull returns before reaching the local
@@ -272,7 +279,7 @@ func TestUnpulled_ReturnsTrueAndErrorWhenTheInstancePushFails(t *testing.T) {
 		t.Fatal("Unpulled() error = nil, want the push failure -- a false negative here would authorise destroying issue work")
 	}
 
-	want := []string{pushCmd("/repo")}
+	want := []string{vcStatusCmd("/repo"), pushCmd("/repo")}
 	if !slices.Equal(fr.commands, want) {
 		t.Fatalf("instance commands = %v, want %v (only the push, never the local pull)", fr.commands, want)
 	}
@@ -299,8 +306,50 @@ func TestUnpulled_ReturnsTrueAndErrorWhenTheLocalPullFails(t *testing.T) {
 		t.Fatal("Unpulled() error = nil, want the local pull failure")
 	}
 
-	want := []string{pushCmd("/repo")}
+	want := []string{vcStatusCmd("/repo"), pushCmd("/repo")}
 	if !slices.Equal(fr.commands, want) {
 		t.Fatalf("instance commands = %v, want %v (the instance push must still have run first)", fr.commands, want)
+	}
+}
+
+func TestPullPinsTheCommitBeforePushing(t *testing.T) {
+	requireBd(t)
+
+	root := t.TempDir()
+	mac := filepath.Join(root, "mac")
+	session := filepath.Join(root, "session-repo")
+	initGitRepo(t, mac)
+	initGitRepo(t, session)
+	mustRun(t, mac, "bd", "init", "--stealth")
+	if err := Seed(t.Context(), mac, "fix-auth", FileURL(session)); err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+
+	fr := newFakeRunner()
+	got, err := Pull(t.Context(), mac, "fix-auth", fr, "/repo")
+	if err != nil {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	if got != fakeCommit {
+		t.Errorf("Pull() commit = %q, want %q", got, fakeCommit)
+	}
+	// Read before pushing: an agent editing issues after the push must not
+	// move the pin past what this pull actually brought home.
+	want := []string{vcStatusCmd("/repo"), pushCmd("/repo")}
+	if !slices.Equal(fr.commands, want) {
+		t.Fatalf("instance commands = %v, want %v (vc status strictly before push)", fr.commands, want)
+	}
+}
+
+func TestPullStopsWhenTheCommitCannotBeRead(t *testing.T) {
+	fr := newFakeRunner()
+	fr.failAt = 0
+	fr.failErr = errors.New("ssh connection reset")
+
+	if _, err := Pull(t.Context(), "/does-not-matter", "fix-auth", fr, "/repo"); err == nil {
+		t.Fatal("Pull() error = nil, want the vc status failure")
+	}
+	if want := []string{vcStatusCmd("/repo")}; !slices.Equal(fr.commands, want) {
+		t.Fatalf("instance commands = %v, want %v (no push without a pin)", fr.commands, want)
 	}
 }

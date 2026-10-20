@@ -145,14 +145,25 @@ func Bootstrap(client instanceRunner, repo, fileURL, externalURL string) error {
 //
 // Conflicts surface from `bd dolt pull` and are reported, never
 // auto-resolved.
-func Pull(ctx context.Context, localRepo, session string, client instanceRunner, repo string) error {
+//
+// Returns the instance commit read immediately before the push. That is the
+// commit this pull brings home, and it is the one callers should record as
+// "synced": reading it after the push would let an agent's later edits move
+// the pin past work that never arrived, and those edits would then count as
+// already pulled. An unreadable commit fails the pull before anything is
+// pushed, since a pull with no pin is one the caller cannot account for.
+func Pull(ctx context.Context, localRepo, session string, client instanceRunner, repo string) (string, error) {
+	commit, err := InstanceCommit(client, repo)
+	if err != nil {
+		return "", fmt.Errorf("pinning the instance's issues before publishing: %w", err)
+	}
 	if out, err := client.Run(pushCmd(repo)); err != nil {
-		return fmt.Errorf("publishing the agent's issues on the instance: %w\n%s", err, out)
+		return "", fmt.Errorf("publishing the agent's issues on the instance: %w\n%s", err, out)
 	}
 	if out, err := run(ctx, localRepo, pullArgs(RemoteName(session))...); err != nil {
-		return fmt.Errorf("pulling issues from session %s: %w\n%s", session, err, out)
+		return "", fmt.Errorf("pulling issues from session %s: %w\n%s", session, err, out)
 	}
-	return nil
+	return commit, nil
 }
 
 // Unpulled reports whether the instance still holds issue work this machine
@@ -168,7 +179,7 @@ func Pull(ctx context.Context, localRepo, session string, client instanceRunner,
 // Returns (false, nil) only when both halves succeeded. Every failure is an
 // error, and its callers refuse to destroy on one.
 func Unpulled(ctx context.Context, localRepo, session string, client instanceRunner, repo string) (bool, error) {
-	if err := Pull(ctx, localRepo, session, client, repo); err != nil {
+	if _, err := Pull(ctx, localRepo, session, client, repo); err != nil {
 		return true, err
 	}
 	return false, nil

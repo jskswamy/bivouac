@@ -226,6 +226,13 @@ func retirementLabel(i lifecycle.SessionInfo) string {
 	if i.RetirementPhase == "" {
 		return "active"
 	}
+	// An issues pause is resolved by syncing rather than by fixing the
+	// repository, so it says that instead of the phase. LastFailure is left
+	// out: it restates the reason, and --json and the merge error already
+	// carry the ids.
+	if i.PausedOn == state.PausedOnIssues {
+		return i.Operation + " paused: issues not synced"
+	}
 	label := i.Operation + "; cleanup " + i.RetirementPhase
 	if i.LastFailure != "" {
 		label += ": " + i.LastFailure

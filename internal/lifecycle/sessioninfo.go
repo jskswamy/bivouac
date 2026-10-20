@@ -45,6 +45,8 @@ type SessionInfo struct {
 	Operation       string
 	RetirementPhase string
 	LastFailure     string
+	// PausedOn is the retirement's pause reason, e.g. state.PausedOnIssues.
+	PausedOn string
 }
 
 // DescribeSessions describes every session at once, probing their instances
@@ -82,6 +84,7 @@ func DescribeSession(ctx context.Context, instance string, s state.Session) Sess
 		info.Operation = string(s.Retirement.Operation)
 		info.RetirementPhase = string(s.Retirement.Phase)
 		info.LastFailure = s.Retirement.LastFailure
+		info.PausedOn = s.Retirement.PausedOn
 	}
 
 	local := LocalWorktreePath(s.LocalRepo, s.Name)

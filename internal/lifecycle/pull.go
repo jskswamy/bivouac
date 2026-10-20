@@ -13,15 +13,16 @@ import (
 // local worktree, without touching the user's branch. Safe to run
 // repeatedly, including while the agent is still working and while the
 // user's own tree is dirty. Returns one "<sha> <subject>" line per commit
-// not yet on the current branch.
-func PullSession(ctx context.Context, ip, user, instanceName string, sess state.Session) ([]string, error) {
+// not yet on the current branch, and, for a session with a start record
+// whose issues pulled, a receipt of what that brought home.
+func PullSession(ctx context.Context, ip, user, instanceName string, sess state.Session) ([]string, *state.IssueReceipt, error) {
 	localRepo, session, sessionBase := sess.LocalRepo, sess.Name, sess.Base
 	repoName := sess.RepoNameOr(instanceName)
 	provider.ReportProgress(ctx, "checkpointing and fetching "+session)
 
 	ref, _, err := RescueSession(ctx, ip, user, localRepo, repoName, session)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// After the rescue, so a commit the agent made alongside an issue edit is
@@ -30,8 +31,16 @@ func PullSession(ctx context.Context, ip, user, instanceName string, sess state.
 	// and they gate on issues through requireBeadsLanded instead -- syncing
 	// there as well would cost two round trips per teardown and report one
 	// cause as both a warning and an error.
+	var receipt *state.IssueReceipt
 	if client, err := reconcile.Connect(ctx, ip, user); err == nil {
-		pullBeads(ctx, client, localRepo, RemoteRepoPath(user, session, repoName), session)
+		repo := RemoteRepoPath(user, session, repoName)
+		// pinned is empty both when the sync failed and when beads was never
+		// wired; either way there is no round to report on. The receipt
+		// diffs to the pin for the same reason merge does: it describes what
+		// this pull brought, not what the agent did since.
+		if pinned, ok := pullBeads(ctx, client, localRepo, repo, session); ok && pinned != "" && sess.Beads != nil {
+			receipt = pullReceipt(ctx, client, localRepo, repo, *sess.Beads, pinned, true)
+		}
 		_ = client.Close()
 	}
 
@@ -42,14 +51,14 @@ func PullSession(ctx context.Context, ip, user, instanceName string, sess state.
 	// loudly when the worktree has diverged instead of silently eating
 	// whatever is there.
 	if out, err := runLocalGit(ctx, local, "merge", "--ff-only", ref); err != nil {
-		return nil, fmt.Errorf("updating local worktree %s: %w\n%s\nthe worktree has diverged from the session — commit or discard your changes there, then pull again", local, err, out)
+		return nil, nil, fmt.Errorf("updating local worktree %s: %w\n%s\nthe worktree has diverged from the session — commit or discard your changes there, then pull again", local, err, out)
 	}
 
 	out, err := runLocalGit(ctx, localRepo, "log", "--pretty=%h %s", reportRange(ctx, localRepo, sessionBase)+".."+ref)
 	if err != nil {
-		return nil, fmt.Errorf("listing new commits: %w\n%s", err, out)
+		return nil, nil, fmt.Errorf("listing new commits: %w\n%s", err, out)
 	}
-	return nonEmptyLines(out), nil
+	return nonEmptyLines(out), receipt, nil
 }
 
 // reportRange picks the left side of the range pull lists commits from.

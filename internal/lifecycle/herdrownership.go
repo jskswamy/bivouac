@@ -260,7 +260,7 @@ func invalidateFinalRetirementEvidence(sess *state.Session) {
 		return
 	}
 	sess.Retirement.Phase = state.RetirementChecking
-	sess.Retirement.LastFailure = ""
+	clearRetirementFailure(sess.Retirement)
 	for key := range sess.Retirement.Effects {
 		if !strings.HasPrefix(key, "herdr:") {
 			delete(sess.Retirement.Effects, key)

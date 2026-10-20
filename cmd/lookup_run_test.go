@@ -37,6 +37,7 @@ func sessionTestCmd() *cobra.Command {
 	c.Flags().String("repo", "", "")
 	c.Flags().String("task", "", "")
 	c.Flags().String("issue", "", "")
+	c.Flags().Bool("accept-unsynced", false, "")
 	c.SetOut(&bytes.Buffer{})
 	c.SetContext(context.Background())
 	return c

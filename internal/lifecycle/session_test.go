@@ -178,7 +178,7 @@ func TestPullSession_ChangesNothingOnTheInstanceBeyondCheckpointing(t *testing.T
 		return "", 0
 	})
 
-	_, _ = PullSession(context.Background(), addr, "devuser", "bivouac",
+	_, _, _ = PullSession(context.Background(), addr, "devuser", "bivouac",
 		state.Session{Name: "auth", LocalRepo: t.TempDir()})
 
 	if len(commands) == 0 {

@@ -21,7 +21,7 @@ func retirementFixtureState(f *sessionFixture) (state.Record, state.Session) {
 func TestMergePolicyExtendsAcceptedTipAfterResolvedConflict(t *testing.T) {
 	f := newSessionFixture(t, 1)
 	record, sess := retirementFixtureState(f)
-	policy := mergeRetirementPolicy()
+	policy := mergeRetirementPolicy(false)
 	first, signed, err := policy.Check(context.Background(), record, sess, false)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestMergePolicyExtendsAcceptedTipAfterResolvedConflict(t *testing.T) {
 func TestRetirementRejectsDestinationRewindOrBranchSwitch(t *testing.T) {
 	f := newSessionFixture(t, 1)
 	record, sess := retirementFixtureState(f)
-	policy := mergeRetirementPolicy()
+	policy := mergeRetirementPolicy(false)
 	accepted, _, err := policy.Check(context.Background(), record, sess, false)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestRetirementRejectsDestinationRewindOrBranchSwitch(t *testing.T) {
 func TestFinalGateFindsCloseTimeWrites(t *testing.T) {
 	f := newSessionFixture(t, 0)
 	record, sess := retirementFixtureState(f)
-	policy := mergeRetirementPolicy()
+	policy := mergeRetirementPolicy(false)
 	first, _, err := policy.Check(context.Background(), record, sess, false)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestRequiredReplayJournalCorruptionFailsClosed(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := mergeRetirementPolicy().Check(context.Background(), record, sess, false); err == nil || !strings.Contains(err.Error(), "corrupt") {
+	if _, _, err := mergeRetirementPolicy(false).Check(context.Background(), record, sess, false); err == nil || !strings.Contains(err.Error(), "corrupt") {
 		t.Fatalf("Check() = %v, want corrupt-journal refusal", err)
 	}
 }
@@ -127,7 +127,7 @@ func TestMergePolicyReplaysOnlySessionCommitsAfterBaseRewrite(t *testing.T) {
 	record, sess := retirementFixtureState(f)
 	mustGit(t, f.repo, "commit", "--amend", "--allow-empty", "-m", "first, rewritten")
 
-	_, signed, err := mergeRetirementPolicy().Check(context.Background(), record, sess, false)
+	_, signed, err := mergeRetirementPolicy(false).Check(context.Background(), record, sess, false)
 	if err != nil {
 		t.Fatalf("Check() = %v, want the session's commit replayed", err)
 	}

@@ -1,6 +1,18 @@
 ## Unreleased
 
+### Added
+
+- `session pull` and `session merge` end with a one-line receipt of the
+  issues they brought back. Merge now checks that every issue the session
+  touched has landed, and pauses with "issues not synced" when one has not;
+  running merge again pulls and checks again. `--accept-unsynced` lets a
+  merge proceed past issues that can never sync, and lists them.
+
 ### Fixed
+
+- Session issue reports and merge verification no longer mark stale local
+  issues as synced when beads omits timestamps from its diff. Missing
+  timestamps are read at the exact reported commit, preserving pull pins.
 
 - Ctrl-C now stops `up`, `provision` and the other commands that show their
   progress in the terminal pane. It was ignored there: the pane puts the

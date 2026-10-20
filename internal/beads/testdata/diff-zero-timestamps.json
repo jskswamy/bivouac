@@ -1,0 +1,22 @@
+[
+  {
+    "IssueID": "reporttest-351",
+    "DiffType": "modified",
+    "OldValue": {
+      "id": "reporttest-351",
+      "title": "Reporting validation epic",
+      "status": "open",
+      "priority": 2,
+      "created_at": "0001-01-01T00:00:00Z",
+      "updated_at": "0001-01-01T00:00:00Z"
+    },
+    "NewValue": {
+      "id": "reporttest-351",
+      "title": "Reporting validation epic",
+      "status": "in_progress",
+      "priority": 2,
+      "created_at": "0001-01-01T00:00:00Z",
+      "updated_at": "0001-01-01T00:00:00Z"
+    }
+  }
+]

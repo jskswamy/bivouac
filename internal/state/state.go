@@ -91,6 +91,25 @@ type Session struct {
 	AttachmentsKnown bool              `json:"attachments_known,omitempty"`
 	Attachments      []HerdrAttachment `json:"attachments,omitempty"`
 	Retirement       *Retirement       `json:"retirement,omitempty"`
+	// Beads is where the session's issue database stood when it started.
+	// Nil means none was recorded -- beads was never wired, the read
+	// failed, or the session predates issue reporting -- and every reader
+	// treats all three the same way: nothing to report, nothing to wait on.
+	Beads *SessionBeads `json:"beads,omitempty"`
+}
+
+// SessionBeads is the "before" every session issue report diffs against.
+//
+// StartCommit is the instance database's own commit, not the Mac's: the
+// instance is where every later diff runs, so its commit is the only one
+// guaranteed to resolve there. Planned is captured now rather than derived
+// later because an issue's children can change during the session, and
+// "planned versus discovered" is only meaningful against the tree as it
+// stood at the start.
+type SessionBeads struct {
+	StartCommit string   `json:"start_commit"`
+	Issue       string   `json:"issue,omitempty"`
+	Planned     []string `json:"planned,omitempty"`
 }
 
 // RepoNameOr returns the identity the session's remote directory was
