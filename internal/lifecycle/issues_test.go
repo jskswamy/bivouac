@@ -274,6 +274,90 @@ func TestGateIssuesOtherFailureIgnoresAccept(t *testing.T) {
 	}
 }
 
+// A session without a start record has nothing to diff against, so the
+// listing must say so without dialling the instance at all: the address
+// here is unroutable, and a connection attempt would fail the call.
+func TestSessionIssuesWithoutStartRecord(t *testing.T) {
+	got, err := SessionIssues(context.Background(), "192.0.2.1", "devuser", "inst", state.Session{Name: "pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Recorded || got.Session != "pi" || got.Changes != nil {
+		t.Fatalf("got %+v, want an unrecorded listing for pi and nothing else", got)
+	}
+}
+
+func TestListIssuesNamesTargetAndOutsiders(t *testing.T) {
+	r := &scriptedBeads{t: t, outputs: map[string]string{
+		"vc status":   `{"commit":"c1"}`,
+		"diff c0 c1 ": sessionDiff,
+		"show e ":     `[{"id":"e","status":"in_progress"}]`,
+		"children e ": `[{"id":"b"}]`,
+		"children b ": `[]`,
+	}}
+	withLocalIssues(t, map[string]beads.Issue{
+		"a": {ID: "a", UpdatedAt: at(t, "2026-10-19T14:02:00Z")},
+	}, nil)
+	start := state.SessionBeads{StartCommit: "c0", Issue: "e", Planned: []string{"e", "b"}}
+	got, err := listIssues(context.Background(), r, "/local", "/repo", "pi", start, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Recorded || got.Issue != "e" || got.IssueStatus != "in_progress" ||
+		got.StartCommit != "c0" || got.InstanceCommit != "c1" {
+		t.Fatalf("got %+v", got)
+	}
+	if !reflect.DeepEqual(got.OutsideEpic, []string{"a"}) {
+		t.Fatalf("outside = %v, want [a]: created and not under e", got.OutsideEpic)
+	}
+	sync := map[string]beads.SyncState{}
+	for _, c := range got.Changes {
+		sync[c.Issue.ID] = c.Sync
+	}
+	want := map[string]beads.SyncState{"a": beads.Synced, "b": beads.NotSynced}
+	if !reflect.DeepEqual(sync, want) {
+		t.Fatalf("sync = %v, want %v", sync, want)
+	}
+}
+
+// Without --issue there is no epic to be outside of, and no tree to read.
+func TestListIssuesWithoutTargetReadsNoTree(t *testing.T) {
+	r := &scriptedBeads{t: t, outputs: map[string]string{
+		"vc status":   `{"commit":"c1"}`,
+		"diff c0 c1 ": sessionDiff,
+	}}
+	withLocalIssues(t, nil, nil)
+	got, err := listIssues(context.Background(), r, "/local", "/repo", "pi", startRecord, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OutsideEpic != nil || len(got.Changes) != 2 {
+		t.Fatalf("got %+v", got)
+	}
+	for _, c := range got.Changes {
+		if c.Sync != beads.Unknown {
+			t.Fatalf("%s = %s, want unknown without a local bd", c.Issue.ID, c.Sync)
+		}
+	}
+}
+
+// A rewritten history is a finding to show, not a failure: the command
+// still has the start and live commits to report.
+func TestListIssuesHistoryRewritten(t *testing.T) {
+	r := &scriptedBeads{t: t,
+		outputs: map[string]string{"vc status": `{"commit":"c1"}`, "diff c0 c1 ": `target commit not found`},
+		errs:    map[string]error{"diff c0 c1 ": errors.New("exit 1")},
+	}
+	withLocalIssues(t, nil, nil)
+	got, err := listIssues(context.Background(), r, "/local", "/repo", "pi", startRecord, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.HistoryRewritten || got.InstanceCommit != "c1" {
+		t.Fatalf("got %+v, want history rewritten at c1", got)
+	}
+}
+
 func TestPullReceipt(t *testing.T) {
 	r := &scriptedBeads{t: t, outputs: map[string]string{"diff c0 c1 ": sessionDiff}}
 	withLocalIssues(t, map[string]beads.Issue{
@@ -296,5 +380,144 @@ func TestPullReceiptFailureIsNil(t *testing.T) {
 	withLocalIssues(t, nil, nil)
 	if got := pullReceipt(context.Background(), r, "/local", "/repo", startRecord, "c1", true); got != nil {
 		t.Fatalf("got %+v, want nil", got)
+	}
+}
+
+// A planned issue gone from the instance is reported removed rather than
+// dropped, so "x of y" never shrinks silently; only a closed one counts.
+func TestPlannedStatusMarksDeletedIssueRemoved(t *testing.T) {
+	got := plannedStatus([]string{"e", "e.1", "e.2"}, []beads.Issue{
+		{ID: "e", Title: "Epic", Status: "open"},
+		{ID: "e.1", Title: "One", Status: "closed"},
+	})
+	want := []PlannedIssue{
+		{ID: "e", Title: "Epic", Status: "open"},
+		{ID: "e.1", Title: "One", Status: "closed"},
+		{ID: "e.2", Status: "removed", Removed: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	if n := closedPlanned(got); n != 1 {
+		t.Fatalf("closed planned = %d, want 1 (only e.1)", n)
+	}
+}
+
+// progressDiff creates two issues, closes one of them, and touches one
+// planned issue.
+const progressDiff = `[
+ {"IssueID":"d1","DiffType":"added","NewValue":{"id":"d1","title":"Found","status":"open"}},
+ {"IssueID":"d2","DiffType":"added","NewValue":{"id":"d2","title":"Fixed","status":"closed"}},
+ {"IssueID":"e.1","DiffType":"modified","OldValue":{"id":"e.1","status":"open"},"NewValue":{"id":"e.1","title":"One","status":"in_progress"}}
+]`
+
+func TestReadProgressPlannedAndDiscovered(t *testing.T) {
+	r := &scriptedBeads{t: t, outputs: map[string]string{
+		"vc status":   `{"commit":"c1"}`,
+		"diff c0 c1 ": progressDiff,
+		"show --as-of c1 ": `[
+		 {"id":"d1","title":"Found","status":"open","updated_at":"2026-10-20T06:30:36Z"},
+		 {"id":"d2","title":"Fixed","status":"closed","updated_at":"2026-10-20T06:30:36Z"},
+		 {"id":"e.1","title":"One","status":"in_progress","updated_at":"2026-10-20T06:30:36Z"}
+		]`,
+		"show e ":       `[{"id":"e","title":"Epic","status":"open"}]`,
+		"children e ":   `[{"id":"e.1","title":"One","status":"in_progress"},{"id":"e.2","title":"Two","status":"closed"}]`,
+		"children e.1 ": `[]`,
+		"children e.2 ": `[]`,
+	}}
+	start := state.SessionBeads{StartCommit: "c0", Issue: "e", Planned: []string{"e", "e.1", "e.2"}}
+	got, err := readProgress(r, "/repo", start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []PlannedIssue{
+		{ID: "e.1", Title: "One", Status: "in_progress"},
+		{ID: "e.2", Title: "Two", Status: "closed"},
+	}
+	if !reflect.DeepEqual(got.Planned, want) {
+		t.Fatalf("planned = %+v, want %+v: the epic itself is not one of its planned items", got.Planned, want)
+	}
+	if !got.Recorded || got.Issue != "e" || got.InstanceCommit != "c1" || got.ClosedPlanned != 1 ||
+		len(got.Discovered) != 2 || got.Updated != 1 || got.Closed != 0 || got.Attention != nil {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// Closing the target while its planned work is still open is a contradiction
+// the user has to resolve, so it is named.
+func TestReadProgressClosedEpicWithOpenChild(t *testing.T) {
+	r := &scriptedBeads{t: t, outputs: map[string]string{
+		"vc status":     `{"commit":"c1"}`,
+		"diff c0 c1 ":   `No changes between c0 and c1`,
+		"show e ":       `[{"id":"e","status":"closed"}]`,
+		"children e ":   `[{"id":"e.1","status":"open"}]`,
+		"children e.1 ": `[]`,
+	}}
+	start := state.SessionBeads{StartCommit: "c0", Issue: "e", Planned: []string{"e", "e.1"}}
+	got, err := readProgress(r, "/repo", start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"e is closed but planned work under it is still open"}
+	if !reflect.DeepEqual(got.Attention, want) {
+		t.Fatalf("attention = %q, want %q", got.Attention, want)
+	}
+}
+
+// A rewritten history loses the diff, not the tree: planned progress is
+// still live, and the rewrite is something to act on.
+func TestReadProgressHistoryRewritten(t *testing.T) {
+	r := &scriptedBeads{t: t,
+		outputs: map[string]string{
+			"vc status":     `{"commit":"c1"}`,
+			"diff c0 c1 ":   `target commit not found`,
+			"show e ":       `[{"id":"e","status":"open"}]`,
+			"children e ":   `[{"id":"e.1","status":"closed"}]`,
+			"children e.1 ": `[]`,
+		},
+		errs: map[string]error{"diff c0 c1 ": errors.New("exit 1")},
+	}
+	start := state.SessionBeads{StartCommit: "c0", Issue: "e", Planned: []string{"e", "e.1"}}
+	got, err := readProgress(r, "/repo", start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClosedPlanned != 1 || !reflect.DeepEqual(got.Attention, []string{"beads history was rewritten on the instance"}) {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// An unreachable instance is an error, never last-known figures.
+func TestReadProgressInstanceErrorFails(t *testing.T) {
+	r := &scriptedBeads{t: t,
+		outputs: map[string]string{"vc status": ``},
+		errs:    map[string]error{"vc status": errors.New("ssh: connection refused")},
+	}
+	if _, err := readProgress(r, "/repo", startRecord); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+// A session without a start record must not dial the instance at all: the
+// address is unroutable, so a connection attempt would fail the call.
+func TestDescribeProgressWithoutStartRecord(t *testing.T) {
+	got, err := DescribeProgress(context.Background(), "192.0.2.1", "devuser", "inst", state.Session{Name: "pi", LocalRepo: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Recorded || got.Info.Name != "pi" || got.Planned != nil {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// The base gone from the local repository is the requireBaseExists signal.
+func TestDescribeProgressBaseRewritten(t *testing.T) {
+	sess := state.Session{Name: "pi", LocalRepo: t.TempDir(), Base: "0123456789abcdef0123456789abcdef01234567"}
+	got, err := DescribeProgress(context.Background(), "192.0.2.1", "devuser", "inst", sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Attention, []string{"base branch was rewritten since this session started"}) {
+		t.Fatalf("attention = %q", got.Attention)
 	}
 }

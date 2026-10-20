@@ -269,6 +269,65 @@ var lookupCommandSpecs = []lookupCommandSpec{
 		run:    runPull,
 	},
 	{
+		use:   "issues [session]",
+		short: "List every issue a session touched and whether it has synced here",
+		long: "List every issue the session has created, closed, updated or removed\n" +
+			"so far, read live from the instance, with whether each has reached\n" +
+			"this machine's issue database: ✓ synced, ✗ not synced, ? unknown\n" +
+			"(no usable local bd). Then the issue the session was started for and\n" +
+			"its status, and any issue created outside it.\n\n" +
+			"It never pulls, so run before `bivouac session pull` it shows what the\n" +
+			"pull would bring. A session started before issue reporting says so.",
+		metadata: commandMetadata{
+			Title:            "List a session's issue changes and their sync state",
+			Network:          true,
+			RequiresInstance: true,
+			SupportsJSON:     true,
+			Related:          []string{"bivouac_session_pull", "bivouac_session_merge", "bivouac_session_status"},
+			Arguments: []argumentMetadata{{
+				Name:        "session",
+				Description: "Session to list; optional when only one is live",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
+		verb:   "session issues",
+		args:   cobra.MaximumNArgs(1),
+		named:  false,
+		parent: "session",
+		run:    runSessionIssues,
+	},
+	{
+		use:   "status [session]",
+		short: "Show one session's state and issue progress, live from the instance",
+		long: "Show one session: its retirement state, unmerged commits and worktree,\n" +
+			"then its issue progress read live from the instance. For a session\n" +
+			"started with --issue, how many of the planned issues are closed (✓\n" +
+			"closed, ◐ in progress, ○ open, ✗ removed), then the issues discovered\n" +
+			"along the way; without one, counts of created, closed and updated\n" +
+			"issues. Last, anything that needs you: a rewritten base branch or issue\n" +
+			"history, or the target closed with planned work still open.\n\n" +
+			"It changes nothing on either side. An unreachable instance is an\n" +
+			"error, never last-known figures. Unrelated to `bivouac status`, which\n" +
+			"describes the instance.",
+		metadata: commandMetadata{
+			Title:            "Show a session's state and issue progress",
+			Network:          true,
+			RequiresInstance: true,
+			SupportsJSON:     true,
+			Related:          []string{"bivouac_session_issues", "bivouac_session_list", "bivouac_session_merge"},
+			Arguments: []argumentMetadata{{
+				Name:        "session",
+				Description: "Session to show; optional when only one is live",
+				Schema:      map[string]any{"type": "string"},
+			}},
+		},
+		verb:   "session status",
+		args:   cobra.MaximumNArgs(1),
+		named:  false,
+		parent: "session",
+		run:    runSessionStatus,
+	},
+	{
 		use:   "merge [session]",
 		short: "Replay and sign session work, then resumably retire its owned resources",
 		long: "Replay the session's commits onto your current branch, signing each\n" +

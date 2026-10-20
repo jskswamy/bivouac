@@ -2,6 +2,11 @@
 
 ### Added
 
+- `bivouac session status <name>` shows, live from the instance, how far a
+  session is through the epic it was started for: planned issues closed,
+  work discovered along the way, and anything that needs attention.
+- `bivouac session issues <name>` lists every issue a session created,
+  updated or closed, and whether each one is on this machine yet.
 - `session pull` and `session merge` end with a one-line receipt of the
   issues they brought back. Merge now checks that every issue the session
   touched has landed, and pauses with "issues not synced" when one has not;
