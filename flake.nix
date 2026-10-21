@@ -62,7 +62,7 @@
       # nixpkgs is currently behind the Go point release that fixes the
       # standard-library CVEs govulncheck reports against bivouac's HTTP/TLS
       # call paths. Use the official binary toolchain until nixpkgs catches up.
-      goVersion = "1.26.9";
+      goVersion = "1.26.10";
       goAssetName = {
         aarch64-darwin = "go${goVersion}.darwin-arm64.tar.gz";
         x86_64-darwin = "go${goVersion}.darwin-amd64.tar.gz";
@@ -70,10 +70,10 @@
         x86_64-linux = "go${goVersion}.linux-amd64.tar.gz";
       };
       goHash = {
-        aarch64-darwin = "sha256-+bt8CgJQbF2b8NHrH37mx2hPhErklVgwigQnuDDgIsw=";
-        x86_64-darwin = "sha256-AMKePUyFYvVHQQ2qGNKVm2Qb1pGrAMSlJeqBegJT1L0=";
-        aarch64-linux = "sha256-Spc3PUn8rNzzaU/qNopQCwDuPpY5dPPnUUEycXYy8FI=";
-        x86_64-linux = "sha256-QtFYtNj3thrAqDBWfJQKhgmPt6rFLkZ6Xr7APvXML40=";
+        aarch64-darwin = "sha256-C1GDSSKSraFw+bVhqDSGOAjdAu26WZ5K0OiYmTMAILM=";
+        x86_64-darwin = "sha256-6CCreAwnOuSjQLedDzxDE7dO4CmqOHR5IUXUS59Pkdo=";
+        aarch64-linux = "sha256-P0InznsgalE+eU8Tk620c6B7RulNGL0V0caEu7cxl5c=";
+        x86_64-linux = "sha256-zP566CLSwvQfT+fJVhmZZ6Tawi0O4NKyv9tECqs7IMU=";
       };
       goOS = {
         aarch64-darwin = "darwin";
