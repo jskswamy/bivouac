@@ -39,7 +39,7 @@ func instanceTransport(ctx context.Context, host, user string) (string, []string
 	}
 	connection, selected := sshidentity.FromContext(ctx)
 	if !selected {
-		return alias, nil, nil
+		return alias, []string{"-o", "BatchMode=yes"}, nil
 	}
 	_, cleanup, err := sshidentity.Signers(ctx, connection.Keys)
 	if err != nil {
@@ -54,7 +54,7 @@ func instanceTransport(ctx context.Context, host, user string) (string, []string
 		return "", nil, err
 	}
 	var options []string
-	if host != connection.PreferredHost {
+	if !connection.UseIAP && host != connection.PreferredHost {
 		options = sshEndpointOptions(host)
 	}
 	return alias, options, nil
@@ -215,6 +215,9 @@ func rememberPreferredHost(ctx context.Context, host string) (context.Context, e
 		return ctx, nil
 	}
 	c.PreferredHost = host
+	if c.UseIAP {
+		c.UseIAP = false
+	}
 	profiles, err := sshidentity.DefaultProfileStore()
 	if err != nil {
 		return ctx, err

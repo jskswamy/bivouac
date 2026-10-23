@@ -5,19 +5,26 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/binary"
 	gopem "encoding/pem"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
+	"github.com/jskswamy/bivouac/internal/provider/gcloud/iap"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
+	"github.com/jskswamy/bivouac/internal/sshkeys"
 	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
@@ -868,5 +875,176 @@ func TestClient_FileWriters_RunUnderBashNotTheLoginShell(t *testing.T) {
 				t.Errorf("stdin = %q, want the content to still arrive on stdin", got.Stdin)
 			}
 		})
+	}
+}
+
+func newFakeIAPRelayToSSH(t *testing.T, sshAddr string) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close(websocket.StatusNormalClosure, "") }()
+
+		// Send CONNECT_SUCCESS
+		sid := []byte("session-id")
+		hdr := make([]byte, 6+len(sid))
+		binary.BigEndian.PutUint16(hdr[0:2], iap.TagConnectSuccess)
+		binary.BigEndian.PutUint32(hdr[2:6], uint32(len(sid)))
+		copy(hdr[6:], sid)
+		_ = c.Write(r.Context(), websocket.MessageBinary, hdr)
+
+		targetConn, err := net.Dial("tcp", sshAddr)
+		if err != nil {
+			return
+		}
+		defer func() { _ = targetConn.Close() }()
+
+		errc := make(chan error, 2)
+		// targetConn -> WebSocket
+		go func() {
+			buf := make([]byte, 32768)
+			for {
+				n, rerr := targetConn.Read(buf)
+				if n > 0 {
+					frame := make([]byte, 6+n)
+					binary.BigEndian.PutUint16(frame[0:2], iap.TagData)
+					// #nosec G115
+					binary.BigEndian.PutUint32(frame[2:6], uint32(n))
+					copy(frame[6:], buf[:n])
+					if werr := c.Write(r.Context(), websocket.MessageBinary, frame); werr != nil {
+						errc <- werr
+						return
+					}
+				}
+				if rerr != nil {
+					errc <- rerr
+					return
+				}
+			}
+		}()
+
+		// WebSocket -> targetConn
+		go func() {
+			for {
+				typ, data, rerr := c.Read(r.Context())
+				if rerr != nil {
+					errc <- rerr
+					return
+				}
+				if typ == websocket.MessageBinary && len(data) >= 6 {
+					tag := binary.BigEndian.Uint16(data[0:2])
+					if tag == iap.TagData {
+						payloadLen := binary.BigEndian.Uint32(data[2:6])
+						if len(data) >= int(6+payloadLen) {
+							if _, werr := targetConn.Write(data[6 : 6+payloadLen]); werr != nil {
+								errc <- werr
+								return
+							}
+						}
+					}
+				}
+			}
+		}()
+
+		if err := <-errc; err != nil {
+			return
+		}
+	}))
+	return s
+}
+
+func TestConnect_DirectIAP(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	sshAddr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "hello iap", 0
+	})
+	relay := newFakeIAPRelayToSSH(t, sshAddr)
+	defer relay.Close()
+
+	t.Setenv("GCLOUD_IAP_URL", relay.URL)
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "test-token")
+
+	key := testenv.SSHKey(t)
+	ids, err := sshidentity.Select(context.Background(), []sshkeys.Key{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := sshidentity.Connection{
+		Name:          "iap-vm",
+		Alias:         "bivouac-iap-vm",
+		Project:       "test-proj",
+		Zone:          "us-central1-a",
+		User:          "devuser",
+		PreferredHost: "10.128.0.2",
+		PublicIP:      "10.128.0.2",
+		UseIAP:        true,
+		Keys:          ids,
+	}
+	ctx := sshidentity.WithConnection(context.Background(), c)
+
+	client, err := Connect(ctx, "10.128.0.2", "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	out, err := client.RunContext(ctx, "echo hello")
+	if err != nil {
+		t.Fatalf("RunContext() error = %v, out = %s", err, out)
+	}
+	if string(out) != "hello iap" {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestConnect_FallbackToIAPWhenTCPFails(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	sshAddr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "fallback iap works", 0
+	})
+	relay := newFakeIAPRelayToSSH(t, sshAddr)
+	defer relay.Close()
+
+	t.Setenv("GCLOUD_IAP_URL", relay.URL)
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "test-token")
+
+	key := testenv.SSHKey(t)
+	ids, err := sshidentity.Select(context.Background(), []sshkeys.Key{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := sshidentity.Connection{
+		Name:          "iap-fallback-vm",
+		Alias:         "bivouac-iap-fallback-vm",
+		Project:       "test-proj",
+		Zone:          "us-central1-a",
+		User:          "devuser",
+		PreferredHost: "127.0.0.1:1",
+		PublicIP:      "127.0.0.1:1",
+		UseIAP:        false,
+		Keys:          ids,
+	}
+	ctx := sshidentity.WithConnection(context.Background(), c)
+
+	client, err := Connect(ctx, "127.0.0.1:1", "devuser")
+	if err != nil {
+		t.Fatalf("Connect() fallback to IAP failed: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	out, err := client.RunContext(ctx, "echo hello")
+	if err != nil {
+		t.Fatalf("RunContext() error = %v, out = %s", err, out)
+	}
+	if string(out) != "fallback iap works" {
+		t.Fatalf("unexpected output: %s", out)
 	}
 }

@@ -317,3 +317,24 @@ func TestTransportHostScope(t *testing.T) {
 		t.Fatal("legacy changed")
 	}
 }
+
+func TestProfileUseIAP_RendersProxyCommand(t *testing.T) {
+	store, c := profileFixture(t, "iapvm")
+	c.UseIAP = true
+	rendered, err := renderProfile(c)
+	if err != nil {
+		t.Fatalf("renderProfile failed: %v", err)
+	}
+	if !strings.Contains(rendered, "ProxyCommand bivouac proxy iapvm") {
+		t.Fatalf("expected ProxyCommand bivouac proxy iapvm, got: %s", rendered)
+	}
+	if strings.Contains(rendered, "HostName") {
+		t.Fatalf("unexpected HostName in IAP profile: %s", rendered)
+	}
+	if err := store.Check(context.Background(), c); err != nil {
+		t.Fatalf("store.Check failed: %v", err)
+	}
+	if err := store.Upsert(context.Background(), c); err != nil {
+		t.Fatalf("store.Upsert failed: %v", err)
+	}
+}

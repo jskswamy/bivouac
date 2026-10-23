@@ -20,6 +20,9 @@ type Connection struct {
 	PreferredHost string     `json:"preferredHost"`
 	User          string     `json:"user"`
 	Keys          []Identity `json:"keys"`
+	UseIAP        bool       `json:"useIAP,omitempty"`
+	Project       string     `json:"project,omitempty"`
+	Zone          string     `json:"zone,omitempty"`
 }
 
 type connectionKey struct{}

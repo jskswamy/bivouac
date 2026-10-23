@@ -217,13 +217,31 @@ func (s ProfileStore) checkUser(ctx context.Context, c Connection, user []byte) 
 			settings[name] = append(settings[name], strings.TrimSpace(value))
 		}
 	}
-	host, port, err := endpoint(c.PreferredHost)
-	if err != nil {
-		return err
-	}
-	for name, want := range map[string]string{"hostname": host, "port": port, "user": c.User, "hostkeyalias": knownhosts.Normalize(net.JoinHostPort(host, port)), "identitiesonly": "yes"} {
-		if got := settings[name]; len(got) != 1 || got[0] != want {
-			return fmt.Errorf("effective SSH %s conflicts with selected connection (want %q, got %v); scope your user/system SSH settings away from %s", name, want, got, c.Alias)
+	if c.UseIAP {
+		for name, want := range map[string]string{
+			"user":           c.User,
+			"identitiesonly": "yes",
+			"proxycommand":   "bivouac proxy " + c.Name,
+		} {
+			if got := settings[name]; len(got) != 1 || got[0] != want {
+				return fmt.Errorf("effective SSH %s conflicts with selected connection (want %q, got %v); scope your user/system SSH settings away from %s", name, want, got, c.Alias)
+			}
+		}
+	} else {
+		host, port, err := endpoint(c.PreferredHost)
+		if err != nil {
+			return err
+		}
+		for name, want := range map[string]string{
+			"hostname":       host,
+			"port":           port,
+			"user":           c.User,
+			"hostkeyalias":   knownhosts.Normalize(net.JoinHostPort(host, port)),
+			"identitiesonly": "yes",
+		} {
+			if got := settings[name]; len(got) != 1 || got[0] != want {
+				return fmt.Errorf("effective SSH %s conflicts with selected connection (want %q, got %v); scope your user/system SSH settings away from %s", name, want, got, c.Alias)
+			}
 		}
 	}
 	gotPaths := settings["identityfile"]

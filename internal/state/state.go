@@ -53,7 +53,17 @@ func (r Record) ConnectionContext(ctx context.Context) context.Context {
 	if r.SSH == nil {
 		return sshidentity.WithoutConnection(ctx)
 	}
-	return sshidentity.WithConnection(ctx, *r.SSH)
+	c := *r.SSH
+	if c.Project == "" && r.Project != "" {
+		c.Project = r.Project
+	}
+	if c.Zone == "" && r.Region != "" {
+		c.Zone = r.Region
+	}
+	if r.Provider == "gcloud" && !r.TailscaleJoined && (c.UseIAP || c.PreferredHost == c.PublicIP) {
+		c.UseIAP = true
+	}
+	return sshidentity.WithConnection(ctx, c)
 }
 
 // Session is one agent session on an instance. Name, LocalRepo and Base

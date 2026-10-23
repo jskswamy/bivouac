@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
+	"github.com/jskswamy/bivouac/internal/provider/gcloud/iap"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
@@ -53,8 +55,14 @@ type Client struct {
 // and, because the caller then retries, escalates into the instance
 // blackholing this host (see lifecycle.WaitReady).
 func Connect(ctx context.Context, ip, user string) (*Client, error) {
-	addr := ip
-	if _, _, err := net.SplitHostPort(ip); err != nil {
+	var addr string
+	port := 22
+	if h, p, err := net.SplitHostPort(ip); err == nil {
+		addr = net.JoinHostPort(h, p)
+		if n, err := strconv.Atoi(p); err == nil {
+			port = n
+		}
+	} else {
 		addr = net.JoinHostPort(ip, "22")
 	}
 
@@ -96,9 +104,30 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 	}
 
 	dialer := net.Dialer{Timeout: clientConfig.Timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("dialing %s: %w", addr, err)
+	var conn net.Conn
+	var dialErr error
+
+	if selected, ok := sshidentity.FromContext(ctx); ok && selected.UseIAP {
+		conn, dialErr = dialIAP(ctx, selected, port)
+		if dialErr != nil {
+			if tcpConn, tcpErr := dialer.DialContext(ctx, "tcp", addr); tcpErr == nil {
+				conn = tcpConn
+				dialErr = nil
+			}
+		}
+	} else {
+		conn, dialErr = dialer.DialContext(ctx, "tcp", addr)
+		if dialErr != nil {
+			if selected, ok := sshidentity.FromContext(ctx); ok && (selected.Project != "" || selected.UseIAP) {
+				if iapConn, iapErr := dialIAP(ctx, selected, port); iapErr == nil {
+					conn = iapConn
+					dialErr = nil
+				}
+			}
+		}
+	}
+	if dialErr != nil {
+		return nil, fmt.Errorf("dialing %s: %w", addr, dialErr)
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientConfig)
@@ -113,6 +142,20 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 	sshClient := ssh.NewClient(sshConn, chans, reqs)
 	go keepAlive(sshClient, 15*time.Second, 10*time.Second)
 	return &Client{conn: sshClient}, nil
+}
+
+func dialIAP(ctx context.Context, c sshidentity.Connection, port int) (net.Conn, error) {
+	token, err := iap.ResolveAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolving gcloud access token for IAP: %w", err)
+	}
+	if raw := os.Getenv("GCLOUD_IAP_URL"); raw != "" {
+		return iap.DialWithURL(ctx, raw, token)
+	}
+	if port <= 0 {
+		port = 22
+	}
+	return iap.Dial(ctx, c.Project, c.Zone, c.Name, port, token)
 }
 
 type pinger interface {

@@ -90,16 +90,20 @@ func renderProfile(c Connection) (string, error) {
 	if !userName.MatchString(c.User) {
 		return "", fmt.Errorf("invalid SSH user %q", c.User)
 	}
-	host, port, err := endpoint(c.PreferredHost)
-	if err != nil {
-		return "", err
-	}
 	paths, err := identityPaths(c)
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, knownhosts.Normalize(net.JoinHostPort(host, port)))
+	if c.UseIAP {
+		fmt.Fprintf(&b, "Host %s\n  ProxyCommand bivouac proxy %s\n  User %s\n  IdentitiesOnly yes\n", alias, c.Name, c.User)
+	} else {
+		host, port, err := endpoint(c.PreferredHost)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, knownhosts.Normalize(net.JoinHostPort(host, port)))
+	}
 	for _, path := range paths {
 		quoted, err := quoteSSH(path)
 		if err != nil {
@@ -115,7 +119,7 @@ func TransportHost(ctx context.Context, host, user string) (string, error) {
 	if !ok {
 		return host, nil
 	}
-	if c.Alias == "" || user != c.User || host != c.PreferredHost && host != c.PublicIP {
+	if c.Alias == "" || user != c.User || (host != c.PreferredHost && host != c.PublicIP && host != c.Name && host != c.Alias) {
 		return "", fmt.Errorf("selected SSH connection does not cover %s@%s", user, host)
 	}
 	return c.Alias, nil

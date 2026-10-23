@@ -32,9 +32,11 @@ type Conn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mu     sync.Mutex
-	rbuf   bytes.Buffer
-	closed bool
+	rmu     sync.Mutex
+	rbuf    bytes.Buffer
+	wmu     sync.Mutex
+	closeMu sync.Mutex
+	closed  bool
 }
 
 // Dial connects to a GCE instance over Cloud IAP TCP forwarding.
@@ -81,12 +83,18 @@ func DialWithURL(ctx context.Context, wsURL, token string) (*Conn, error) {
 	}, nil
 }
 
+func (c *Conn) isClosed() bool {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	return c.closed
+}
+
 func (c *Conn) Read(p []byte) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.rmu.Lock()
+	defer c.rmu.Unlock()
 
 	for c.rbuf.Len() == 0 {
-		if c.closed {
+		if c.isClosed() {
 			return 0, io.EOF
 		}
 
@@ -120,12 +128,12 @@ func (c *Conn) Read(p []byte) (int, error) {
 }
 
 func (c *Conn) Write(p []byte) (int, error) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
+	if c.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
-	c.mu.Unlock()
 
 	// Frame as TagData: uint16(4) + uint32(len) + payload
 	buf := make([]byte, 6+len(p))
@@ -141,14 +149,14 @@ func (c *Conn) Write(p []byte) (int, error) {
 }
 
 func (c *Conn) Close() error {
-	c.mu.Lock()
+	c.closeMu.Lock()
 	if c.closed {
-		c.mu.Unlock()
+		c.closeMu.Unlock()
 		return nil
 	}
 	c.closed = true
 	c.cancel()
-	c.mu.Unlock()
+	c.closeMu.Unlock()
 
 	return c.ws.Close(websocket.StatusNormalClosure, "closed")
 }

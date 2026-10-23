@@ -77,6 +77,11 @@ func PrepareUp(ctx context.Context, name, configPath, repoRoot string, cfg confi
 		return UpPlan{}, err
 	}
 	connection := sshidentity.Connection{Name: name, Alias: alias, PublicIP: "192.0.2.1", PreferredHost: "192.0.2.1", User: user, Keys: append([]sshidentity.Identity(nil), keys.Identities...)}
+	if cfg.Provider == "gcloud" && (cfg.GCloud != nil && !cfg.GCloud.ExternalIP) {
+		connection.UseIAP = true
+		connection.Project = cfg.GCloud.Project
+		connection.Zone = cfg.GCloud.Zone
+	}
 	profiles, err := sshidentity.DefaultProfileStore()
 	if err != nil {
 		return UpPlan{}, err
