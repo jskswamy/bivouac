@@ -161,32 +161,11 @@ git commit -m "Implement Google Cloud provider VM lifecycle"
 - Consumes: GCP Service Account OAuth2 token, instance parameters.
 - Produces: `iap.Dial(ctx, project, zone, instance, port) (net.Conn, error)` and `bivouac proxy <instance>` CLI command bridging stdin/stdout to the tunnel.
 
-- [ ] **Step 1: Write failing test for IAP dialer against mock WebSocket endpoint**
-
-In `internal/provider/gcloud/iap/dialer_test.go`:
-```go
-func TestDial_EchoOverIAP(t *testing.T) {
-    wsServer := gcpfake.NewIAPWebSocketServer(t)
-    conn, err := iap.DialWithEndpoint(context.Background(), wsServer.URL(), "proj", "zone", "inst", 22)
-    // test Write / Read through WebSocket wrapper
-}
-```
-
-- [ ] **Step 2: Run test to verify failure**
-
-Run: `go test ./internal/provider/gcloud/iap > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement IAP binary subprotocol WebSocket framing and `bivouac proxy`**
-
-Implement the multiplexed framing in `dialer.go` and the stdio passthrough command in `cmd/proxy.go`.
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `go test ./internal/provider/gcloud/iap ./cmd -run TestProxy > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing test for IAP dialer against mock WebSocket endpoint**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement IAP binary subprotocol WebSocket framing and `bivouac proxy`**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/provider/gcloud/iap/ cmd/proxy*
