@@ -46,6 +46,14 @@ func (s *Server) URL() string {
 	return s.srv.URL
 }
 
+// AddImage registers an image on the mock server.
+func (s *Server) AddImage(project string, img *computepb.Image) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s/%s", project, img.GetName())
+	s.images[key] = img
+}
+
 // Close shuts down the mock server.
 func (s *Server) Close() {
 	s.srv.Close()

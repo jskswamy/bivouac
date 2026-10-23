@@ -1,5 +1,46 @@
 # Image bundle: [[ .Tag ]]
 
+[[ if eq .Provider "gcloud" ]]
+A Packer template that builds a Google Cloud image labeled
+`[[ .Tag ]]`: [[ .Arch ]], built in `[[ .Region ]]`, with [[ .Shell ]] as
+the login shell and the Nix environment prebuilt for the account
+`[[ .Username ]]`.
+
+Bivouac [[ .BivouacVersion ]] generated it, but building needs nothing from
+Bivouac: only Packer and Google Cloud credentials (`GOOGLE_APPLICATION_CREDENTIALS`).
+
+## Build
+
+Put Google Cloud credentials in the `GOOGLE_APPLICATION_CREDENTIALS` environment
+variable or configure Application Default Credentials; it is read at run time and never stored here. Then run these from
+this directory, since every path in the template is relative to it:
+
+```sh
+packer init .
+packer validate .
+packer build .
+```
+
+`packer init .` installs the Google Compute plugin. The zone, machine type and
+account name are Packer variables, so `packer build -var zone=us-central1-b .`
+builds elsewhere without editing the template. The image name is written
+to `packer-manifest.json`.
+
+## What happens
+
+1. A temporary Compute Engine instance starts from stock `[[ .SourceImage ]]`, never from an
+   earlier image, and `scripts/bootstrap.sh` installs Nix and the login shell
+   as its user data.
+2. `scripts/wait-bootstrap.sh` waits for that to finish.
+3. `metadata.json`[[ if .Rendered ]], and the rendered Nix configuration
+   in `nix/`,[[ end ]] are uploaded to `/var/lib/bivouac-image/`.
+4. `scripts/build-closure.sh` builds the Home Manager activation package for
+   `[[ .FlakeRef ]]` as a temporary account of that name, and roots it
+   against garbage collection. Nothing is activated.
+5. `scripts/sanitize.sh` removes the temporary account, SSH keys, machine
+   identity, cloud-init state, histories, logs and temporary files.
+6. Packer creates an image from the instance, labels it and deletes the instance.
+[[ else ]]
 A Packer template that builds a DigitalOcean snapshot tagged
 `[[ .Tag ]]`: [[ .Arch ]], built in `[[ .Region ]]`, with [[ .Shell ]] as
 the login shell and the Nix environment prebuilt for the account
@@ -39,6 +80,7 @@ to `packer-manifest.json`.
 5. `scripts/sanitize.sh` removes the temporary account, SSH keys, machine
    identity, cloud-init state, histories, logs and temporary files.
 6. Packer snapshots the Droplet, tags it and deletes the Droplet.
+[[ end ]]
 
 A standalone Packer run does not prune older images or update any config to
 point at the new one; those are Bivouac operations.

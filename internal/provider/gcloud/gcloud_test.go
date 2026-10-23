@@ -2,12 +2,18 @@ package gcloud_test
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"testing"
+
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/gcloud"
 	"github.com/jskswamy/bivouac/internal/provider/gcloud/gcpfake"
 )
+
+func ptr[T any](v T) *T { return &v }
 
 func TestProvider_Lifecycle(t *testing.T) {
 	srv := gcpfake.NewServer(t)
@@ -75,5 +81,129 @@ func TestProvider_Lifecycle(t *testing.T) {
 	_, err = p.Get(ctx, vm.ID)
 	if err == nil {
 		t.Error("p.Get() after destroy expected error, got nil")
+	}
+}
+
+func TestProvider_ImageManager(t *testing.T) {
+	srv := gcpfake.NewServer(t)
+	defer srv.Close()
+
+	srv.AddImage("test-project", &computepb.Image{
+		Name:             ptr("bivouac-mydev-20261023"),
+		Status:           ptr("READY"),
+		DiskSizeGb:       ptr(int64(50)),
+		LabelFingerprint: ptr("fp1"),
+		Labels: map[string]string{
+			"bivouac-image":  "true",
+			"bivouac-format": "1",
+			"bivouac-arch":   "x86_64",
+			"bivouac-region": "us-central1-a",
+			"bivouac-shell":  "bash",
+			"bivouac-tag":    "mydev",
+		},
+	})
+
+	p, err := gcloud.New("test-project", "us-central1-a",
+		gcloud.WithBaseURL(srv.URL()),
+		gcloud.WithDiskSizeGb(60),
+	)
+	if err != nil {
+		t.Fatalf("gcloud.New() error = %v", err)
+	}
+
+	im, ok := any(p).(provider.ImageManager)
+	if !ok {
+		t.Fatal("provider does not implement provider.ImageManager")
+	}
+
+	ctx := context.Background()
+
+	// 1. ListImages
+	imgs, err := im.ListImages(ctx, "")
+	if err != nil {
+		t.Fatalf("im.ListImages() error = %v", err)
+	}
+	if len(imgs) != 1 {
+		t.Fatalf("im.ListImages() returned %d images, want 1", len(imgs))
+	}
+	if imgs[0].Name != "bivouac-mydev-20261023" {
+		t.Errorf("image Name = %q, want bivouac-mydev-20261023", imgs[0].Name)
+	}
+	if imgs[0].Status != "available" {
+		t.Errorf("image Status = %q, want available", imgs[0].Status)
+	}
+	if !slices.Contains(imgs[0].Tags, "mydev") || !slices.Contains(imgs[0].Tags, "bivouac-image") {
+		t.Errorf("unexpected tags: %v", imgs[0].Tags)
+	}
+
+	// 2. ListImages with matching tag
+	tagged, err := im.ListImages(ctx, "mydev")
+	if err != nil {
+		t.Fatalf("im.ListImages(mydev) error = %v", err)
+	}
+	if len(tagged) != 1 {
+		t.Errorf("im.ListImages(mydev) returned %d images, want 1", len(tagged))
+	}
+
+	// 3. ListImages with non-matching tag
+	none, err := im.ListImages(ctx, "other")
+	if err != nil {
+		t.Fatalf("im.ListImages(other) error = %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("im.ListImages(other) returned %d images, want 0", len(none))
+	}
+
+	// 4. GetImage
+	got, err := im.GetImage(ctx, "bivouac-mydev-20261023")
+	if err != nil {
+		t.Fatalf("im.GetImage() error = %v", err)
+	}
+	if got.Name != "bivouac-mydev-20261023" {
+		t.Errorf("got Name = %q, want bivouac-mydev-20261023", got.Name)
+	}
+
+	// 5. GetImage not found
+	_, err = im.GetImage(ctx, "nonexistent")
+	if !errors.Is(err, provider.ErrImageNotFound) {
+		t.Errorf("im.GetImage(nonexistent) error = %v, want ErrImageNotFound", err)
+	}
+
+	// 6. TagImage
+	if err := im.TagImage(ctx, "bivouac-mydev-20261023", "newtag"); err != nil {
+		t.Fatalf("im.TagImage() error = %v", err)
+	}
+	retagged, err := im.GetImage(ctx, "bivouac-mydev-20261023")
+	if err != nil {
+		t.Fatalf("im.GetImage() after tagging error = %v", err)
+	}
+	if !slices.Contains(retagged.Tags, "newtag") {
+		t.Errorf("tags after tagging = %v, want newtag", retagged.Tags)
+	}
+
+	// 7. SizeDiskGB
+	disk, err := im.SizeDiskGB(ctx, "e2-standard-4")
+	if err != nil {
+		t.Fatalf("im.SizeDiskGB() error = %v", err)
+	}
+	if disk != 60 {
+		t.Errorf("im.SizeDiskGB() = %d, want 60", disk)
+	}
+
+	// 8. DeleteImage
+	if err := im.DeleteImage(ctx, "bivouac-mydev-20261023"); err != nil {
+		t.Fatalf("im.DeleteImage() error = %v", err)
+	}
+
+	// 9. Get after DeleteImage
+	_, err = im.GetImage(ctx, "bivouac-mydev-20261023")
+	if !errors.Is(err, provider.ErrImageNotFound) {
+		t.Errorf("im.GetImage() after delete error = %v, want ErrImageNotFound", err)
+	}
+
+	// 10. DeleteImage after DeleteImage
+	err = im.DeleteImage(ctx, "bivouac-mydev-20261023")
+	if !errors.Is(err, provider.ErrImageNotFound) {
+		t.Errorf("im.DeleteImage() again error = %v, want ErrImageNotFound", err)
 	}
 }

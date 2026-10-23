@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -41,13 +43,7 @@ type packerFunc func(ctx context.Context, dir, token string, progress io.Writer)
 
 func newImageBuildCmd() *cobra.Command {
 	return newImageBuildCmdWithProvider(
-		func(_ context.Context, token string) (provider.Provider, error) {
-			p, err := newDigitalOcean(token)
-			if err != nil {
-				return nil, err
-			}
-			return p, nil
-		},
+		nil,
 		image.RunPacker,
 	)
 }
@@ -144,11 +140,28 @@ func runImageBuild(cmd *cobra.Command, resolve func(context.Context, string) (pr
 	if err != nil {
 		return err
 	}
-	token, err := resolveToken(ctx)
-	if err != nil {
-		return err
+	var token string
+	if sel.Config.Provider == "gcloud" {
+		cleanup, err := setupGCloudCredentials(ctx)
+		if err != nil {
+			return err
+		}
+		if cleanup != nil {
+			defer cleanup()
+		}
+	} else {
+		var err error
+		token, err = resolveToken(ctx)
+		if err != nil {
+			return err
+		}
 	}
-	images, err := imageManagerFrom(ctx, func(ctx context.Context) (provider.Provider, error) { return resolve(ctx, token) })
+	images, err := imageManagerFrom(ctx, func(ctx context.Context) (provider.Provider, error) {
+		if resolve != nil {
+			return resolve(ctx, token)
+		}
+		return resolveProviderForConfig(ctx, sel.Config)
+	})
 	if err != nil {
 		return err
 	}
@@ -263,4 +276,58 @@ func reportBuildFailure(cmd *cobra.Command, res image.BuildResult, err error) er
 		}
 	}
 	return err
+}
+
+func setupGCloudCredentials(ctx context.Context) (func(), error) {
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" {
+		return nil, nil
+	}
+	if keyVal := os.Getenv("GCLOUD_SERVICE_ACCOUNT_KEY"); keyVal != "" {
+		trimmed := strings.TrimSpace(keyVal)
+		if strings.HasPrefix(trimmed, "{") {
+			f, err := os.CreateTemp("", "bivouac-gcp-key-*.json")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := f.Write([]byte(trimmed)); err != nil {
+				_ = f.Close()
+				_ = os.Remove(f.Name())
+				return nil, err
+			}
+			_ = f.Close()
+			_ = os.Chmod(f.Name(), 0600)
+			_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f.Name())
+			return func() {
+				_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
+				_ = os.Remove(f.Name())
+			}, nil
+		}
+		_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", keyVal)
+		return func() {
+			_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
+		}, nil
+	}
+	secPath, err := secrets.Path()
+	if err == nil {
+		value, err := secrets.Decrypt(ctx, secPath, "gcloud_service_account_key")
+		if err == nil && len(value) > 0 {
+			f, err := os.CreateTemp("", "bivouac-gcp-key-*.json")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := f.Write(value); err != nil {
+				_ = f.Close()
+				_ = os.Remove(f.Name())
+				return nil, err
+			}
+			_ = f.Close()
+			_ = os.Chmod(f.Name(), 0600)
+			_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f.Name())
+			return func() {
+				_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
+				_ = os.Remove(f.Name())
+			}, nil
+		}
+	}
+	return nil, nil
 }

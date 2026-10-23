@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/xdg"
 )
 
 // buildProvider is an image-managing provider whose account holds two
@@ -56,12 +58,26 @@ func (p *buildProvider) DeleteImage(_ context.Context, id string) error {
 }
 func (p *buildProvider) SizeDiskGB(context.Context, string) (int, error) { return 25, nil }
 
+func isolateImageBuildCache(t *testing.T) {
+	t.Helper()
+	realCache, _ := xdg.Path(xdg.Cache, "pkl")
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	if realCache != "" {
+		if fi, err := os.Stat(realCache); err == nil && fi.IsDir() {
+			target := filepath.Join(cache, "bivouac", "pkl")
+			_ = os.MkdirAll(filepath.Dir(target), 0o755)
+			_ = os.Symlink(realCache, target)
+		}
+	}
+}
+
 // runImageBuild runs `image build` against p with a fake Packer that
 // writes a marker to its progress stream and reports image 100.
 func execImageBuild(t *testing.T, p *buildProvider, args ...string) (stdout, stderr string, packerRuns int, err error) {
 	t.Helper()
 	t.Setenv("DIGITALOCEAN_TOKEN", "test-token")
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateImageBuildCache(t)
 	resolve := func(_ context.Context, token string) (provider.Provider, error) {
 		p.token = token
 		return p, nil

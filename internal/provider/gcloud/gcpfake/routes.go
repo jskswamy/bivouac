@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -54,7 +55,11 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		if len(parts) >= 4 {
 			name = parts[3]
 		}
-		s.handleGlobalResource(w, r, project, resource, name)
+		var subaction string
+		if len(parts) >= 5 {
+			subaction = parts[4]
+		}
+		s.handleGlobalResource(w, r, project, resource, name, subaction)
 	default:
 		http.NotFound(w, r)
 	}
@@ -105,11 +110,15 @@ func (s *Server) handleZoneResource(w http.ResponseWriter, r *http.Request, proj
 	}
 }
 
-func (s *Server) handleGlobalResource(w http.ResponseWriter, r *http.Request, project, resource, name string) {
+func (s *Server) handleGlobalResource(w http.ResponseWriter, r *http.Request, project, resource, name, subaction string) {
 	switch resource {
 	case "operations":
 		s.getGlobalOperation(w, project, name)
 	case "images":
+		if subaction == "setLabels" && r.Method == http.MethodPost {
+			s.setImageLabels(w, r, project, name)
+			return
+		}
 		if name == "" {
 			switch r.Method {
 			case http.MethodPost:
@@ -380,7 +389,52 @@ func (s *Server) deleteImage(w http.ResponseWriter, project, name string) {
 	defer s.mu.Unlock()
 
 	key := fmt.Sprintf("%s/%s", project, name)
+	if _, ok := s.images[key]; !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("The resource 'projects/%s/global/images/%s' was not found", project, name))
+		return
+	}
 	delete(s.images, key)
+
+	opName := s.nextOpName()
+	op := &computepb.Operation{
+		Name:     ptr(opName),
+		Status:   computepb.Operation_DONE.Enum(),
+		Progress: ptr(int32(100)),
+	}
+	writeProto(w, op)
+}
+
+func (s *Server) setImageLabels(w http.ResponseWriter, r *http.Request, project, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fmt.Sprintf("%s/%s", project, name)
+	img, ok := s.images[key]
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("The resource 'projects/%s/global/images/%s' was not found", project, name))
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req computepb.GlobalSetLabelsRequest
+	if err := protojson.Unmarshal(body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if img.Labels == nil {
+		img.Labels = make(map[string]string)
+	}
+	for k, v := range req.Labels {
+		img.Labels[k] = v
+	}
+	newFp := fmt.Sprintf("%d", time.Now().UnixNano())
+	img.LabelFingerprint = &newFp
 
 	opName := s.nextOpName()
 	op := &computepb.Operation{

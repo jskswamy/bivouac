@@ -14,6 +14,7 @@ type options struct {
 	credentialsJSON []byte
 	credentialsFile string
 	httpClient      *http.Client
+	diskSizeGb      int
 	extraClientOpts []option.ClientOption
 }
 
@@ -42,6 +43,13 @@ func WithCredentialsFile(path string) Option {
 func WithHTTPClient(client *http.Client) Option {
 	return func(o *options) {
 		o.httpClient = client
+	}
+}
+
+// WithDiskSizeGb sets the default disk size in GB for the provider.
+func WithDiskSizeGb(size int) Option {
+	return func(o *options) {
+		o.diskSizeGb = size
 	}
 }
 

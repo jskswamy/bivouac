@@ -2,6 +2,7 @@ package gcloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ type Provider struct {
 	project         string
 	zone            string
 	instancesClient *compute.InstancesClient
+	imagesClient    *compute.ImagesClient
+	diskSizeGb      int
 }
 
 // New creates and configures a new Google Cloud provider for project and zone.
@@ -57,20 +60,35 @@ func New(project, zone string, opts ...Option) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating gce instances client: %w", err)
 	}
+	imagesClient, err := compute.NewImagesRESTClient(ctx, clientOpts...)
+	if err != nil {
+		_ = instancesClient.Close()
+		return nil, fmt.Errorf("creating gce images client: %w", err)
+	}
 
 	return &Provider{
 		project:         project,
 		zone:            zone,
 		instancesClient: instancesClient,
+		imagesClient:    imagesClient,
+		diskSizeGb:      cfg.diskSizeGb,
 	}, nil
 }
 
 // Close closes any underlying clients.
 func (p *Provider) Close() error {
+	var errs []error
 	if p.instancesClient != nil {
-		return p.instancesClient.Close()
+		if err := p.instancesClient.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	if p.imagesClient != nil {
+		if err := p.imagesClient.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Create provisions a new GCE VM instance.

@@ -14,12 +14,15 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	computepb "cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/digitalocean/godo"
 
 	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/digitalocean/dofake"
+	"github.com/jskswamy/bivouac/internal/provider/gcloud/gcpfake"
 )
 
 var snapshotTagsLine = regexp.MustCompile(`(?m)^\s*snapshot_tags\s*=\s*(\[.*\])\s*$`)
@@ -117,7 +120,7 @@ func pluginPacker(s *dofake.Server, runs *int) packerFunc {
 func execContractBuild(t *testing.T, s *dofake.Server, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	t.Setenv("DIGITALOCEAN_TOKEN", "dummy-token")
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateImageBuildCache(t)
 	runs := 0
 	resolve := func(context.Context, string) (provider.Provider, error) { return s.Provider(t), nil }
 	c := newImageBuildCmdWithProvider(resolve, pluginPacker(s, &runs))
@@ -345,4 +348,122 @@ func TestContractImagePrune_RateLimited(t *testing.T) {
 			t.Errorf("listing attempts = %d, want 5 (one try and four retries)", n)
 		}
 	})
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestContractImageBuild_GCloud_EndToEnd(t *testing.T) {
+	s := gcpfake.NewServer(t)
+	defer s.Close()
+	t.Setenv("GCLOUD_API_URL", s.URL())
+	isolateImageBuildCache(t)
+
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	basePath := filepath.Join(dir, "xdg", "bivouac", "base.pkl")
+	gcloudConfig := `provider = "gcloud"
+template = "python"
+gcloud {
+  project = "test-project"
+  zone = "us-central1-a"
+  machineType = "e2-standard-4"
+}
+`
+	writeImageConfig(t, basePath, gcloudConfig)
+	workDir := filepath.Join(dir, "work")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(workDir)
+
+	now := time.Now().UTC()
+	s.AddImage("test-project", &computepb.Image{
+		Name:              ptr("bivouac-my-dev-oldest"),
+		Status:            ptr("READY"),
+		CreationTimestamp: ptr(now.Add(-3 * time.Hour).Format(time.RFC3339)),
+		Labels: map[string]string{
+			"bivouac-image":  "true",
+			"bivouac-format": "1",
+			"bivouac-tag":    "my-dev",
+			"bivouac-region": "us-central1-a",
+			"bivouac-arch":   "x86_64",
+			"bivouac-shell":  "fish",
+		},
+	})
+	s.AddImage("test-project", &computepb.Image{
+		Name:              ptr("bivouac-my-dev-middle"),
+		Status:            ptr("READY"),
+		CreationTimestamp: ptr(now.Add(-2 * time.Hour).Format(time.RFC3339)),
+		Labels: map[string]string{
+			"bivouac-image":  "true",
+			"bivouac-format": "1",
+			"bivouac-tag":    "my-dev",
+			"bivouac-region": "us-central1-a",
+			"bivouac-arch":   "x86_64",
+			"bivouac-shell":  "fish",
+		},
+	})
+	s.AddImage("test-project", &computepb.Image{
+		Name:              ptr("bivouac-my-dev-newest-old"),
+		Status:            ptr("READY"),
+		CreationTimestamp: ptr(now.Add(-1 * time.Hour).Format(time.RFC3339)),
+		Labels: map[string]string{
+			"bivouac-image":  "true",
+			"bivouac-format": "1",
+			"bivouac-tag":    "my-dev",
+			"bivouac-region": "us-central1-a",
+			"bivouac-arch":   "x86_64",
+			"bivouac-shell":  "fish",
+		},
+	})
+
+	runs := 0
+	packer := func(ctx context.Context, dir, token string, progress io.Writer) (image.Artifact, error) {
+		runs++
+		imgName := "bivouac-my-dev-new"
+		s.AddImage("test-project", &computepb.Image{
+			Name:              ptr(imgName),
+			Status:            ptr("READY"),
+			CreationTimestamp: ptr(time.Now().UTC().Format(time.RFC3339)),
+			Labels: map[string]string{
+				"bivouac-image":  "true",
+				"bivouac-format": "1",
+				"bivouac-tag":    "my-dev",
+				"bivouac-region": "us-central1-a",
+				"bivouac-arch":   "x86_64",
+				"bivouac-shell":  "fish",
+			},
+		})
+		return image.Artifact{ID: imgName, Region: "us-central1-a"}, nil
+	}
+
+	c := newImageBuildCmdWithProvider(nil, packer)
+	stdout, stderr, err := execImageSub(t, c, "--tag", "my-dev", "--keep-previous", "1", "--json")
+	if err != nil {
+		t.Fatalf("image build: %v\n%s", err, stderr)
+	}
+	if runs != 1 {
+		t.Errorf("Packer ran %d times, want 1", runs)
+	}
+
+	var res struct {
+		ImageID string   `json:"image_id"`
+		Pruned  []string `json:"pruned"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+
+	body, err := os.ReadFile(basePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `image = "tag:my-dev"`) {
+		t.Errorf("base.pkl not pointed at the tag:\n%s", body)
+	}
+
+	wantDeleted := []string{"bivouac-my-dev-oldest", "bivouac-my-dev-middle"}
+	if !slices.Equal(res.Pruned, wantDeleted) {
+		t.Errorf("reported pruned = %v, want %v", res.Pruned, wantDeleted)
+	}
 }

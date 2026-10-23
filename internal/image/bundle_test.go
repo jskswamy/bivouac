@@ -411,6 +411,52 @@ func TestGenerate_DefaultsUsernameToRemoteUser(t *testing.T) {
 	}
 }
 
+func TestGenerate_HCL_GCloud(t *testing.T) {
+	sel := selected(withPackages)
+	sel.Config.Provider = "gcloud"
+	sel.Config.Region = "us-central1-a"
+	sel.Config.Size = "e2-standard-4"
+	sel.Config.GCloud = &config.GCloudConfig{
+		Project:     "my-gcp-proj",
+		Zone:        "us-central1-a",
+		MachineType: "e2-standard-4",
+		Network:     "default",
+		DiskSizeGb:  50,
+		Image:       "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+	}
+	opts := bundleOpts(t, sel)
+	generate(t, opts)
+	hcl := readFile(t, filepath.Join(opts.OutputDir, "image.pkr.hcl"))
+
+	for _, want := range []string{
+		"required_plugins",
+		`source  = "github.com/hashicorp/googlecompute"`,
+		`source "googlecompute" "image"`,
+		`project_id   = var.project_id`,
+		`zone         = var.zone`,
+		`machine_type = var.machine_type`,
+		`source_image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"`,
+		`default = "my-gcp-proj"`,
+		`default = "us-central1-a"`,
+		`default = "e2-standard-4"`,
+		`bivouac-image   = "true"`,
+		`bivouac-format  = "1"`,
+		`bivouac-arch    = "x86_64"`,
+		`bivouac-region  = var.zone`,
+		`bivouac-tag     = "my-dev"`,
+		`sources = ["source.googlecompute.image"]`,
+	} {
+		if !strings.Contains(hcl, want) {
+			t.Errorf("HCL missing %q\n%s", want, hcl)
+		}
+	}
+
+	readme := readFile(t, filepath.Join(opts.OutputDir, "README.md"))
+	if !strings.Contains(readme, "Google Cloud image labeled") {
+		t.Errorf("README missing Google Cloud description:\n%s", readme)
+	}
+}
+
 // TestGenerate_PackerFmt checks the HCL against the real Packer when one
 // is installed. A fake would only prove the fake agrees with itself.
 func TestGenerate_PackerFmt(t *testing.T) {

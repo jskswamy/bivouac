@@ -163,10 +163,30 @@ func renderBundle(opts BundleOptions, cfg config.Resolved) ([]bundleFile, Metada
 	if !identity.ValidRemoteUser(username) {
 		return nil, Metadata{}, fmt.Errorf("invalid remote username %q", username)
 	}
+	providerName := cfg.Provider
+	if providerName == "" {
+		providerName = "digitalocean"
+	}
+	var project, zone string
+	sourceImage := StockSourceX86
+	if providerName == "gcloud" {
+		sourceImage = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
+		if cfg.GCloud != nil {
+			if cfg.GCloud.Image != "" {
+				sourceImage = cfg.GCloud.Image
+			}
+			project = cfg.GCloud.Project
+			zone = cfg.GCloud.Zone
+		}
+	}
+
 	// Both are written into HCL strings; a slug cannot carry a quote or
 	// a ${ that would change what the template means.
 	for _, f := range []struct{ name, value string }{{"region", cfg.Region}, {"size", cfg.Size}} {
 		if !slug.MatchString(f.value) {
+			if providerName == "gcloud" {
+				return nil, Metadata{}, fmt.Errorf("%s %q is not a valid Google Cloud zone/machine-type slug", f.name, f.value)
+			}
 			return nil, Metadata{}, fmt.Errorf("%s %q is not a DigitalOcean slug", f.name, f.value)
 		}
 	}
@@ -198,7 +218,7 @@ func renderBundle(opts BundleOptions, cfg config.Resolved) ([]bundleFile, Metada
 	meta := Metadata{
 		FormatVersion:     FormatVersion,
 		BivouacVersion:    opts.BivouacVersion,
-		SourceImage:       StockSourceX86,
+		SourceImage:       sourceImage,
 		Arch:              arch,
 		Region:            cfg.Region,
 		Size:              cfg.Size,
@@ -212,9 +232,20 @@ func renderBundle(opts BundleOptions, cfg config.Resolved) ([]bundleFile, Metada
 
 	data := struct {
 		Metadata
+		Provider                    string
+		Project                     string
+		Zone                        string
 		PluginVersion, SnapshotTags string
 		Rendered                    bool
-	}{meta, PackerPluginVersion, hclList(SnapshotTags(opts.Tag, arch, "${var.region}", cfg.Shell)), rendered}
+	}{
+		Metadata:      meta,
+		Provider:      providerName,
+		Project:       project,
+		Zone:          zone,
+		PluginVersion: PackerPluginVersion,
+		SnapshotTags:  hclList(SnapshotTags(opts.Tag, arch, "${var.region}", cfg.Shell)),
+		Rendered:      rendered,
+	}
 	hcl, err := execute(hclTemplate, data)
 	if err != nil {
 		return nil, Metadata{}, err

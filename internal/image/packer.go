@@ -170,9 +170,15 @@ func ParseManifest(raw []byte) (Artifact, error) {
 		return Artifact{}, fmt.Errorf("%s records no builds", packerManifest)
 	}
 	id := m.Builds[len(m.Builds)-1].ArtifactID
+	if strings.HasPrefix(id, "bivouac-") {
+		return Artifact{ID: id, Region: ""}, nil
+	}
 	region, snapshot, ok := strings.Cut(id, ":")
 	if !ok || region == "" {
 		return Artifact{}, fmt.Errorf("artifact ID %q in %s is not region:id", id, packerManifest)
+	}
+	if strings.HasPrefix(snapshot, "bivouac-") {
+		return Artifact{ID: snapshot, Region: region}, nil
 	}
 	if _, err := strconv.ParseUint(snapshot, 10, 64); err != nil {
 		return Artifact{}, fmt.Errorf("artifact ID %q in %s has a non-numeric image ID", id, packerManifest)
