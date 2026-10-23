@@ -136,41 +136,11 @@ git commit -m "Add mock Google Compute Engine server for testing"
 - Consumes: `provider.InstanceSpec`, `gcpfake.Server`.
 - Produces: `gcloud.Provider` satisfying `provider.Provider` (`Create`, `Destroy`, `Get`, `List`).
 
-- [ ] **Step 1: Write failing test for GCloud Provider Create/Get/Destroy**
-
-In `internal/provider/gcloud/gcloud_test.go`:
-```go
-func TestProvider_CreateInstance(t *testing.T) {
-    srv := gcpfake.NewServer(t)
-    p, err := gcloud.New("test-project", "us-central1-a", gcloud.WithBaseURL(srv.URL()))
-    if err != nil { t.Fatal(err) }
-
-    spec := provider.InstanceSpec{
-        Name: "test-vm",
-        Size: "e2-standard-4",
-        UserData: "#!/bin/sh\necho hello",
-        SSHKeys: []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5..."},
-    }
-    vm, err := p.Create(context.Background(), spec)
-    // assert vm.ID, vm.Name, vm.Status == "active"
-}
-```
-
-- [ ] **Step 2: Run test to verify failure**
-
-Run: `go test ./internal/provider/gcloud -run TestProvider_CreateInstance > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement `Provider` in `internal/provider/gcloud/gcloud.go`**
-
-Implement GCE instance creation with metadata (`user-data`, `ssh-keys`), status polling, listing, and deletion.
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `go test ./internal/provider/gcloud > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing test for GCloud Provider Create/Get/Destroy**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement `Provider` in `internal/provider/gcloud/gcloud.go`**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/provider/gcloud/

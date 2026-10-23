@@ -107,6 +107,7 @@ type InstanceSpec struct {
 	Image    string   // e.g. "ubuntu-22-04-x64"
 	SSHKeys  []string // provider SSH key IDs/fingerprints
 	UserData string   // cloud-init script, opaque to this package
+	User     string   // target username for instance setup
 }
 
 // VM is a created instance's current state.

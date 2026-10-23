@@ -84,7 +84,7 @@ func PrepareUp(ctx context.Context, name, configPath, repoRoot string, cfg confi
 	if err := profiles.Check(ctx, connection); err != nil {
 		return UpPlan{}, err
 	}
-	return UpPlan{Name: name, ConfigPath: configPath, RepoRoot: repoRoot, Config: cfg, Keys: keys, Connection: connection, RemotePath: remotePath, Image: img, Spec: provider.InstanceSpec{Name: name, Region: cfg.Region, Size: cfg.Size, Image: img.Image, UserData: cloudInit}}, nil
+	return UpPlan{Name: name, ConfigPath: configPath, RepoRoot: repoRoot, Config: cfg, Keys: keys, Connection: connection, RemotePath: remotePath, Image: img, Spec: provider.InstanceSpec{Name: name, Region: cfg.Region, Size: cfg.Size, Image: img.Image, UserData: cloudInit, User: user}}, nil
 }
 
 // bootMode checks img against cfg and picks the boot script for it.
