@@ -112,33 +112,11 @@ git commit -m "Support GCP project field in instance state records"
 - Consumes: `net/http/httptest`.
 - Produces: `gcpfake.Server` providing GCE REST mock endpoints (`/compute/v1/projects/.../instances`, `zones`, `disks`, `images`) and test URL options.
 
-- [ ] **Step 1: Write failing test for `gcpfake.Server` lifecycle**
-
-In `internal/provider/gcloud/gcpfake/gcpfake_test.go`:
-```go
-func TestServer_CreateAndGetInstance(t *testing.T) {
-    srv := gcpfake.NewServer(t)
-    defer srv.Close()
-    // POST instance -> 200 / operation
-    // GET instance -> verify status PROVISIONING -> RUNNING
-}
-```
-
-- [ ] **Step 2: Run test to verify failure**
-
-Run: `go test ./internal/provider/gcloud/gcpfake > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: FAIL.
-
-- [ ] **Step 3: Implement mock HTTP handlers for GCE instances API**
-
-Implement instance create, get, list, delete, and mock operations in `internal/provider/gcloud/gcpfake/routes.go`.
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `go test ./internal/provider/gcloud/gcpfake > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing test for `gcpfake.Server` lifecycle**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement mock HTTP handlers for GCE instances API**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/provider/gcloud/gcpfake/
