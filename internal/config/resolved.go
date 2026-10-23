@@ -76,10 +76,10 @@ func resolved(c Config) Resolved {
 				c.Image = c.Gcloud.Image
 			}
 		}
-		if c.Region != nil && *c.Region != "" {
+		if region == "" && c.Region != nil && *c.Region != "" {
 			region = *c.Region
 		}
-		if c.Size != nil && *c.Size != "" {
+		if size == "" && c.Size != nil && *c.Size != "" {
 			size = *c.Size
 		}
 	case "digitalocean":

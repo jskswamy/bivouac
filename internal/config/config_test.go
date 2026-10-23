@@ -881,6 +881,46 @@ func TestResolve_GCloudProvider(t *testing.T) {
 	}
 }
 
+func TestResolve_GCloudProvider_WithBaseDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfgHome := filepath.Join(dir, "config")
+	baseDir := filepath.Join(cfgHome, "bivouac")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(baseDir, "base.pkl"), strings.Join([]string{
+		`region = "blr1"`,
+		`size = "s-2vcpu-4gb"`,
+		`template = "docker"`,
+	}, "\n")+"\n")
+
+	project := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`provider = "gcloud"`,
+		`gcloud {`,
+		`  project = "my-gcp-project"`,
+		`  zone = "asia-south1-c"`,
+		`  machineType = "e2-standard-4"`,
+		`}`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Provider != "gcloud" {
+		t.Errorf("Provider = %q, want gcloud", cfg.Provider)
+	}
+	if cfg.Region != "asia-south1-c" {
+		t.Errorf("Region = %q, want asia-south1-c", cfg.Region)
+	}
+	if cfg.Size != "e2-standard-4" {
+		t.Errorf("Size = %q, want e2-standard-4", cfg.Size)
+	}
+}
+
 func TestResolve_DigitalOceanExplicitBlock(t *testing.T) {
 	dir := t.TempDir()
 	project := filepath.Join(dir, "bivouac.pkl")
