@@ -1,3 +1,12 @@
+## Unreleased
+
+### Added
+
+- Google Cloud (`gcloud`) provider support: provision, manage, and connect to
+  ephemeral development VMs on Google Compute Engine with dedicated `gcloud`
+  configuration blocks, service account credentials, native IAP tunneling,
+  and custom Packer image builds.
+
 ## v0.4.0
 
 ### Added
