@@ -16,7 +16,6 @@ import (
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
 	"github.com/jskswamy/bivouac/internal/provider/gcloud"
-	"github.com/jskswamy/bivouac/internal/secrets"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -80,36 +79,11 @@ type dispatchProviderResolver func(ctx context.Context, providerName, project, r
 var customProviderResolver dispatchProviderResolver
 
 func resolveGCloudOptions(ctx context.Context) ([]gcloud.Option, error) {
-	var opts []gcloud.Option
-	if raw := os.Getenv("GCLOUD_API_URL"); raw != "" {
-		opts = append(opts, gcloud.WithBaseURL(raw))
-		return opts, nil
+	creds, err := gcloud.ResolveCredentials(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	if path := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); path != "" {
-		opts = append(opts, gcloud.WithCredentialsFile(path))
-		return opts, nil
-	}
-
-	if keyVal := os.Getenv("GCLOUD_SERVICE_ACCOUNT_KEY"); keyVal != "" {
-		if strings.HasPrefix(strings.TrimSpace(keyVal), "{") {
-			opts = append(opts, gcloud.WithCredentialsJSON([]byte(keyVal)))
-		} else {
-			opts = append(opts, gcloud.WithCredentialsFile(keyVal))
-		}
-		return opts, nil
-	}
-
-	secPath, err := secrets.Path()
-	if err == nil {
-		value, err := secrets.Decrypt(ctx, secPath, "gcloud_service_account_key")
-		if err == nil && len(value) > 0 {
-			opts = append(opts, gcloud.WithCredentialsJSON(value))
-			return opts, nil
-		}
-	}
-
-	return opts, nil
+	return creds.ClientOptions(), nil
 }
 
 var newGCloud = func(ctx context.Context, project, region string, extraOpts ...gcloud.Option) (provider.Provider, error) {

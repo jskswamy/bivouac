@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -175,3 +176,20 @@ func (c *Conn) RemoteAddr() net.Addr {
 func (c *Conn) SetDeadline(t time.Time) error      { return nil }
 func (c *Conn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *Conn) SetWriteDeadline(t time.Time) error { return nil }
+
+// DialTarget resolves credentials and establishes an IAP tunnel connection to the
+// specified instance. If GCLOUD_IAP_URL is set in the environment, it overrides
+// the destination endpoint (primarily for testing with gcpfake).
+func DialTarget(ctx context.Context, project, zone, instance string, port int) (net.Conn, error) {
+	token, err := ResolveAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolving gcloud access token: %w", err)
+	}
+	if raw := os.Getenv("GCLOUD_IAP_URL"); raw != "" {
+		return DialWithURL(ctx, raw, token)
+	}
+	if port <= 0 {
+		port = 22
+	}
+	return Dial(ctx, project, zone, instance, port, token)
+}

@@ -145,17 +145,7 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 }
 
 func dialIAP(ctx context.Context, c sshidentity.Connection, port int) (net.Conn, error) {
-	token, err := iap.ResolveAccessToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("resolving gcloud access token for IAP: %w", err)
-	}
-	if raw := os.Getenv("GCLOUD_IAP_URL"); raw != "" {
-		return iap.DialWithURL(ctx, raw, token)
-	}
-	if port <= 0 {
-		port = 22
-	}
-	return iap.Dial(ctx, c.Project, c.Zone, c.Name, port, token)
+	return iap.DialTarget(ctx, c.Project, c.Zone, c.Name, port)
 }
 
 type pinger interface {

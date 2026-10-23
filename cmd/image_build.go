@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/image"
 	"github.com/jskswamy/bivouac/internal/provider"
-	"github.com/jskswamy/bivouac/internal/secrets"
+	"github.com/jskswamy/bivouac/internal/provider/gcloud"
 	"github.com/spf13/cobra"
 )
 
@@ -279,55 +278,9 @@ func reportBuildFailure(cmd *cobra.Command, res image.BuildResult, err error) er
 }
 
 func setupGCloudCredentials(ctx context.Context) (func(), error) {
-	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" {
-		return nil, nil
+	creds, err := gcloud.ResolveCredentials(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if keyVal := os.Getenv("GCLOUD_SERVICE_ACCOUNT_KEY"); keyVal != "" {
-		trimmed := strings.TrimSpace(keyVal)
-		if strings.HasPrefix(trimmed, "{") {
-			f, err := os.CreateTemp("", "bivouac-gcp-key-*.json")
-			if err != nil {
-				return nil, err
-			}
-			if _, err := f.Write([]byte(trimmed)); err != nil {
-				_ = f.Close()
-				_ = os.Remove(f.Name())
-				return nil, err
-			}
-			_ = f.Close()
-			_ = os.Chmod(f.Name(), 0600)
-			_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f.Name())
-			return func() {
-				_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
-				_ = os.Remove(f.Name())
-			}, nil
-		}
-		_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", keyVal)
-		return func() {
-			_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
-		}, nil
-	}
-	secPath, err := secrets.Path()
-	if err == nil {
-		value, err := secrets.Decrypt(ctx, secPath, "gcloud_service_account_key")
-		if err == nil && len(value) > 0 {
-			f, err := os.CreateTemp("", "bivouac-gcp-key-*.json")
-			if err != nil {
-				return nil, err
-			}
-			if _, err := f.Write(value); err != nil {
-				_ = f.Close()
-				_ = os.Remove(f.Name())
-				return nil, err
-			}
-			_ = f.Close()
-			_ = os.Chmod(f.Name(), 0600)
-			_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f.Name())
-			return func() {
-				_ = os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
-				_ = os.Remove(f.Name())
-			}, nil
-		}
-	}
-	return nil, nil
+	return creds.SetupEnv()
 }

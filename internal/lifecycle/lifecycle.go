@@ -80,11 +80,6 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) erro
 	connection := plan.Connection
 	connection.PublicIP = vm.IP
 	connection.PreferredHost = vm.IP
-	if plan.Config.Provider == "gcloud" && (plan.Config.GCloud != nil && !plan.Config.GCloud.ExternalIP) {
-		connection.UseIAP = true
-		connection.Project = plan.Config.GCloud.Project
-		connection.Zone = plan.Config.GCloud.Zone
-	}
 	providerName := plan.Config.Provider
 	if providerName == "" {
 		providerName = "digitalocean"

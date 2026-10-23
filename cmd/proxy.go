@@ -3,8 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"net"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -28,17 +26,7 @@ func newProxyCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			token, err := iap.ResolveAccessToken(ctx)
-			if err != nil {
-				return fmt.Errorf("resolving gcloud access token: %w", err)
-			}
-
-			var conn net.Conn
-			if raw := os.Getenv("GCLOUD_IAP_URL"); raw != "" {
-				conn, err = iap.DialWithURL(ctx, raw, token)
-			} else {
-				conn, err = iap.Dial(ctx, record.Project, record.Region, record.Name, 22, token)
-			}
+			conn, err := iap.DialTarget(ctx, record.Project, record.Region, record.Name, 22)
 			if err != nil {
 				return fmt.Errorf("connecting via iap: %w", err)
 			}
