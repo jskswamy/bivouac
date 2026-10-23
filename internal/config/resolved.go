@@ -70,7 +70,9 @@ func resolved(c Config) Resolved {
 		if c.Gcloud != nil {
 			region = c.Gcloud.Zone
 			size = c.Gcloud.MachineType
-			if c.Gcloud.Image != "" {
+			if c.Image != "ubuntu-24-04-x64" {
+				// User explicitly configured top-level image (e.g. tag:...)
+			} else if c.Gcloud.Image != "" {
 				c.Image = c.Gcloud.Image
 			}
 		}

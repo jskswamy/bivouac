@@ -44,8 +44,10 @@ func newMockProxyIAPServer(t *testing.T) *httptest.Server {
 			if typ == websocket.MessageBinary && len(data) >= 6 {
 				tag := binary.BigEndian.Uint16(data[0:2])
 				if tag == iap.TagData {
-					// echo back
+					// echo back and close
 					_ = c.Write(r.Context(), websocket.MessageBinary, data)
+					_ = c.Close(websocket.StatusNormalClosure, "done")
+					return
 				}
 			}
 		}

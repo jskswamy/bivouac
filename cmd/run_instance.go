@@ -62,10 +62,17 @@ func resolveProviderForConfig(ctx context.Context, cfg config.Resolved) (provide
 		prov = "digitalocean"
 	}
 	project := ""
+	var opts []gcloud.Option
 	if cfg.GCloud != nil {
 		project = cfg.GCloud.Project
+		if cfg.GCloud.DiskSizeGb > 0 {
+			opts = append(opts, gcloud.WithDiskSizeGb(cfg.GCloud.DiskSizeGb))
+		}
+		if cfg.GCloud.ExternalIP {
+			opts = append(opts, gcloud.WithExternalIP(true))
+		}
 	}
-	return resolveProviderFor(ctx, prov, project, cfg.Region)
+	return resolveProviderFor(ctx, prov, project, cfg.Region, opts...)
 }
 
 type dispatchProviderResolver func(ctx context.Context, providerName, project, region string) (provider.Provider, error)
@@ -105,16 +112,17 @@ func resolveGCloudOptions(ctx context.Context) ([]gcloud.Option, error) {
 	return opts, nil
 }
 
-var newGCloud = func(ctx context.Context, project, region string) (provider.Provider, error) {
+var newGCloud = func(ctx context.Context, project, region string, extraOpts ...gcloud.Option) (provider.Provider, error) {
 	opts, err := resolveGCloudOptions(ctx)
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, extraOpts...)
 	return gcloud.New(project, region, opts...)
 }
 
 // resolveProviderFor dispatches to the requested cloud provider.
-func resolveProviderFor(ctx context.Context, providerName, project, region string) (provider.Provider, error) {
+func resolveProviderFor(ctx context.Context, providerName, project, region string, extraOpts ...gcloud.Option) (provider.Provider, error) {
 	if customProviderResolver != nil {
 		return customProviderResolver(ctx, providerName, project, region)
 	}
@@ -130,7 +138,7 @@ func resolveProviderFor(ctx context.Context, providerName, project, region strin
 		}
 		return p, nil
 	case "gcloud":
-		return newGCloud(ctx, project, region)
+		return newGCloud(ctx, project, region, extraOpts...)
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", providerName)
 	}

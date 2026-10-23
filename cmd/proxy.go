@@ -47,10 +47,12 @@ func newProxyCmd() *cobra.Command {
 			in := cmd.InOrStdin()
 			out := cmd.OutOrStdout()
 
-			errc := make(chan error, 2)
+			errc := make(chan error, 1)
 			go func() {
 				_, copyErr := io.Copy(conn, in)
-				errc <- copyErr
+				if copyErr != nil && copyErr != io.EOF {
+					errc <- copyErr
+				}
 			}()
 			go func() {
 				_, copyErr := io.Copy(out, conn)
@@ -59,7 +61,7 @@ func newProxyCmd() *cobra.Command {
 
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case err := <-errc:
 				if err != nil && err != io.EOF {
 					return err

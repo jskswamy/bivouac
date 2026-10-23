@@ -54,6 +54,18 @@ func (s *Server) AddImage(project string, img *computepb.Image) {
 	s.images[key] = img
 }
 
+// GetInstance returns an instance by project, zone, and name, or an error if not found.
+func (s *Server) GetInstance(project, zone, name string) (*computepb.Instance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s/%s/%s", project, zone, name)
+	inst, ok := s.instances[key]
+	if !ok {
+		return nil, fmt.Errorf("instance %q not found", key)
+	}
+	return inst, nil
+}
+
 // Close shuts down the mock server.
 func (s *Server) Close() {
 	s.srv.Close()

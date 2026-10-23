@@ -175,6 +175,13 @@ func (s *Server) insertInstance(w http.ResponseWriter, r *http.Request, project,
 	} else if inst.NetworkInterfaces[0].NetworkIP == nil {
 		inst.NetworkInterfaces[0].NetworkIP = ptr("10.128.0.2")
 	}
+	if len(inst.NetworkInterfaces) > 0 {
+		for _, ac := range inst.NetworkInterfaces[0].AccessConfigs {
+			if ac.NatIP == nil || *ac.NatIP == "" {
+				ac.NatIP = ptr("34.120.0.100")
+			}
+		}
+	}
 
 	key := fmt.Sprintf("%s/%s/%s", project, zone, inst.GetName())
 	s.instances[key] = &inst

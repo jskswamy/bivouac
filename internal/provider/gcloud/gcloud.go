@@ -9,6 +9,7 @@ import (
 
 	compute "cloud.google.com/go/compute/apiv1"
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
@@ -25,6 +26,7 @@ type Provider struct {
 	instancesClient *compute.InstancesClient
 	imagesClient    *compute.ImagesClient
 	diskSizeGb      int
+	externalIP      bool
 }
 
 // New creates and configures a new Google Cloud provider for project and zone.
@@ -72,6 +74,7 @@ func New(project, zone string, opts ...Option) (*Provider, error) {
 		instancesClient: instancesClient,
 		imagesClient:    imagesClient,
 		diskSizeGb:      cfg.diskSizeGb,
+		externalIP:      cfg.externalIP,
 	}, nil
 }
 
@@ -105,9 +108,20 @@ func (p *Provider) Create(ctx context.Context, spec provider.InstanceSpec) (prov
 			SourceImage: ptr(spec.Image),
 		},
 	}
+	if p.diskSizeGb > 0 {
+		disk.InitializeParams.DiskSizeGb = ptr(int64(p.diskSizeGb))
+	}
 
 	nic := &computepb.NetworkInterface{
 		Network: ptr("global/networks/default"),
+	}
+	if p.externalIP {
+		nic.AccessConfigs = []*computepb.AccessConfig{
+			{
+				Name: ptr("External NAT"),
+				Type: ptr("ONE_TO_ONE_NAT"),
+			},
+		}
 	}
 
 	var metadataItems []*computepb.Items
@@ -220,10 +234,16 @@ func (p *Provider) ListKeys(ctx context.Context) ([]provider.SSHKey, error) {
 
 // CreateKey satisfies provider.KeyRegistry.
 func (p *Provider) CreateKey(ctx context.Context, name, publicKey string) (provider.SSHKey, error) {
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	fp := ""
+	if err == nil {
+		fp = ssh.FingerprintLegacyMD5(pub)
+	}
 	return provider.SSHKey{
-		ID:        publicKey,
-		Name:      name,
-		PublicKey: publicKey,
+		ID:          publicKey,
+		Name:        name,
+		PublicKey:   publicKey,
+		Fingerprint: fp,
 	}, nil
 }
 

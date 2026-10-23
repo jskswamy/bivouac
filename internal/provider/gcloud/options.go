@@ -15,6 +15,7 @@ type options struct {
 	credentialsFile string
 	httpClient      *http.Client
 	diskSizeGb      int
+	externalIP      bool
 	extraClientOpts []option.ClientOption
 }
 
@@ -50,6 +51,13 @@ func WithHTTPClient(client *http.Client) Option {
 func WithDiskSizeGb(size int) Option {
 	return func(o *options) {
 		o.diskSizeGb = size
+	}
+}
+
+// WithExternalIP configures whether instances created by the provider receive an external public IP.
+func WithExternalIP(externalIP bool) Option {
+	return func(o *options) {
+		o.externalIP = externalIP
 	}
 }
 

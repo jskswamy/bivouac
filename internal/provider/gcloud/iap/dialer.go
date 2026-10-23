@@ -100,6 +100,9 @@ func (c *Conn) Read(p []byte) (int, error) {
 
 		typ, data, err := c.ws.Read(c.ctx)
 		if err != nil {
+			if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+				return 0, io.EOF
+			}
 			return 0, err
 		}
 		if typ != websocket.MessageBinary || len(data) < 6 {
