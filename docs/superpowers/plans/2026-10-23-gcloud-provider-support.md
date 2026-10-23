@@ -43,48 +43,11 @@
 - Consumes: Pkl configuration parser.
 - Produces: `config.Resolved` with `Provider string`, `DigitalOcean *DigitalOceanConfig`, `GCloud *GCloudConfig`, and backward-compatible `Region`/`Size`.
 
-- [ ] **Step 1: Write failing config tests for provider blocks and backward compatibility**
-
-In `internal/config/config_test.go`:
-```go
-func TestResolve_GCloudProvider(t *testing.T) {
-    src := `
-    provider = "gcloud"
-    template = "python"
-    gcloud {
-        project = "my-project"
-        zone = "us-central1-a"
-        machineType = "e2-standard-4"
-    }
-    `
-    // verify Resolve populates cfg.Provider == "gcloud" and GCloud fields
-}
-
-func TestResolve_DigitalOceanBackwardCompatibility(t *testing.T) {
-    src := `
-    region = "nyc3"
-    size = "s-1vcpu-1gb"
-    template = "python"
-    `
-    // verify default provider is "digitalocean" and top-level fields map into DigitalOcean config
-}
-```
-
-- [ ] **Step 2: Run tests to verify failure**
-
-Run: `go test ./internal/config -run TestResolve_GCloud > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: FAIL due to missing fields / types.
-
-- [ ] **Step 3: Update `Config.pkl` and `resolved.go`**
-
-Add `DigitalOceanConfig` and `GCloudConfig` classes to `Config.pkl` and update `resolved.go` to expose resolved provider settings on `config.Resolved`.
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `go test ./internal/config > /tmp/out.log 2>&1; cat /tmp/out.log`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing config tests for provider blocks and backward compatibility**
+- [x] **Step 2: Run tests to verify failure**
+- [x] **Step 3: Update `Config.pkl` and `resolved.go`**
+- [x] **Step 4: Run tests to verify they pass**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/

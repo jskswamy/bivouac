@@ -60,6 +60,26 @@ func TestPutGetList_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestRecord_ProjectField(t *testing.T) {
+	s := openTestStore(t)
+	rec := Record{Name: "myinst", Provider: "gcloud", Project: "test-proj", Region: "us-central1-a"}
+
+	if err := s.Put(rec); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	got, ok, err := s.Get("myinst")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("Get() ok = false, want true")
+	}
+	if got.Project != "test-proj" {
+		t.Errorf("got.Project = %q, want test-proj", got.Project)
+	}
+}
+
 func TestDelete_RemovesRecord(t *testing.T) {
 	s := openTestStore(t)
 	if err := s.Put(Record{Name: "myrepo"}); err != nil {

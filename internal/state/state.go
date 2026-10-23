@@ -17,6 +17,7 @@ import (
 type Record struct {
 	Name            string `json:"name"`
 	Provider        string `json:"provider"`
+	Project         string `json:"project,omitempty"`
 	VMID            string `json:"vm_id"`
 	IP              string `json:"ip"`
 	Region          string `json:"region"`

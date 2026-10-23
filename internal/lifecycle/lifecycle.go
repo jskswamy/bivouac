@@ -80,7 +80,19 @@ func Up(ctx context.Context, p provider.Provider, steps Steps, plan UpPlan) erro
 	connection := plan.Connection
 	connection.PublicIP = vm.IP
 	connection.PreferredHost = vm.IP
-	record := state.Record{Name: plan.Name, Provider: "digitalocean", VMID: vm.ID, IP: vm.IP, Region: vm.Region, Size: vm.Size, Template: plan.Config.Template, User: connection.User, RepoPath: plan.RemotePath, Shell: plan.Config.Shell, SSH: &connection, ImageRef: plan.Image.Requested}
+	providerName := plan.Config.Provider
+	if providerName == "" {
+		providerName = "digitalocean"
+	}
+	var project string
+	if plan.Config.GCloud != nil {
+		project = plan.Config.GCloud.Project
+	}
+	record := state.Record{
+		Name: plan.Name, Provider: providerName, Project: project, VMID: vm.ID, IP: vm.IP,
+		Region: vm.Region, Size: vm.Size, Template: plan.Config.Template, User: connection.User,
+		RepoPath: plan.RemotePath, Shell: plan.Config.Shell, SSH: &connection, ImageRef: plan.Image.Requested,
+	}
 	if plan.Image.Baked {
 		record.ImageID = plan.Image.Image
 	}

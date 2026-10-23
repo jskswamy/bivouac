@@ -62,7 +62,12 @@ func newUpCmdWith(resolve func(context.Context) (provider.Provider, error), step
 			// secrets-file token is decrypted even when the answer turns out
 			// to be no -- the cheaper order of the two, since up is confirmed
 			// far more often than it is aborted.
-			p, err := resolve(ctx)
+			var p provider.Provider
+			if cfg.Provider == "gcloud" {
+				p, err = resolveProviderForConfig(ctx, cfg)
+			} else {
+				p, err = resolve(ctx)
+			}
 			if err != nil {
 				return fmt.Errorf("%w (needed to create instance %q)", err, name)
 			}

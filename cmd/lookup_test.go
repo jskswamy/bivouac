@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -124,6 +126,74 @@ func TestDownCommand_DeclinedConfirmation_AbortsWithoutDestroying(t *testing.T) 
 
 	if _, ok, err := store.Get("myrepo"); err != nil || !ok {
 		t.Errorf("state after decline: ok=%v err=%v, want the record still present", ok, err)
+	}
+}
+
+type dummyProvider struct{}
+
+func (d *dummyProvider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
+	return provider.VM{}, nil
+}
+func (d *dummyProvider) Destroy(ctx context.Context, id string) error {
+	return nil
+}
+func (d *dummyProvider) Get(ctx context.Context, id string) (provider.VM, error) {
+	return provider.VM{}, nil
+}
+func (d *dummyProvider) List(ctx context.Context) ([]provider.VM, error) {
+	return nil, nil
+}
+
+func TestDownCommand_GCloudRecord_DispatchesToGCloudProvider(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatalf("state.Open() error = %v", err)
+	}
+	record := state.Record{
+		Name:     "gcp-inst",
+		Provider: "gcloud",
+		Project:  "test-project",
+		Region:   "us-central1-a",
+		Size:     "e2-standard-4",
+		Template: "python",
+		IP:       "10.0.0.2",
+	}
+	if err := store.Put(record); err != nil {
+		t.Fatalf("store.Put() error = %v", err)
+	}
+
+	root := newRootCmd()
+	root.SetArgs([]string{"down", "--name", "gcp-inst"})
+	root.SetIn(strings.NewReader("n\n"))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	var requestedProvider, requestedProject string
+	oldResolver := customProviderResolver
+	customProviderResolver = func(ctx context.Context, prov, proj, reg string) (provider.Provider, error) {
+		requestedProvider = prov
+		requestedProject = proj
+		return &dummyProvider{}, nil
+	}
+	defer func() { customProviderResolver = oldResolver }()
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v, want nil", err)
+	}
+	if requestedProvider != "gcloud" {
+		t.Errorf("requestedProvider = %q, want gcloud", requestedProvider)
+	}
+	if requestedProject != "test-project" {
+		t.Errorf("requestedProject = %q, want test-project", requestedProject)
+	}
+	if !strings.Contains(out.String(), "Aborted") {
+		t.Errorf("output = %q, want it to mention the abort", out.String())
+	}
+	if !strings.Contains(out.String(), "test-project") {
+		t.Errorf("output = %q, want it to mention the project", out.String())
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jskswamy/bivouac/internal/config"
 	"github.com/jskswamy/bivouac/internal/lifecycle"
 	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/digitalocean"
@@ -38,19 +39,62 @@ func resolveInstance(cmd *cobra.Command, name string) (*state.Store, state.Recor
 }
 
 // resolveProvider builds a DigitalOcean provider from the token
-// resolveToken finds, for the three commands that call the live API
-// (up, down, status). Every other command works off state.Record and
-// SSH and needs no token at all.
+// resolveToken finds, for backward compatibility or when provider is digitalocean.
 func resolveProvider(ctx context.Context) (provider.Provider, error) {
-	token, err := resolveToken(ctx)
-	if err != nil {
-		return nil, err
+	return resolveProviderFor(ctx, "digitalocean", "", "")
+}
+
+// resolveProviderForRecord returns the appropriate provider for an existing instance record.
+func resolveProviderForRecord(ctx context.Context, record state.Record) (provider.Provider, error) {
+	prov := record.Provider
+	if prov == "" {
+		prov = "digitalocean"
 	}
-	p, err := newDigitalOcean(token)
-	if err != nil {
-		return nil, err
+	return resolveProviderFor(ctx, prov, record.Project, record.Region)
+}
+
+// resolveProviderForConfig returns the appropriate provider for an instance being created from config.
+func resolveProviderForConfig(ctx context.Context, cfg config.Resolved) (provider.Provider, error) {
+	prov := cfg.Provider
+	if prov == "" {
+		prov = "digitalocean"
 	}
-	return p, nil
+	project := ""
+	if cfg.GCloud != nil {
+		project = cfg.GCloud.Project
+	}
+	return resolveProviderFor(ctx, prov, project, cfg.Region)
+}
+
+type dispatchProviderResolver func(ctx context.Context, providerName, project, region string) (provider.Provider, error)
+
+var customProviderResolver dispatchProviderResolver
+
+var newGCloud = func(ctx context.Context, project, region string) (provider.Provider, error) {
+	return nil, fmt.Errorf("google cloud provider not yet initialized")
+}
+
+// resolveProviderFor dispatches to the requested cloud provider.
+func resolveProviderFor(ctx context.Context, providerName, project, region string) (provider.Provider, error) {
+	if customProviderResolver != nil {
+		return customProviderResolver(ctx, providerName, project, region)
+	}
+	switch providerName {
+	case "digitalocean":
+		token, err := resolveToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p, err := newDigitalOcean(token)
+		if err != nil {
+			return nil, err
+		}
+		return p, nil
+	case "gcloud":
+		return newGCloud(ctx, project, region)
+	default:
+		return nil, fmt.Errorf("unsupported provider %q", providerName)
+	}
 }
 
 // apiURLEnv points every DigitalOcean client bivouac builds at another
@@ -100,7 +144,7 @@ func runDown(cmd *cobra.Command, name string, args []string) error {
 		return err
 	}
 	ctx := progressCtx(cmd)
-	p, err := resolveProvider(ctx)
+	p, err := resolveProviderForRecord(ctx, record)
 	if err != nil {
 		return err
 	}
@@ -133,6 +177,9 @@ func downSummary(record state.Record) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "This will destroy instance %q -- this cannot be undone:\n", record.Name)
 	fmt.Fprintf(&b, "  Provider: %s\n", record.Provider)
+	if record.Project != "" {
+		fmt.Fprintf(&b, "  Project:  %s\n", record.Project)
+	}
 	fmt.Fprintf(&b, "  Region:   %s\n", record.Region)
 	fmt.Fprintf(&b, "  Size:     %s\n", record.Size)
 	fmt.Fprintf(&b, "  Template: %s\n", record.Template)
@@ -172,7 +219,7 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	// destroy a droplet without the API, so for them a missing token is
 	// not a degraded report but no work at all.
 	st := lifecycle.InstanceStatus{Record: record}
-	if p, provErr := resolveProvider(ctx); provErr != nil {
+	if p, provErr := resolveProviderForRecord(ctx, record); provErr != nil {
 		st.LiveErr = provErr
 	} else {
 		st = lifecycle.Status(ctx, p, record)
