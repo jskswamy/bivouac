@@ -8,6 +8,12 @@ import (
 )
 
 type Config struct {
+	Provider string `pkl:"provider"`
+
+	Digitalocean *DigitalOceanConfig `pkl:"digitalocean"`
+
+	Gcloud *GCloudConfig `pkl:"gcloud"`
+
 	BasePath *string `pkl:"basePath"`
 
 	Region *string `pkl:"region"`

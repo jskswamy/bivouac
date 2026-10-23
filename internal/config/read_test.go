@@ -58,6 +58,11 @@ func TestDeclaredFields(t *testing.T) {
 			want: []string{"region"},
 		},
 		{
+			name: "provider declarations are recognized",
+			body: "provider = \"gcloud\"\ngcloud {\n  project = \"foo\"\n}\n",
+			want: []string{"gcloud", "provider"},
+		},
+		{
 			name: "empty file declares nothing",
 			body: "\n// nothing here\n",
 			want: []string{},

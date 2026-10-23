@@ -3,6 +3,10 @@ module bivouac.Config
 
 import "package://pkg.pkl-lang.org/pkl-go/pkl.golang@0.14.0#/go.pkl"
 
+provider: "digitalocean"|"gcloud" = "digitalocean"
+digitalocean: DigitalOceanConfig?
+gcloud: GCloudConfig?
+
 basePath: String?
 region: String?
 size: String?
@@ -126,4 +130,21 @@ class HerdrPane {
   /// else is relative to the session's checkout on the instance;
   /// omitted means the checkout itself.
   cwd: String?
+}
+
+class DigitalOceanConfig {
+  region: String?
+  size: String?
+  image: String?
+}
+
+class GCloudConfig {
+  project: String
+  zone: String
+  machineType: String
+  network: String = "default"
+  subnetwork: String?
+  externalIP: Boolean = false
+  diskSizeGb: Int = 50
+  image: String = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
 }

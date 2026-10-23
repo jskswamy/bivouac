@@ -311,6 +311,9 @@ func mergeConfig(base, project Config, projectDeclared map[string]struct{}) Conf
 		return ok
 	}
 	return Config{
+		Provider:            pick(declared(FieldProvider), project.Provider, base.Provider),
+		Digitalocean:        mergeDigitalOcean(base.Digitalocean, project.Digitalocean),
+		Gcloud:              mergeGCloud(base.Gcloud, project.Gcloud),
 		Region:              coalesce(project.Region, base.Region),
 		Size:                coalesce(project.Size, base.Size),
 		Template:            coalesce(project.Template, base.Template),
@@ -327,6 +330,57 @@ func mergeConfig(base, project Config, projectDeclared map[string]struct{}) Conf
 		HerdrTabs:           append(append([]HerdrTab{}, base.HerdrTabs...), project.HerdrTabs...),
 		Settings:            mergeSettings(base.Settings, project.Settings),
 	}
+}
+
+func mergeDigitalOcean(base, project *DigitalOceanConfig) *DigitalOceanConfig {
+	if base == nil && project == nil {
+		return nil
+	}
+	if base == nil {
+		return project
+	}
+	if project == nil {
+		return base
+	}
+	return &DigitalOceanConfig{
+		Region: coalesce(project.Region, base.Region),
+		Size:   coalesce(project.Size, base.Size),
+		Image:  coalesce(project.Image, base.Image),
+	}
+}
+
+func mergeGCloud(base, project *GCloudConfig) *GCloudConfig {
+	if base == nil && project == nil {
+		return nil
+	}
+	if base == nil {
+		return project
+	}
+	if project == nil {
+		return base
+	}
+	res := *project
+	if res.Project == "" {
+		res.Project = base.Project
+	}
+	if res.Zone == "" {
+		res.Zone = base.Zone
+	}
+	if res.MachineType == "" {
+		res.MachineType = base.MachineType
+	}
+	if res.Network == "" || res.Network == "default" {
+		if base.Network != "" {
+			res.Network = base.Network
+		}
+	}
+	if res.Subnetwork == nil {
+		res.Subnetwork = base.Subnetwork
+	}
+	if !res.ExternalIP && base.ExternalIP {
+		res.ExternalIP = base.ExternalIP
+	}
+	return &res
 }
 
 func pick[T any](useProject bool, project, base T) T {
@@ -376,15 +430,45 @@ func mergeSettings(base, project map[string]any) map[string]any {
 
 func validate(c Config) error {
 	var missing []string
-	if c.Region == nil {
-		missing = append(missing, "region")
-	}
-	if c.Size == nil {
-		missing = append(missing, "size")
-	}
-	if c.Template == nil {
+	if c.Template == nil || *c.Template == "" {
 		missing = append(missing, "template")
 	}
+
+	provider := c.Provider
+	if provider == "" {
+		provider = "digitalocean"
+	}
+
+	switch provider {
+	case "digitalocean":
+		regionSet := (c.Region != nil && *c.Region != "") ||
+			(c.Digitalocean != nil && c.Digitalocean.Region != nil && *c.Digitalocean.Region != "")
+		if !regionSet {
+			missing = append(missing, "region")
+		}
+		sizeSet := (c.Size != nil && *c.Size != "") ||
+			(c.Digitalocean != nil && c.Digitalocean.Size != nil && *c.Digitalocean.Size != "")
+		if !sizeSet {
+			missing = append(missing, "size")
+		}
+	case "gcloud":
+		if c.Gcloud == nil {
+			missing = append(missing, "gcloud (configuration block required when provider is gcloud)")
+		} else {
+			if c.Gcloud.Project == "" {
+				missing = append(missing, "gcloud.project")
+			}
+			if c.Gcloud.Zone == "" {
+				missing = append(missing, "gcloud.zone")
+			}
+			if c.Gcloud.MachineType == "" {
+				missing = append(missing, "gcloud.machineType")
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported provider %q (expected digitalocean or gcloud)", provider)
+	}
+
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required field(s) after merging project and base config: %s", strings.Join(missing, ", "))
 	}

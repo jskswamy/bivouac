@@ -838,3 +838,74 @@ func TestMergeConfig_AllowUnfreePackagesAreAdditiveBaseFirst(t *testing.T) {
 		t.Fatalf("AllowUnfreePackages = %v, want %v", got, want)
 	}
 }
+
+func TestResolve_GCloudProvider(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`provider = "gcloud"`,
+		`template = "python"`,
+		`gcloud {`,
+		`  project = "my-gcp-project"`,
+		`  zone = "us-central1-a"`,
+		`  machineType = "e2-standard-4"`,
+		`}`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Provider != "gcloud" {
+		t.Errorf("Provider = %q, want gcloud", cfg.Provider)
+	}
+	if cfg.GCloud == nil {
+		t.Fatal("GCloud is nil, want non-nil")
+	}
+	if cfg.GCloud.Project != "my-gcp-project" {
+		t.Errorf("GCloud.Project = %q, want my-gcp-project", cfg.GCloud.Project)
+	}
+	if cfg.GCloud.Zone != "us-central1-a" {
+		t.Errorf("GCloud.Zone = %q, want us-central1-a", cfg.GCloud.Zone)
+	}
+	if cfg.GCloud.MachineType != "e2-standard-4" {
+		t.Errorf("GCloud.MachineType = %q, want e2-standard-4", cfg.GCloud.MachineType)
+	}
+	if cfg.Region != "us-central1-a" {
+		t.Errorf("Region = %q, want us-central1-a", cfg.Region)
+	}
+	if cfg.Size != "e2-standard-4" {
+		t.Errorf("Size = %q, want e2-standard-4", cfg.Size)
+	}
+}
+
+func TestResolve_DigitalOceanExplicitBlock(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "bivouac.pkl")
+	writeFixture(t, project, strings.Join([]string{
+		`provider = "digitalocean"`,
+		`template = "python"`,
+		`digitalocean {`,
+		`  region = "sfo3"`,
+		`  size = "s-2vcpu-4gb"`,
+		`}`,
+	}, "\n")+"\n")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Provider != "digitalocean" {
+		t.Errorf("Provider = %q, want digitalocean", cfg.Provider)
+	}
+	if cfg.Region != "sfo3" {
+		t.Errorf("Region = %q, want sfo3", cfg.Region)
+	}
+	if cfg.Size != "s-2vcpu-4gb" {
+		t.Errorf("Size = %q, want s-2vcpu-4gb", cfg.Size)
+	}
+}

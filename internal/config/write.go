@@ -26,12 +26,16 @@ type Values map[string]any
 // Config.pkl.
 const (
 	FieldBasePath     = "basePath"
+	FieldProvider     = "provider"
+	FieldDigitalOcean = "digitalocean"
+	FieldGCloud       = "gcloud"
 	FieldRegion       = "region"
 	FieldSize         = "size"
 	FieldTemplate     = "template"
 	FieldArch         = "arch"
 	FieldImage        = "image"
 	FieldTailscale    = "tailscale"
+	FieldShell        = "shell"
 	FieldBeads        = "beads"
 	FieldSSHKeys      = "sshKeys"
 	FieldPackages     = "packages"
@@ -39,6 +43,7 @@ const (
 	FieldAllowUnfree  = "allowUnfreePackages"
 	FieldInstructions = "instructions"
 	FieldFlakes       = "flakes"
+	FieldHerdrTabs    = "herdrTabs"
 	FieldSettings     = "settings"
 )
 
@@ -94,8 +99,14 @@ var fieldKinds = map[string]fieldKind{
 
 // KnownField reports whether name is a field of Config.pkl.
 func KnownField(name string) bool {
-	_, ok := fieldKinds[name]
-	return ok
+	if _, ok := fieldKinds[name]; ok {
+		return true
+	}
+	switch name {
+	case FieldProvider, FieldDigitalOcean, FieldGCloud, FieldShell, FieldHerdrTabs:
+		return true
+	}
+	return false
 }
 
 // Fields returns every Config.pkl field name, in schema order.

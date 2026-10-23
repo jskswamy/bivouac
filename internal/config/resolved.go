@@ -19,6 +19,15 @@ import "github.com/jskswamy/bivouac/internal/sshkeys"
 type Resolved struct {
 	Config
 
+	// Provider is "digitalocean" or "gcloud".
+	Provider string
+
+	// GCloud holds Google Cloud specific configuration if Provider is "gcloud".
+	GCloud *GCloudConfig
+
+	// DigitalOcean holds DigitalOcean specific configuration if Provider is "digitalocean".
+	DigitalOcean *DigitalOceanConfig
+
 	// Region, Size and Template are non-empty for any Resolved that came
 	// from Resolve. Nothing else constructs one in production.
 	Region   string
@@ -46,11 +55,75 @@ func resolved(c Config) Resolved {
 	if c.Shell != nil {
 		shell = *c.Shell
 	}
+
+	provider := c.Provider
+	if provider == "" {
+		provider = "digitalocean"
+	}
+
+	region := ""
+	size := ""
+	var doConfig *DigitalOceanConfig
+
+	switch provider {
+	case "gcloud":
+		if c.Gcloud != nil {
+			region = c.Gcloud.Zone
+			size = c.Gcloud.MachineType
+			if c.Gcloud.Image != "" {
+				c.Image = c.Gcloud.Image
+			}
+		}
+		if c.Region != nil && *c.Region != "" {
+			region = *c.Region
+		}
+		if c.Size != nil && *c.Size != "" {
+			size = *c.Size
+		}
+	case "digitalocean":
+		if c.Region != nil {
+			region = *c.Region
+		}
+		if c.Digitalocean != nil && c.Digitalocean.Region != nil {
+			region = *c.Digitalocean.Region
+		}
+		if c.Size != nil {
+			size = *c.Size
+		}
+		if c.Digitalocean != nil && c.Digitalocean.Size != nil {
+			size = *c.Digitalocean.Size
+		}
+		if c.Digitalocean != nil {
+			doConfig = &DigitalOceanConfig{
+				Region: coalesce(c.Digitalocean.Region, c.Region),
+				Size:   coalesce(c.Digitalocean.Size, c.Size),
+				Image:  coalesce(c.Digitalocean.Image, &c.Image),
+			}
+		} else {
+			doConfig = &DigitalOceanConfig{
+				Region: c.Region,
+				Size:   c.Size,
+				Image:  &c.Image,
+			}
+		}
+		if doConfig.Image != nil && *doConfig.Image != "" {
+			c.Image = *doConfig.Image
+		}
+	}
+
+	template := ""
+	if c.Template != nil {
+		template = *c.Template
+	}
+
 	return Resolved{
-		Config:   c,
-		Region:   *c.Region,
-		Size:     *c.Size,
-		Template: *c.Template,
-		Shell:    shell,
+		Config:       c,
+		Provider:     provider,
+		GCloud:       c.Gcloud,
+		DigitalOcean: doConfig,
+		Region:       region,
+		Size:         size,
+		Template:     template,
+		Shell:        shell,
 	}
 }
