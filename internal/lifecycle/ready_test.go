@@ -327,18 +327,24 @@ func TestWaitReady_CloudInitFailureIsNotRetried(t *testing.T) {
 	startFakeAgent(t)
 	testenv.Isolate(t)
 
-	var calls int
+	var statusCalls int
 	addr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
-		calls++
-		return "status: error\n", 1
+		if strings.HasPrefix(cmd, "cloud-init status --wait") {
+			statusCalls++
+			return "status: error\n", 1
+		}
+		return "useradd: user already exists\n", 0
 	})
 
 	err := WaitReady(context.Background(), addr, "bivouac", 5*time.Second)
 	if err == nil {
 		t.Fatal("WaitReady() error = nil, want error for cloud-init failure")
 	}
-	if calls != 1 {
-		t.Errorf("cloud-init command ran %d times, want exactly 1 (a genuine failure must not be retried)", calls)
+	if statusCalls != 1 {
+		t.Errorf("cloud-init status --wait ran %d times, want exactly 1 (a genuine failure must not be retried)", statusCalls)
+	}
+	if !strings.Contains(err.Error(), "useradd: user already exists") {
+		t.Errorf("WaitReady() error = %q, want details containing useradd failure", err.Error())
 	}
 }
 

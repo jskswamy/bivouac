@@ -29,13 +29,28 @@ fi
 # home-manager as -- created here, at boot, since this is the one
 # point with guaranteed root access before root SSH login is disabled
 # below.
-useradd --create-home --shell "$LOGIN_SHELL" alice
+if id "alice" >/dev/null 2>&1; then
+  usermod -s "$LOGIN_SHELL" alice
+else
+  useradd --create-home --shell "$LOGIN_SHELL" alice
+fi
 
 install -d -m 0700 -o alice -g alice /home/alice/.ssh
 # DigitalOcean seeds the account's registered SSH keys into root's
 # authorized_keys at boot, before this script runs -- reuse them for
-# the new user rather than requiring a second key registration.
-install -m 0600 -o alice -g alice /root/.ssh/authorized_keys /home/alice/.ssh/authorized_keys
+# the new user rather than requiring a second key registration. On
+# providers like Google Cloud, the guest agent may have already created
+# the user and injected keys; merge them so nothing is lost.
+if [ -f /root/.ssh/authorized_keys ]; then
+  if [ -f /home/alice/.ssh/authorized_keys ]; then
+    cat /root/.ssh/authorized_keys >> /home/alice/.ssh/authorized_keys
+    sort -u /home/alice/.ssh/authorized_keys -o /home/alice/.ssh/authorized_keys
+    chown alice:alice /home/alice/.ssh/authorized_keys
+    chmod 0600 /home/alice/.ssh/authorized_keys
+  else
+    install -m 0600 -o alice -g alice /root/.ssh/authorized_keys /home/alice/.ssh/authorized_keys
+  fi
+fi
 
 # bivouac is fully automated with no interactive terminal on the
 # remote side -- passwordless sudo is required for any future

@@ -26,13 +26,28 @@ fi
 # home-manager as -- created here, at boot, since this is the one
 # point with guaranteed root access before root SSH login is disabled
 # below.
-useradd --create-home --shell "$LOGIN_SHELL" {{.Username}}
+if id "{{.Username}}" >/dev/null 2>&1; then
+  usermod -s "$LOGIN_SHELL" {{.Username}}
+else
+  useradd --create-home --shell "$LOGIN_SHELL" {{.Username}}
+fi
 
 install -d -m 0700 -o {{.Username}} -g {{.Username}} /home/{{.Username}}/.ssh
 # DigitalOcean seeds the account's registered SSH keys into root's
 # authorized_keys at boot, before this script runs -- reuse them for
-# the new user rather than requiring a second key registration.
-install -m 0600 -o {{.Username}} -g {{.Username}} /root/.ssh/authorized_keys /home/{{.Username}}/.ssh/authorized_keys
+# the new user rather than requiring a second key registration. On
+# providers like Google Cloud, the guest agent may have already created
+# the user and injected keys; merge them so nothing is lost.
+if [ -f /root/.ssh/authorized_keys ]; then
+  if [ -f /home/{{.Username}}/.ssh/authorized_keys ]; then
+    cat /root/.ssh/authorized_keys >> /home/{{.Username}}/.ssh/authorized_keys
+    sort -u /home/{{.Username}}/.ssh/authorized_keys -o /home/{{.Username}}/.ssh/authorized_keys
+    chown {{.Username}}:{{.Username}} /home/{{.Username}}/.ssh/authorized_keys
+    chmod 0600 /home/{{.Username}}/.ssh/authorized_keys
+  else
+    install -m 0600 -o {{.Username}} -g {{.Username}} /root/.ssh/authorized_keys /home/{{.Username}}/.ssh/authorized_keys
+  fi
+fi
 
 # bivouac is fully automated with no interactive terminal on the
 # remote side -- passwordless sudo is required for any future

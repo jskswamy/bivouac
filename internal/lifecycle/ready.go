@@ -85,10 +85,18 @@ func WaitReady(ctx context.Context, ip, user string, timeout time.Duration) erro
 		}
 
 		output, err := runBounded(deadlineCtx, client, "cloud-init status --wait")
-		_ = client.Close()
 		if err != nil {
+			var diagOutput string
+			if diag, diagErr := runBounded(deadlineCtx, client, "sudo tail -n 40 /var/log/cloud-init-output.log 2>/dev/null || cloud-init status --long 2>/dev/null"); diagErr == nil && strings.TrimSpace(diag) != "" {
+				diagOutput = strings.TrimSpace(diag)
+			}
+			_ = client.Close()
+			if diagOutput != "" {
+				return fmt.Errorf("cloud-init failed on %s: %w\n%s\n--- cloud-init details ---\n%s", ip, err, strings.TrimSpace(output), diagOutput)
+			}
 			return fmt.Errorf("cloud-init failed on %s: %w\n%s", ip, err, strings.TrimSpace(output))
 		}
+		_ = client.Close()
 		return nil
 	}
 }

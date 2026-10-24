@@ -39,6 +39,22 @@ func TestRenderCloudInit_CreatesUserAndCopiesRootAuthorizedKeys(t *testing.T) {
 	}
 }
 
+func TestRenderCloudInit_HandlesPreExistingUserAndMergesKeys(t *testing.T) {
+	got, err := RenderCloudInit("devuser", "bash", BootStock)
+	if err != nil {
+		t.Fatalf("RenderCloudInit() error = %v", err)
+	}
+	if !strings.Contains(got, `if id "devuser" >/dev/null 2>&1; then`) {
+		t.Errorf("RenderCloudInit() does not check for pre-existing user:\n%s", got)
+	}
+	if !strings.Contains(got, `usermod -s "$LOGIN_SHELL" devuser`) {
+		t.Errorf("RenderCloudInit() does not modify shell if user exists:\n%s", got)
+	}
+	if !strings.Contains(got, `sort -u /home/devuser/.ssh/authorized_keys -o /home/devuser/.ssh/authorized_keys`) {
+		t.Errorf("RenderCloudInit() does not merge pre-existing authorized_keys:\n%s", got)
+	}
+}
+
 func TestRenderCloudInit_GrantsPasswordlessSudo(t *testing.T) {
 	got, err := RenderCloudInit("devuser", "bash", BootStock)
 	if err != nil {
