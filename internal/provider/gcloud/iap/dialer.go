@@ -25,6 +25,7 @@ const (
 	TagAck              = 7
 
 	DefaultEndpoint = "wss://tunnel.cloudproxy.app/v4/connect"
+	MaxPayloadSize  = 16384
 )
 
 // Conn implements net.Conn over an IAP WebSocket tunnel.
@@ -33,8 +34,11 @@ type Conn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	rmu     sync.Mutex
-	rbuf    bytes.Buffer
+	rmu           sync.Mutex
+	rbuf          bytes.Buffer
+	bytesReceived uint64
+	bytesAcked    uint64
+
 	wmu     sync.Mutex
 	closeMu sync.Mutex
 	closed  bool
@@ -117,10 +121,16 @@ func (c *Conn) Read(p []byte) (int, error) {
 			continue
 		case TagData:
 			length := binary.BigEndian.Uint32(data[2:6])
+			var payload []byte
 			if int(6+length) <= len(data) {
-				c.rbuf.Write(data[6 : 6+length])
+				payload = data[6 : 6+length]
 			} else {
-				c.rbuf.Write(data[6:])
+				payload = data[6:]
+			}
+			c.rbuf.Write(payload)
+			c.bytesReceived += uint64(len(payload))
+			if c.bytesReceived-c.bytesAcked > 2*MaxPayloadSize {
+				_ = c.sendAck()
 			}
 		default:
 			// Unknown tag, ignore per spec
@@ -131,6 +141,24 @@ func (c *Conn) Read(p []byte) (int, error) {
 	return c.rbuf.Read(p)
 }
 
+func (c *Conn) sendAck() error {
+	buf := make([]byte, 10)
+	binary.BigEndian.PutUint16(buf[0:2], TagAck)
+	binary.BigEndian.PutUint64(buf[2:10], c.bytesReceived)
+
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+
+	if c.isClosed() {
+		return io.ErrClosedPipe
+	}
+	if err := c.ws.Write(c.ctx, websocket.MessageBinary, buf); err != nil {
+		return err
+	}
+	c.bytesAcked = c.bytesReceived
+	return nil
+}
+
 func (c *Conn) Write(p []byte) (int, error) {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
@@ -139,17 +167,28 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	// Frame as TagData: uint16(4) + uint32(len) + payload
-	buf := make([]byte, 6+len(p))
-	binary.BigEndian.PutUint16(buf[0:2], TagData)
-	// #nosec G115 -- p length is bounded in practice
-	binary.BigEndian.PutUint32(buf[2:6], uint32(len(p)))
-	copy(buf[6:], p)
+	totalWritten := 0
+	for len(p) > 0 {
+		chunkSize := len(p)
+		if chunkSize > MaxPayloadSize {
+			chunkSize = MaxPayloadSize
+		}
+		chunk := p[:chunkSize]
+		p = p[chunkSize:]
 
-	if err := c.ws.Write(c.ctx, websocket.MessageBinary, buf); err != nil {
-		return 0, err
+		// Frame as TagData: uint16(4) + uint32(len) + payload
+		buf := make([]byte, 6+chunkSize)
+		binary.BigEndian.PutUint16(buf[0:2], TagData)
+		// #nosec G115 -- chunkSize is bounded by MaxPayloadSize
+		binary.BigEndian.PutUint32(buf[2:6], uint32(chunkSize))
+		copy(buf[6:], chunk)
+
+		if err := c.ws.Write(c.ctx, websocket.MessageBinary, buf); err != nil {
+			return totalWritten, err
+		}
+		totalWritten += chunkSize
 	}
-	return len(p), nil
+	return totalWritten, nil
 }
 
 func (c *Conn) Close() error {
