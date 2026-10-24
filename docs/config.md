@@ -23,6 +23,8 @@ see "A note on trust" near the end of this doc.
 
 | Field | Type | Required? | Default | Meaning |
 |---|---|---|---|---|
+| `provider` | `"digitalocean"\|"gcloud"` | No | `"digitalocean"` | Cloud infrastructure provider. See [Google Cloud Platform](gcloud.md) for GCP setup and authentication. |
+| `gcloud` | `GCloudConfig?` | No | none | Google Cloud-specific configuration (`project`, `zone`, `machineType`, `externalIP`, `diskSizeGb`). See [Google Cloud Platform](gcloud.md). |
 | `region` | `String?` | Yes, after merge | none | DigitalOcean region slug, e.g. `"nyc3"`. Maps directly to the `Region` field `Provider.Create` sends. |
 | `size` | `String?` | Yes, after merge | none | DigitalOcean droplet size slug, e.g. `"s-1vcpu-1gb"`. Maps directly to `Provider.Create`'s `Size`. |
 | `template` | `String?` | Yes, after merge | none | Provisioning template: `"python"` or `"docker"`. Anything else is treated as a complete flake reference (`"<url>#<output>"`) and used as-is — see [Templates](#templates) below. |
