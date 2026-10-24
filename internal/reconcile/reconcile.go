@@ -160,8 +160,10 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	// creates ~/.config/fish/config.fish when bivouac's first command runs
 	// through the login shell), and home-manager refuses to switch over a
 	// file it did not create. Backing it up beats aborting the whole
-	// provision on a file the user never touched.
-	innerCmd := "nix run home-manager -- switch -b bivouac-backup --no-write-lock-file --refresh --impure --flake " + shellcmd.Quote(flakeArg)
+	// provision on a file the user never touched. -L tells home-manager
+	// to pass --print-build-logs to nix-build so package fetches and
+	// builds stream live instead of running silently.
+	innerCmd := "nix run home-manager -- switch -b bivouac-backup -L --no-write-lock-file --refresh --impure --flake " + shellcmd.Quote(flakeArg)
 	cmd := shellcmd.LoginShell(innerCmd)
 	// Streamed live (not buffered until exit): home-manager switch can
 	// run for minutes fetching/building packages, and silence until

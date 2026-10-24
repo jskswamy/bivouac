@@ -144,6 +144,9 @@ func TestReconcile_WithPackages_ShipsRenderedFlakeThenSwitchesIt(t *testing.T) {
 	if !strings.Contains(gotSwitchCmd, "--refresh") {
 		t.Errorf("switch command = %q, want --refresh so a floating template ref isn't served stale from Nix's tarball cache", gotSwitchCmd)
 	}
+	if !strings.Contains(gotSwitchCmd, "-L") {
+		t.Errorf("switch command = %q, want -L so nix build logs are streamed live", gotSwitchCmd)
+	}
 }
 
 func TestReconcile_StreamsSwitchOutputToAttachedWriter(t *testing.T) {
