@@ -62,6 +62,12 @@ func execCmd(args []string, input string) (string, error) {
 func TestContractGCloud_Up_Status_List_Down_Lifecycle(t *testing.T) {
 	s := gcpfake.NewServer(t)
 	defer s.Close()
+	s.AddRouter("test-project", "us-central1", &computepb.Router{
+		Name: ptr("nat-router"),
+		Nats: []*computepb.RouterNat{
+			{Name: ptr("nat-gw")},
+		},
+	})
 	t.Setenv("GCLOUD_API_URL", s.URL())
 	isolateImageBuildCache(t)
 	testenv.Isolate(t)
@@ -257,6 +263,12 @@ func TestContractGCloud_Up_ExternalIP(t *testing.T) {
 func TestContractGCloud_Up_CustomImageByTag(t *testing.T) {
 	s := gcpfake.NewServer(t)
 	defer s.Close()
+	s.AddRouter("test-project", "us-central1", &computepb.Router{
+		Name: ptr("nat-router"),
+		Nats: []*computepb.RouterNat{
+			{Name: ptr("nat-gw")},
+		},
+	})
 	t.Setenv("GCLOUD_API_URL", s.URL())
 	isolateImageBuildCache(t)
 	testenv.Isolate(t)
@@ -308,4 +320,25 @@ func TestContractGCloud_Up_CustomImageByTag(t *testing.T) {
 	}
 
 	_, _ = execCmd([]string{"down", "fixture-img"}, "y\n")
+}
+
+func TestContractGCloud_Up_MissingCloudNATRejection(t *testing.T) {
+	s := gcpfake.NewServer(t)
+	defer s.Close()
+	t.Setenv("GCLOUD_API_URL", s.URL())
+	isolateImageBuildCache(t)
+	testenv.Isolate(t)
+
+	dir := initTestRepo(t)
+	chdir(t, dir)
+	writeGCloudConfig(t, dir, false, "")
+
+	out, err := execCmd([]string{"up", "fixture-nonat"}, "y\n")
+	if err == nil {
+		t.Fatal("expected up to fail when externalIP is false and Cloud NAT is missing, but it succeeded")
+	}
+	wantSub := "no Cloud NAT gateway was found in region"
+	if !strings.Contains(out, wantSub) {
+		t.Errorf("expected output to contain %q, got:\n%s", wantSub, out)
+	}
 }

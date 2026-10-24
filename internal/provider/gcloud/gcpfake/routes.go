@@ -60,6 +60,18 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			subaction = parts[4]
 		}
 		s.handleGlobalResource(w, r, project, resource, name, subaction)
+	case "regions":
+		if len(parts) < 4 {
+			http.NotFound(w, r)
+			return
+		}
+		region := parts[2]
+		resource := parts[3]
+		if resource == "routers" {
+			s.listRouters(w, project, region)
+			return
+		}
+		http.NotFound(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -450,6 +462,24 @@ func (s *Server) setImageLabels(w http.ResponseWriter, r *http.Request, project,
 		Progress: ptr(int32(100)),
 	}
 	writeProto(w, op)
+}
+
+func (s *Server) listRouters(w http.ResponseWriter, project, region string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var items []*computepb.Router
+	prefix := fmt.Sprintf("%s/%s/", project, region)
+	for k, r := range s.routers {
+		if strings.HasPrefix(k, prefix) {
+			items = append(items, r)
+		}
+	}
+	resp := &computepb.RouterList{
+		Id:    ptr(fmt.Sprintf("%d", nextID)),
+		Items: items,
+	}
+	writeProto(w, resp)
 }
 
 func writeProto(w http.ResponseWriter, m proto.Message) {

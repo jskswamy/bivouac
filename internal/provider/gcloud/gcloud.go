@@ -25,6 +25,7 @@ type Provider struct {
 	zone            string
 	instancesClient *compute.InstancesClient
 	imagesClient    *compute.ImagesClient
+	routersClient   *compute.RoutersClient
 	diskSizeGb      int
 	externalIP      bool
 }
@@ -67,12 +68,19 @@ func New(project, zone string, opts ...Option) (*Provider, error) {
 		_ = instancesClient.Close()
 		return nil, fmt.Errorf("creating gce images client: %w", err)
 	}
+	routersClient, err := compute.NewRoutersRESTClient(ctx, clientOpts...)
+	if err != nil {
+		_ = instancesClient.Close()
+		_ = imagesClient.Close()
+		return nil, fmt.Errorf("creating gce routers client: %w", err)
+	}
 
 	return &Provider{
 		project:         project,
 		zone:            zone,
 		instancesClient: instancesClient,
 		imagesClient:    imagesClient,
+		routersClient:   routersClient,
 		diskSizeGb:      cfg.diskSizeGb,
 		externalIP:      cfg.externalIP,
 	}, nil
@@ -91,11 +99,27 @@ func (p *Provider) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if p.routersClient != nil {
+		if err := p.routersClient.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
 // Create provisions a new GCE VM instance.
 func (p *Provider) Create(ctx context.Context, spec provider.InstanceSpec) (provider.VM, error) {
+	if !p.externalIP {
+		region := regionFromZone(p.zone)
+		hasNAT, err := p.hasCloudNAT(ctx, region)
+		if err != nil {
+			return provider.VM{}, fmt.Errorf("checking Cloud NAT in region %s: %w", region, err)
+		}
+		if !hasNAT {
+			return provider.VM{}, fmt.Errorf("externalIP is false and no Cloud NAT gateway was found in region %q. VM instances without an external IP or Cloud NAT cannot reach the internet to provision (Nix installation). Either set gcloud.externalIP: true or create a Cloud NAT in %s (see docs/gcloud.md)", region, region)
+		}
+	}
+
 	machineType := spec.Size
 	if !strings.Contains(machineType, "/") {
 		machineType = fmt.Sprintf("zones/%s/machineTypes/%s", p.zone, spec.Size)
@@ -291,6 +315,33 @@ func (p *Provider) toVM(inst *computepb.Instance) provider.VM {
 		Status:    status,
 		CreatedAt: createdAt,
 	}
+}
+
+func (p *Provider) hasCloudNAT(ctx context.Context, region string) (bool, error) {
+	it := p.routersClient.List(ctx, &computepb.ListRoutersRequest{
+		Project: p.project,
+		Region:  region,
+	})
+	for {
+		router, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			return false, err
+		}
+		if len(router.GetNats()) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func regionFromZone(zone string) string {
+	if idx := strings.LastIndex(zone, "-"); idx != -1 {
+		return zone[:idx]
+	}
+	return zone
 }
 
 func ptr[T any](v T) *T { return &v }

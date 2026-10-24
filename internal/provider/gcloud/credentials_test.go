@@ -38,6 +38,7 @@ func TestResolveCredentials_CredentialsFile(t *testing.T) {
 }
 
 func TestResolveCredentials_ServiceAccountKeyPath(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 	t.Setenv("GCLOUD_SERVICE_ACCOUNT_KEY", "/tmp/service-account.json")
 	creds, err := ResolveCredentials(context.Background())
 	if err != nil {
@@ -49,6 +50,7 @@ func TestResolveCredentials_ServiceAccountKeyPath(t *testing.T) {
 }
 
 func TestResolveCredentials_ServiceAccountKeyJSON(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 	jsonKey := `{"type": "service_account", "project_id": "test-project"}`
 	t.Setenv("GCLOUD_SERVICE_ACCOUNT_KEY", jsonKey)
 	creds, err := ResolveCredentials(context.Background())
@@ -61,6 +63,7 @@ func TestResolveCredentials_ServiceAccountKeyJSON(t *testing.T) {
 }
 
 func TestCredentials_SetupEnv_MaterializesFile(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 	jsonKey := `{"type": "service_account", "project_id": "test-project"}`
 	creds := &Credentials{
 		JSONData: []byte(jsonKey),
@@ -105,6 +108,7 @@ func TestCredentials_SetupEnv_MaterializesFile(t *testing.T) {
 }
 
 func TestCredentials_SetupEnv_ExistingFile(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 	tmpDir := t.TempDir()
 	fakeKeyPath := filepath.Join(tmpDir, "key.json")
 	if err := os.WriteFile(fakeKeyPath, []byte("{}"), 0600); err != nil {

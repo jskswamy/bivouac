@@ -24,6 +24,7 @@ type Server struct {
 	operations map[string]*computepb.Operation // key: project/zone/name or project/global/name
 	disks      map[string]*computepb.Disk      // key: project/zone/name
 	images     map[string]*computepb.Image     // key: project/name
+	routers    map[string]*computepb.Router    // key: project/region/name
 }
 
 // NewServer starts and returns a new mock GCE server for testing.
@@ -35,6 +36,7 @@ func NewServer(t *testing.T) *Server {
 		operations: make(map[string]*computepb.Operation),
 		disks:      make(map[string]*computepb.Disk),
 		images:     make(map[string]*computepb.Image),
+		routers:    make(map[string]*computepb.Router),
 	}
 	s.registerRoutes()
 	s.srv = httptest.NewServer(s.mux)
@@ -44,6 +46,14 @@ func NewServer(t *testing.T) *Server {
 // URL returns the base HTTP URL of the mock server.
 func (s *Server) URL() string {
 	return s.srv.URL
+}
+
+// AddRouter registers a router on the mock server.
+func (s *Server) AddRouter(project, region string, r *computepb.Router) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s/%s/%s", project, region, r.GetName())
+	s.routers[key] = r
 }
 
 // AddImage registers an image on the mock server.

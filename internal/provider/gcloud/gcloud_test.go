@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	computepb "cloud.google.com/go/compute/apiv1/computepb"
@@ -18,6 +19,13 @@ func ptr[T any](v T) *T { return &v }
 func TestProvider_Lifecycle(t *testing.T) {
 	srv := gcpfake.NewServer(t)
 	defer srv.Close()
+
+	srv.AddRouter("test-project", "us-central1", &computepb.Router{
+		Name: ptr("nat-router"),
+		Nats: []*computepb.RouterNat{
+			{Name: ptr("nat-config")},
+		},
+	})
 
 	p, err := gcloud.New("test-project", "us-central1-a", gcloud.WithBaseURL(srv.URL()))
 	if err != nil {
@@ -206,4 +214,85 @@ func TestProvider_ImageManager(t *testing.T) {
 	if !errors.Is(err, provider.ErrImageNotFound) {
 		t.Errorf("im.DeleteImage() again error = %v, want ErrImageNotFound", err)
 	}
+}
+
+func TestProvider_CloudNATPreflight(t *testing.T) {
+	srv := gcpfake.NewServer(t)
+	defer srv.Close()
+
+	ctx := context.Background()
+	spec := provider.InstanceSpec{
+		Name:  "test-vm",
+		Size:  "e2-standard-4",
+		Image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+	}
+
+	t.Run("fails when externalIP is false and no Cloud NAT exists", func(t *testing.T) {
+		p, err := gcloud.New("test-project", "us-central1-a",
+			gcloud.WithBaseURL(srv.URL()),
+			gcloud.WithExternalIP(false),
+		)
+		if err != nil {
+			t.Fatalf("gcloud.New() error = %v", err)
+		}
+		defer func() { _ = p.Close() }()
+
+		_, err = p.Create(ctx, spec)
+		if err == nil {
+			t.Fatal("expected error when externalIP=false and no Cloud NAT exists, got nil")
+		}
+		wantSub := "no Cloud NAT gateway was found"
+		if !strings.Contains(err.Error(), wantSub) {
+			t.Errorf("p.Create() error = %q, want substring %q", err.Error(), wantSub)
+		}
+	})
+
+	t.Run("succeeds when externalIP is false and Cloud NAT exists", func(t *testing.T) {
+		srv.AddRouter("test-project", "us-central1", &computepb.Router{
+			Name: ptr("nat-router"),
+			Nats: []*computepb.RouterNat{
+				{Name: ptr("nat-gw")},
+			},
+		})
+
+		p, err := gcloud.New("test-project", "us-central1-a",
+			gcloud.WithBaseURL(srv.URL()),
+			gcloud.WithExternalIP(false),
+		)
+		if err != nil {
+			t.Fatalf("gcloud.New() error = %v", err)
+		}
+		defer func() { _ = p.Close() }()
+
+		vm, err := p.Create(ctx, spec)
+		if err != nil {
+			t.Fatalf("p.Create() error = %v", err)
+		}
+		if vm.Name != "test-vm" {
+			t.Errorf("vm.Name = %q, want test-vm", vm.Name)
+		}
+	})
+
+	t.Run("succeeds when externalIP is true without Cloud NAT", func(t *testing.T) {
+		// Create a separate server with no routers
+		cleanSrv := gcpfake.NewServer(t)
+		defer cleanSrv.Close()
+
+		p, err := gcloud.New("test-project", "us-central1-a",
+			gcloud.WithBaseURL(cleanSrv.URL()),
+			gcloud.WithExternalIP(true),
+		)
+		if err != nil {
+			t.Fatalf("gcloud.New() error = %v", err)
+		}
+		defer func() { _ = p.Close() }()
+
+		vm, err := p.Create(ctx, spec)
+		if err != nil {
+			t.Fatalf("p.Create() error = %v", err)
+		}
+		if vm.Name != "test-vm" {
+			t.Errorf("vm.Name = %q, want test-vm", vm.Name)
+		}
+	})
 }
