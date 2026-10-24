@@ -949,3 +949,28 @@ func TestResolve_DigitalOceanExplicitBlock(t *testing.T) {
 		t.Errorf("Size = %q, want s-2vcpu-4gb", cfg.Size)
 	}
 }
+
+func TestResolve_PklStderrRedirectedToLog(t *testing.T) {
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, "cache", "bivouac", "logs")
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	project := filepath.Join(dir, "bivouac.pkl")
+	if err := os.WriteFile(project, []byte(`
+template = "minimal"
+region = "nyc3"
+size = "s-1vcpu-1gb"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if cfg.Template != "minimal" {
+		t.Errorf("Template = %q, want minimal", cfg.Template)
+	}
+	logPath := filepath.Join(logDir, "pkl.log")
+	if _, err := os.Stat(logPath); err != nil {
+		t.Errorf("expected log file at %s, got error: %v", logPath, err)
+	}
+}

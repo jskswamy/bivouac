@@ -269,7 +269,26 @@ func loadResolved(ctx context.Context, path string) (ret Config, declared map[st
 		return Config{}, nil, fmt.Errorf("resolving pkl cache directory: %w", err)
 	}
 
-	evaluator, err := pkl.NewEvaluator(ctx, pkl.PreconfiguredOptions, func(opts *pkl.EvaluatorOptions) {
+	pklPath, lookErr := exec.LookPath("pkl")
+	if lookErr != nil {
+		return Config{}, nil, fmt.Errorf("pkl CLI not found on PATH (run inside `nix develop`, or install it: https://pkl-lang.org/main/current/pkl-cli/index.html#installation): %w", lookErr)
+	}
+
+	var pklCmd []string
+	logPath, logErr := pklLogPath()
+	if logErr == nil {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err == nil {
+			shPath, sErr := exec.LookPath("sh")
+			if sErr != nil {
+				shPath = "/bin/sh"
+			}
+			if _, statErr := os.Stat(shPath); statErr == nil {
+				pklCmd = []string{shPath, "-c", `exec "$1" "${@:3}" 2>> "$2"`, "sh", pklPath, logPath}
+			}
+		}
+	}
+
+	evaluator, err := pkl.NewEvaluatorWithCommand(ctx, pklCmd, pkl.PreconfiguredOptions, func(opts *pkl.EvaluatorOptions) {
 		opts.CacheDir = cacheDir
 	})
 	if err != nil {

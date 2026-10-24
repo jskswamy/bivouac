@@ -9,3 +9,9 @@ import (
 func pklCacheDir() (string, error) {
 	return xdg.Path(xdg.Cache, "pkl")
 }
+
+// pklLogPath returns the path to the log file where Pkl's stderr
+// is redirected.
+func pklLogPath() (string, error) {
+	return xdg.Path(xdg.Cache, "logs", "pkl.log")
+}
