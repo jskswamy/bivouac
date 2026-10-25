@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -239,5 +240,74 @@ func TestSSHWorkflow_LegacyConfigurationStopsAndCanBeRepaired(t *testing.T) {
 	}
 	if len(cfg.SSHKeyFiles) != 1 || cfg.SSHKeyFiles[0].Path != key.Path {
 		t.Fatalf("migration result=%+v", cfg.SSHKeyFiles)
+	}
+}
+
+func TestRunConnect_UnreachableTailscaleFallsBackToSSHForward(t *testing.T) {
+	testenv.Isolate(t)
+	key := testenv.SSHKey(t)
+	ids, err := sshidentity.Select(context.Background(), []sshkeys.Key{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sshAddr := testenv.StreamSSHServer(t, key, func(command string) *exec.Cmd {
+		if strings.Contains(command, "command -v tailscale") {
+			return exec.Command("sh", "-c", "printf '%s\\n' /usr/bin/tailscale")
+		}
+		if strings.Contains(command, "ip -4") {
+			return exec.Command("sh", "-c", "printf '%s\\n' 100.64.255.254")
+		}
+		if strings.Contains(command, "ss ") {
+			return exec.Command("sh", "-c", "printf '%s\\n' 'LISTEN 0 128 0.0.0.0:8080 0.0.0.0:* users:((\"python\",pid=1234,fd=3))'")
+		}
+		return exec.Command("true")
+	})
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := sshidentity.Connection{
+		Name:          "tsvm",
+		Alias:         "bivouac-tsvm",
+		User:          "me",
+		PublicIP:      sshAddr,
+		PreferredHost: sshAddr,
+		Keys:          ids,
+	}
+	if err := store.Put(state.Record{
+		Name:            "tsvm",
+		Provider:        "digitalocean",
+		IP:              sshAddr,
+		User:            "me",
+		TailscaleJoined: true,
+		SSH:             &c,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stub ssh in PATH so lifecycle.Forward exits 0 immediately and records args.
+	bin := t.TempDir()
+	realSSH := "/usr/bin/ssh"
+	if p, lookErr := filepath.EvalSymlinks("/usr/bin/ssh"); lookErr == nil {
+		realSSH = p
+	}
+	sshScript := "#!/bin/sh\nif [ \"$1\" = -G ]; then exec " + realSSH + " \"$@\"; fi\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(sshScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"connect", "--name", "tsvm", "--port", "8080", "--local-port", "18080"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("connect ExecuteContext err = %v\nout = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "http://localhost:18080 (forwarding over SSH") {
+		t.Fatalf("connect output = %q, want SSH forward to localhost:18080 when tailnet IP is unreachable locally", out.String())
 	}
 }

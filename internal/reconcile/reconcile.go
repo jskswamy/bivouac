@@ -79,12 +79,16 @@ func Reconcile(ctx context.Context, name, bivouacPath string) error {
 	}
 
 	ctx = record.ConnectionContext(ctx)
-	if record.SSH != nil {
+	if selected, ok := sshidentity.FromContext(ctx); ok {
 		profiles, err := sshidentity.DefaultProfileStore()
 		if err != nil {
 			return err
 		}
-		if err := profiles.Upsert(ctx, *record.SSH); err != nil {
+		profileConn := selected
+		if !selected.UseIAP && selected.HasOverlay() && !selected.OverlayReachable() && selected.PublicIP != "" {
+			profileConn.PreferredHost = selected.PublicIP
+		}
+		if err := profiles.Upsert(ctx, profileConn); err != nil {
 			return fmt.Errorf("repairing instance SSH profile: %w", err)
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/jskswamy/bivouac/internal/reconcile"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/sshkeys"
+	"github.com/jskswamy/bivouac/internal/state"
 	"github.com/jskswamy/bivouac/internal/testenv"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -298,3 +299,167 @@ func TestExternalTransportsShareAlias(t *testing.T) {
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+
+func TestInstanceTransport_UseIAPWithTailscaleDoesNotOverrideHostName(t *testing.T) {
+	ctx, c := transportFixture(t)
+	c.PublicIP = "10.160.0.9"
+	c.PreferredHost = "100.91.219.40"
+	c.UseIAP = true
+	ctx = sshidentity.WithConnection(ctx, c)
+
+	alias, options, err := instanceTransport(ctx, "10.160.0.9", c.User)
+	if err != nil {
+		t.Fatalf("instanceTransport err = %v", err)
+	}
+	if alias != "bivouac-machine" {
+		t.Fatalf("alias = %q, want bivouac-machine", alias)
+	}
+	if len(options) != 0 {
+		t.Fatalf("options = %v, want empty so OpenSSH uses ProxyCommand bivouac proxy", options)
+	}
+}
+
+func TestInstanceTransport_PublicIPWithUnreachableTailscaleFallsBackToPublicIP(t *testing.T) {
+	ctx, c := transportFixture(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedOverlay := ln.Addr().String()
+	_ = ln.Close()
+
+	c.PublicIP = "203.0.113.10"
+	c.PreferredHost = closedOverlay
+	c.UseIAP = false
+	ctx = sshidentity.WithConnection(ctx, c)
+
+	alias, options, err := instanceTransport(ctx, "203.0.113.10", c.User)
+	if err != nil {
+		t.Fatalf("instanceTransport err = %v", err)
+	}
+	if alias != "bivouac-machine" {
+		t.Fatalf("alias = %q, want bivouac-machine", alias)
+	}
+	joined := strings.Join(options, " ")
+	for _, want := range []string{"HostName=203.0.113.10", "HostKeyAlias=203.0.113.10", "Port=22"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("options = %v, want %q", options, want)
+		}
+	}
+	profiles, err := sshidentity.DefaultProfileStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(profiles.ConfigDir, "ssh", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "HostName 203.0.113.10") {
+		t.Fatalf("managed ssh config = %s, want HostName updated to fallback PublicIP 203.0.113.10 so herdr/beads/ssh work", raw)
+	}
+}
+
+func TestRunInstanceGit_UseIAPDoesNotRequireDirectTCPReachability(t *testing.T) {
+	ctx, c := transportFixture(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedOverlay := ln.Addr().String()
+	_ = ln.Close()
+
+	c.PublicIP = "10.160.0.9"
+	c.PreferredHost = closedOverlay
+	c.UseIAP = true
+	ctx = sshidentity.WithConnection(ctx, c)
+
+	local := t.TempDir()
+	gitFixture(t, local, "init")
+	remote, err := instanceGitURL(ctx, c.User, c.PublicIP, "/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitFixture(t, local, "remote", "add", "bivouac-session", remote)
+
+	realSSH, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	sshLog := filepath.Join(t.TempDir(), "ssh-args")
+	sshScript := "#!/bin/sh\nif [ \"$1\" = -G ]; then exec " + shellQuote(realSSH) + " \"$@\"; fi\nprintf '%s\\n' \"$@\" > " + shellQuote(sshLog) + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(sshScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// ls-remote invokes ssh via core.sshCommand; our fake ssh logs args and exits 0.
+	_, _ = runInstanceGit(ctx, local, c.PublicIP, "ls-remote", "bivouac-session")
+	raw, err := os.ReadFile(sshLog)
+	if err != nil {
+		t.Fatalf("expected runInstanceGit to invoke ssh without failing on TCP reachability probe: %v", err)
+	}
+	if strings.Contains(string(raw), "HostName=10.160.0.9") {
+		t.Fatalf("ssh args = %s, must not override HostName to private IP 10.160.0.9 when UseIAP is true", raw)
+	}
+	if strings.Contains(string(raw), "ConnectTimeout=2") {
+		t.Fatalf("ssh args = %s, must not pass ConnectTimeout=2 when UseIAP is true (kills bivouac proxy during Tailscale->IAP fallback)", raw)
+	}
+}
+
+func TestSshEndpointOptionsFor_PinsHostKeyAliasToPublicIP(t *testing.T) {
+	opts := sshEndpointOptionsFor("100.91.219.40:22", "203.0.113.10:22")
+	joined := strings.Join(opts, " ")
+	if !strings.Contains(joined, "HostName=100.91.219.40") {
+		t.Fatalf("opts = %v, want HostName=100.91.219.40", opts)
+	}
+	if !strings.Contains(joined, "HostKeyAlias=203.0.113.10") {
+		t.Fatalf("opts = %v, want HostKeyAlias=203.0.113.10 pinned to PublicIP", opts)
+	}
+}
+
+func TestRememberPreferredHost_PreservesUseIAP(t *testing.T) {
+	ctx, c := transportFixture(t)
+	c.PublicIP = "10.160.0.9"
+	c.PreferredHost = "10.160.0.9"
+	c.UseIAP = true
+	ctx = sshidentity.WithConnection(ctx, c)
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(state.Record{
+		Name:     c.Name,
+		Provider: "gcloud",
+		Project:  "my-proj",
+		Region:   "asia-south1-a",
+		IP:       c.PublicIP,
+		User:     c.User,
+		SSH:      &c,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	updatedCtx, err := rememberPreferredHost(ctx, "100.91.219.40")
+	if err != nil {
+		t.Fatalf("rememberPreferredHost err = %v", err)
+	}
+	updated, ok := sshidentity.FromContext(updatedCtx)
+	if !ok {
+		t.Fatal("FromContext ok = false")
+	}
+	if !updated.UseIAP {
+		t.Fatal("updated.UseIAP = false, want true preserved")
+	}
+	if updated.PreferredHost != "100.91.219.40" {
+		t.Fatalf("updated.PreferredHost = %q, want 100.91.219.40", updated.PreferredHost)
+	}
+	rec, ok, err := store.Get(c.Name)
+	if err != nil || !ok {
+		t.Fatalf("store.Get = %v, %v", ok, err)
+	}
+	if !rec.SSH.UseIAP {
+		t.Fatal("persisted rec.SSH.UseIAP = false, want true")
+	}
+}

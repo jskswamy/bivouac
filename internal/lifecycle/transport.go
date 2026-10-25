@@ -8,19 +8,29 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-func sshEndpointOptions(endpoint string) []string {
+func sshEndpointOptionsFor(endpoint, hostKeyEndpoint string) []string {
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		host = endpoint
 		port = "22"
 	}
-	return []string{"-o", "HostName=" + host, "-o", "HostKeyAlias=" + knownhosts.Normalize(net.JoinHostPort(host, port)), "-o", "Port=" + port}
+	aliasHost, aliasPort, err := net.SplitHostPort(hostKeyEndpoint)
+	if err != nil {
+		if hostKeyEndpoint != "" {
+			aliasHost = hostKeyEndpoint
+		} else {
+			aliasHost = host
+		}
+		aliasPort = port
+	}
+	return []string{"-o", "HostName=" + host, "-o", "HostKeyAlias=" + knownhosts.Normalize(net.JoinHostPort(aliasHost, aliasPort)), "-o", "Port=" + port}
 }
 func sshCommand(options []string) string {
 	words := []string{"ssh"}
@@ -28,6 +38,20 @@ func sshCommand(options []string) string {
 		words = append(words, shellcmd.Quote(option))
 	}
 	return strings.Join(words, " ")
+}
+
+// TailnetReachable reports whether the given tailnet IP accepts SSH connections
+// from this machine within OverlayProbeTimeout.
+func TailnetReachable(ip string) bool {
+	if ip == "" {
+		return false
+	}
+	c := sshidentity.Connection{
+		Name:          "probe",
+		PublicIP:      "0.0.0.0",
+		PreferredHost: ip,
+	}
+	return c.OverlayReachable()
 }
 
 // instanceTransport validates recorded references and effective settings before
@@ -50,14 +74,52 @@ func instanceTransport(ctx context.Context, host, user string) (string, []string
 	if err != nil {
 		return "", nil, err
 	}
-	if err := store.Upsert(ctx, connection); err != nil {
+	overlayReachable := true
+	profileConn := connection
+	if !connection.UseIAP && connection.HasOverlay() {
+		overlayReachable = connection.OverlayReachable()
+		if !overlayReachable && connection.PublicIP != "" {
+			profileConn.PreferredHost = connection.PublicIP
+		}
+	}
+	if err := store.Upsert(ctx, profileConn); err != nil {
 		return "", nil, err
 	}
+	if connection.UseIAP {
+		// ProxyCommand bivouac proxy <name> in the managed profile handles
+		// Tailscale-first -> IAP fallback dynamically.
+		return alias, nil, nil
+	}
+	if connection.HasOverlay() {
+		if overlayReachable {
+			return alias, nil, nil
+		}
+		return alias, sshEndpointOptionsFor(connection.PublicIP, connection.PublicIP), nil
+	}
 	var options []string
-	if !connection.UseIAP && host != connection.PreferredHost {
-		options = sshEndpointOptions(host)
+	if host != connection.PreferredHost {
+		options = sshEndpointOptionsFor(host, connection.PublicIP)
 	}
 	return alias, options, nil
+}
+
+// SyncSSHProfile updates the managed OpenSSH profile for record if it has
+// selected SSH identities.
+func SyncSSHProfile(ctx context.Context, record state.Record) {
+	ctx = record.ConnectionContext(ctx)
+	selected, ok := sshidentity.FromContext(ctx)
+	if !ok {
+		return
+	}
+	profiles, err := sshidentity.DefaultProfileStore()
+	if err != nil {
+		return
+	}
+	profileConn := selected
+	if !selected.UseIAP && selected.HasOverlay() && !selected.OverlayReachable() && selected.PublicIP != "" {
+		profileConn.PreferredHost = selected.PublicIP
+	}
+	_ = profiles.Upsert(ctx, profileConn)
 }
 
 func instanceGitURL(ctx context.Context, user, address, path string) (string, error) {
@@ -146,16 +208,24 @@ func runInstanceGit(ctx context.Context, localRepo, endpoint string, args ...str
 	if endpoint != c.PreferredHost && endpoint != c.PublicIP {
 		return "", fmt.Errorf("git endpoint %q is outside selected instance", endpoint)
 	}
-	primary, err := dialTarget(sshGitURL(c.User, endpoint, "/"))
-	if err != nil {
-		return "", err
-	}
-	if endpoint != c.PublicIP && !reachable(primary, probeTimeout) {
-		fallback, err := dialTarget(sshGitURL(c.User, c.PublicIP, "/"))
-		if err != nil || !reachable(fallback, probeTimeout) {
-			return "", fmt.Errorf("neither preferred nor public instance SSH endpoint answered")
+	if !c.UseIAP {
+		primary, err := dialTarget(sshGitURL(c.User, endpoint, "/"))
+		if err != nil {
+			return "", err
 		}
-		endpoint = c.PublicIP
+		primaryOK := true
+		if endpoint == c.PreferredHost && c.HasOverlay() {
+			primaryOK = c.OverlayReachable()
+		} else if endpoint != c.PublicIP {
+			primaryOK = reachable(primary, probeTimeout)
+		}
+		if endpoint != c.PublicIP && !primaryOK {
+			fallback, err := dialTarget(sshGitURL(c.User, c.PublicIP, "/"))
+			if err != nil || !reachable(fallback, probeTimeout) {
+				return "", fmt.Errorf("neither preferred nor public instance SSH endpoint answered")
+			}
+			endpoint = c.PublicIP
+		}
 	}
 	_, _, err = instanceTransport(ctx, endpoint, c.User)
 	if err != nil {
@@ -184,7 +254,10 @@ func runInstanceGit(ctx context.Context, localRepo, endpoint string, args ...str
 		}
 		clean = append(clean, arg)
 	}
-	options := append([]string{"-o", "ConnectTimeout=2", "-o", "BatchMode=yes"}, sshEndpointOptions(endpoint)...)
+	options := []string{"-o", "BatchMode=yes"}
+	if !c.UseIAP {
+		options = append([]string{"-o", "ConnectTimeout=2", "-o", "BatchMode=yes"}, sshEndpointOptionsFor(endpoint, c.PublicIP)...)
+	}
 	prefix := []string{"-c", "core.sshCommand=" + sshCommand(options)}
 	if remote {
 		prefix = append(prefix, "-c", "remote."+target+".url="+aliasURL)
@@ -215,9 +288,6 @@ func rememberPreferredHost(ctx context.Context, host string) (context.Context, e
 		return ctx, nil
 	}
 	c.PreferredHost = host
-	if c.UseIAP {
-		c.UseIAP = false
-	}
 	profiles, err := sshidentity.DefaultProfileStore()
 	if err != nil {
 		return ctx, err
@@ -245,8 +315,29 @@ func rememberPreferredHost(ctx context.Context, host string) (context.Context, e
 	}); err != nil {
 		return ctx, err
 	}
-	if err := profiles.Upsert(ctx, c); err != nil {
+	profileConn := c
+	if !c.UseIAP && c.HasOverlay() && !c.OverlayReachable() && c.PublicIP != "" {
+		profileConn.PreferredHost = c.PublicIP
+	}
+	if err := profiles.Upsert(ctx, profileConn); err != nil {
 		return ctx, fmt.Errorf("route recorded but SSH profile update failed; retry provision: %w", err)
 	}
-	return sshidentity.WithConnection(ctx, c), nil
+	updatedCtx := sshidentity.WithConnection(ctx, c)
+	reportTailnetRouteProgress(updatedCtx, c)
+	return updatedCtx, nil
+}
+
+func reportTailnetRouteProgress(ctx context.Context, c sshidentity.Connection) {
+	if !c.HasOverlay() {
+		return
+	}
+	if c.OverlayReachable() {
+		provider.ReportProgress(ctx, fmt.Sprintf("routing via tailscale (%s)", c.PreferredHost))
+		return
+	}
+	if c.UseIAP {
+		provider.ReportProgress(ctx, fmt.Sprintf("tailscale joined on instance (%s), not reachable from this machine — using iap tunnel", c.PreferredHost))
+		return
+	}
+	provider.ReportProgress(ctx, fmt.Sprintf("tailscale joined on instance (%s), not reachable from this machine — using public ip %s", c.PreferredHost, c.PublicIP))
 }

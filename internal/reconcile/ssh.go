@@ -22,6 +22,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 
+	"github.com/jskswamy/bivouac/internal/provider"
 	"github.com/jskswamy/bivouac/internal/provider/gcloud/iap"
 	"github.com/jskswamy/bivouac/internal/shellcmd"
 	"github.com/jskswamy/bivouac/internal/sshidentity"
@@ -68,7 +69,8 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 
 	var auth []ssh.AuthMethod
 	cleanup := func() {}
-	if selected, ok := sshidentity.FromContext(ctx); ok {
+	selected, hasSelected := sshidentity.FromContext(ctx)
+	if hasSelected {
 		if _, err := sshidentity.TransportHost(ctx, ip, user); err != nil {
 			return nil, err
 		}
@@ -87,11 +89,26 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 	}
 	defer cleanup()
 
+	canonicalAddr := addr
+	var extraHostKeyAddrs []string
+	if hasSelected && selected.PublicIP != "" {
+		if h, p, err := net.SplitHostPort(selected.PublicIP); err == nil {
+			canonicalAddr = net.JoinHostPort(h, p)
+		} else {
+			canonicalAddr = net.JoinHostPort(selected.PublicIP, strconv.Itoa(port))
+		}
+		if selected.HasOverlay() {
+			if target, err := selected.OverlayTarget(); err == nil {
+				extraHostKeyAddrs = append(extraHostKeyAddrs, target)
+			}
+		}
+	}
+
 	knownHostsPath, err := defaultKnownHostsPath()
 	if err != nil {
 		return nil, err
 	}
-	hostKeyCallback, err := trustOnFirstConnectCallback(knownHostsPath)
+	hostKeyCallback, err := trustOnFirstConnectCallback(knownHostsPath, extraHostKeyAddrs...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,45 +120,67 @@ func Connect(ctx context.Context, ip, user string) (*Client, error) {
 		Timeout:         10 * time.Second,
 	}
 
-	dialer := net.Dialer{Timeout: clientConfig.Timeout}
-	var conn net.Conn
-	var dialErr error
-
-	if selected, ok := sshidentity.FromContext(ctx); ok && selected.UseIAP {
-		conn, dialErr = dialIAP(ctx, selected, port)
-		if dialErr != nil {
-			if tcpConn, tcpErr := dialer.DialContext(ctx, "tcp", addr); tcpErr == nil {
-				conn = tcpConn
-				dialErr = nil
-			}
-		}
-	} else {
-		conn, dialErr = dialer.DialContext(ctx, "tcp", addr)
-		if dialErr != nil {
-			if selected, ok := sshidentity.FromContext(ctx); ok && (selected.Project != "" || selected.UseIAP) {
-				if iapConn, iapErr := dialIAP(ctx, selected, port); iapErr == nil {
-					conn = iapConn
-					dialErr = nil
-				}
-			}
-		}
-	}
+	conn, dialErr := dialTransport(ctx, addr, canonicalAddr, port, selected, hasSelected, clientConfig.Timeout)
 	if dialErr != nil {
 		return nil, fmt.Errorf("dialing %s: %w", addr, dialErr)
 	}
 
-	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientConfig)
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, canonicalAddr, clientConfig)
 	if err != nil {
 		_ = conn.Close()
 		var keyErr *knownhosts.KeyError
 		if errors.As(err, &keyErr) && len(keyErr.Want) > 0 {
-			return nil, fmt.Errorf("host key for %s has changed — if you recreated this instance (down + up), remove its stale entry from ~/.ssh/known_hosts and try again: %w", addr, err)
+			return nil, fmt.Errorf("host key for %s has changed — if you recreated this instance (down + up), remove its stale entry from ~/.ssh/known_hosts and try again: %w", canonicalAddr, err)
 		}
-		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
+		return nil, fmt.Errorf("ssh handshake with %s: %w", canonicalAddr, err)
 	}
 	sshClient := ssh.NewClient(sshConn, chans, reqs)
 	go keepAlive(sshClient, 15*time.Second, 10*time.Second)
 	return &Client{conn: sshClient}, nil
+}
+
+func dialTransport(ctx context.Context, addr, canonicalAddr string, port int, selected sshidentity.Connection, hasSelected bool, timeout time.Duration) (net.Conn, error) {
+	if hasSelected && selected.HasOverlay() {
+		overlayConn, cached, err := selected.DialOverlayWithStatus()
+		if err == nil {
+			return overlayConn, nil
+		}
+		if !cached {
+			if selected.UseIAP {
+				provider.ReportProgress(ctx, fmt.Sprintf("tailscale (%s) unreachable; using iap tunnel", selected.PreferredHost))
+			} else if selected.PublicIP != "" {
+				provider.ReportProgress(ctx, fmt.Sprintf("tailscale (%s) unreachable; using public ip %s", selected.PreferredHost, selected.PublicIP))
+			}
+		}
+	}
+
+	dialer := net.Dialer{Timeout: timeout}
+	if hasSelected && selected.UseIAP {
+		conn, dialErr := dialIAP(ctx, selected, port)
+		if dialErr == nil {
+			return conn, nil
+		}
+		// Only try plain TCP if PublicIP is not a private RFC1918 address;
+		// dialing 10.x.x.x directly from the user's machine stalls 10s.
+		if ip := net.ParseIP(selected.PublicIP); ip == nil || !ip.IsPrivate() {
+			if tcpConn, tcpErr := dialer.DialContext(ctx, "tcp", canonicalAddr); tcpErr == nil {
+				return tcpConn, nil
+			}
+		}
+		return nil, dialErr
+	}
+
+	baseAddr := addr
+	if hasSelected && selected.PublicIP != "" {
+		baseAddr = canonicalAddr
+	}
+	conn, dialErr := dialer.DialContext(ctx, "tcp", baseAddr)
+	if dialErr != nil && hasSelected && (selected.Project != "" || selected.UseIAP) {
+		if iapConn, iapErr := dialIAP(ctx, selected, port); iapErr == nil {
+			return iapConn, nil
+		}
+	}
+	return conn, dialErr
 }
 
 func dialIAP(ctx context.Context, c sshidentity.Connection, port int) (net.Conn, error) {
@@ -324,7 +363,7 @@ func touchFile(path string) error {
 // unknown host (a *knownhosts.KeyError with an empty Want) is accepted
 // and appended to path; a host presenting a different key than what's
 // already recorded (Want non-empty) is rejected, surfaced verbatim.
-func trustOnFirstConnectCallback(path string) (ssh.HostKeyCallback, error) {
+func trustOnFirstConnectCallback(path string, extraHostnames ...string) (ssh.HostKeyCallback, error) {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		verify, err := knownhosts.New(path)
 		if err != nil {
@@ -332,11 +371,24 @@ func trustOnFirstConnectCallback(path string) (ssh.HostKeyCallback, error) {
 		}
 		verifyErr := verify(hostname, remote, key)
 		if verifyErr == nil {
+			for _, extra := range extraHostnames {
+				if extra != "" && extra != hostname && verify(extra, remote, key) != nil {
+					_ = appendKnownHost(path, extra, key)
+				}
+			}
 			return nil
 		}
 		var keyErr *knownhosts.KeyError
 		if errors.As(verifyErr, &keyErr) && len(keyErr.Want) == 0 {
-			return appendKnownHost(path, hostname, key)
+			if err := appendKnownHost(path, hostname, key); err != nil {
+				return err
+			}
+			for _, extra := range extraHostnames {
+				if extra != "" && extra != hostname {
+					_ = appendKnownHost(path, extra, key)
+				}
+			}
+			return nil
 		}
 		return verifyErr
 	}, nil

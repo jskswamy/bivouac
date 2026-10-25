@@ -219,6 +219,9 @@ func runConnect(cmd *cobra.Command, name string, args []string) error {
 			// failure -- ConnectTarget treats an empty tailnetIP as "forward
 			// instead of routing there directly".
 			tailnetIP = ""
+		} else if tailnetIP != "" && !lifecycle.TailnetReachable(tailnetIP) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "→ tailscale (%s) unreachable from this machine; forwarding over SSH\n", tailnetIP)
+			tailnetIP = ""
 		}
 	}
 

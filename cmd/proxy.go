@@ -3,16 +3,18 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/spf13/cobra"
 
 	"github.com/jskswamy/bivouac/internal/provider/gcloud/iap"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 )
 
 func newProxyCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:    "proxy <instance>",
-		Short:  "Internal helper to bridge standard I/O over an IAP tunnel to a Google Cloud VM",
+		Short:  "Internal helper to bridge standard I/O over Tailscale or an IAP tunnel to an instance",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -21,14 +23,42 @@ func newProxyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if record.Provider != "gcloud" {
+
+			ctx := record.ConnectionContext(cmd.Context())
+			selected, hasSelected := sshidentity.FromContext(ctx)
+			useIAP := (hasSelected && selected.UseIAP) || (record.Provider == "gcloud" && !record.TailscaleJoined)
+			if useIAP && record.Provider != "gcloud" {
 				return fmt.Errorf("instance %q is on %s, proxy command is only for gcloud", name, record.Provider)
 			}
 
-			ctx := cmd.Context()
-			conn, err := iap.DialTarget(ctx, record.Project, record.Region, record.Name, 22)
-			if err != nil {
-				return fmt.Errorf("connecting via iap: %w", err)
+			var conn net.Conn
+			if hasSelected && selected.HasOverlay() {
+				if overlayConn, dialErr := selected.DialOverlay(); dialErr == nil {
+					conn = overlayConn
+				}
+			}
+			if conn == nil {
+				if useIAP {
+					iapConn, dialErr := iap.DialTarget(ctx, record.Project, record.Region, record.Name, 22)
+					if dialErr != nil {
+						return fmt.Errorf("connecting via iap: %w", dialErr)
+					}
+					conn = iapConn
+				} else {
+					if record.Provider != "gcloud" && (!hasSelected || !selected.HasOverlay()) {
+						return fmt.Errorf("instance %q is on %s, proxy command is only for gcloud", name, record.Provider)
+					}
+					target := record.IP
+					if _, _, splitErr := net.SplitHostPort(target); splitErr != nil {
+						target = net.JoinHostPort(target, "22")
+					}
+					var d net.Dialer
+					tcpConn, dialErr := d.DialContext(ctx, "tcp", target)
+					if dialErr != nil {
+						return fmt.Errorf("connecting to %s: %w", target, dialErr)
+					}
+					conn = tcpConn
+				}
 			}
 			defer func() { _ = conn.Close() }()
 

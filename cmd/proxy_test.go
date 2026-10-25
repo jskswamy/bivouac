@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/jskswamy/bivouac/internal/provider/gcloud/iap"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -97,5 +100,180 @@ func TestProxyCommand_BridgesIO(t *testing.T) {
 
 	if !strings.Contains(out.String(), "SSH-2.0-OpenSSH_9.0") {
 		t.Errorf("output = %q, want it to contain echo %q", out.String(), input)
+	}
+}
+
+func TestProxyCommand_PrefersReachableTailscaleEndpoint(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, _ = io.WriteString(conn, "SSH-2.0-TailscaleOverlay\r\n")
+	}()
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := state.Record{
+		Name:            "myvm",
+		Provider:        "gcloud",
+		Project:         "test-project",
+		Region:          "us-central1-a",
+		IP:              "10.0.0.5",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "myvm",
+			PublicIP:      "10.0.0.5",
+			PreferredHost: ln.Addr().String(),
+			UseIAP:        true,
+		},
+	}
+	if err := store.Put(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	// Point IAP URL at a closed port to prove proxy used the Tailscale overlay.
+	t.Setenv("GCLOUD_IAP_URL", "ws://127.0.0.1:1/v4/connect")
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "mock-token")
+
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetArgs([]string{"proxy", "myvm"})
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(&out)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := root.ExecuteContext(ctx); err != nil {
+		t.Fatalf("proxy ExecuteContext err = %v", err)
+	}
+	if !strings.Contains(out.String(), "SSH-2.0-TailscaleOverlay") {
+		t.Fatalf("output = %q, want SSH-2.0-TailscaleOverlay", out.String())
+	}
+}
+
+func TestProxyCommand_FallsBackToIAPWhenTailscaleUnreachable(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := state.Record{
+		Name:            "myvm",
+		Provider:        "gcloud",
+		Project:         "test-project",
+		Region:          "us-central1-a",
+		IP:              "10.0.0.5",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "myvm",
+			PublicIP:      "10.0.0.5",
+			PreferredHost: closedAddr,
+			UseIAP:        true,
+		},
+	}
+	if err := store.Put(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := newMockProxyIAPServer(t)
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/v4/connect"
+	t.Setenv("GCLOUD_IAP_URL", wsURL)
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "mock-token")
+
+	input := "SSH-2.0-OpenSSH_IAPFallback\r\n"
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetArgs([]string{"proxy", "myvm"})
+	root.SetIn(strings.NewReader(input))
+	root.SetOut(&out)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = root.ExecuteContext(ctx)
+
+	if !strings.Contains(out.String(), "SSH-2.0-OpenSSH_IAPFallback") {
+		t.Fatalf("output = %q, want %q", out.String(), input)
+	}
+}
+
+func TestProxyCommand_FallsBackToPublicIPWhenNotUseIAP(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, _ = io.WriteString(conn, "SSH-2.0-PublicIPFallback\r\n")
+	}()
+
+	closedLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedOverlay := closedLn.Addr().String()
+	_ = closedLn.Close()
+
+	store, err := state.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := state.Record{
+		Name:            "pubvm",
+		Provider:        "digitalocean",
+		IP:              ln.Addr().String(),
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "pubvm",
+			PublicIP:      ln.Addr().String(),
+			PreferredHost: closedOverlay,
+			UseIAP:        false,
+		},
+	}
+	if err := store.Put(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetArgs([]string{"proxy", "pubvm"})
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(&out)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := root.ExecuteContext(ctx); err != nil {
+		t.Fatalf("proxy ExecuteContext err = %v", err)
+	}
+	if !strings.Contains(out.String(), "SSH-2.0-PublicIPFallback") {
+		t.Fatalf("output = %q, want SSH-2.0-PublicIPFallback", out.String())
 	}
 }

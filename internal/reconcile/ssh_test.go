@@ -1048,3 +1048,117 @@ func TestConnect_FallbackToIAPWhenTCPFails(t *testing.T) {
 		t.Fatalf("unexpected output: %s", out)
 	}
 }
+
+func TestConnect_PrefersReachablePreferredHostBeforeIAP(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	sshAddr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "hello tailscale overlay", 0
+	})
+	// Set GCLOUD_IAP_URL to an invalid endpoint so any attempt to dial IAP fails.
+	t.Setenv("GCLOUD_IAP_URL", "http://127.0.0.1:1")
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "test-token")
+
+	key := testenv.SSHKey(t)
+	ids, err := sshidentity.Select(context.Background(), []sshkeys.Key{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := sshidentity.Connection{
+		Name:          "ts-iap-vm",
+		Alias:         "bivouac-ts-iap-vm",
+		Project:       "test-proj",
+		Zone:          "us-central1-a",
+		User:          "devuser",
+		PreferredHost: sshAddr,
+		PublicIP:      "10.160.0.9",
+		UseIAP:        true,
+		Keys:          ids,
+	}
+	ctx := sshidentity.WithConnection(context.Background(), c)
+
+	// Callers pass record.IP ("10.160.0.9"), while PreferredHost holds the Tailscale address.
+	client, err := Connect(ctx, "10.160.0.9", "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	out, err := client.RunContext(ctx, "echo hello")
+	if err != nil {
+		t.Fatalf("RunContext() error = %v", err)
+	}
+	if out != "hello tailscale overlay" {
+		t.Fatalf("out = %q, want %q", out, "hello tailscale overlay")
+	}
+
+	knownHostsPath, err := defaultKnownHostsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "10.160.0.9") {
+		t.Fatalf("known_hosts = %q, want canonical PublicIP 10.160.0.9 recorded", string(raw))
+	}
+}
+
+func TestConnect_FallsBackToIAPImmediatelyWhenPreferredHostUnreachable(t *testing.T) {
+	startFakeAgent(t)
+	testenv.Isolate(t)
+	sshAddr := startFakeSSHServer(t, func(cmd string, stdin []byte) (string, uint32) {
+		return "hello iap after tailscale down", 0
+	})
+	relay := newFakeIAPRelayToSSH(t, sshAddr)
+	defer relay.Close()
+
+	t.Setenv("GCLOUD_IAP_URL", relay.URL)
+	t.Setenv("GCLOUD_ACCESS_TOKEN", "test-token")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedOverlay := ln.Addr().String()
+	_ = ln.Close()
+
+	key := testenv.SSHKey(t)
+	ids, err := sshidentity.Select(context.Background(), []sshkeys.Key{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := sshidentity.Connection{
+		Name:          "ts-down-vm",
+		Alias:         "bivouac-ts-down-vm",
+		Project:       "test-proj",
+		Zone:          "us-central1-a",
+		User:          "devuser",
+		PreferredHost: closedOverlay,
+		PublicIP:      "10.160.0.9",
+		UseIAP:        true,
+		Keys:          ids,
+	}
+	ctx := sshidentity.WithConnection(context.Background(), c)
+
+	start := time.Now()
+	client, err := Connect(ctx, "10.160.0.9", "devuser")
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	if elapsed := time.Since(start); elapsed > 4*time.Second {
+		t.Fatalf("Connect() took %v, want fast fallback without 10s TCP stall on 10.160.0.9", elapsed)
+	}
+
+	out, err := client.RunContext(ctx, "echo hello")
+	if err != nil {
+		t.Fatalf("RunContext() error = %v", err)
+	}
+	if out != "hello iap after tailscale down" {
+		t.Fatalf("out = %q, want %q", out, "hello iap after tailscale down")
+	}
+}

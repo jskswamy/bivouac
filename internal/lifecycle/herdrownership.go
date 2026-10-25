@@ -95,6 +95,10 @@ func EnsureSessionAttachment(ctx context.Context, store *state.Store, instance, 
 	if sess.Retirement != nil && sess.Retirement.Phase != state.RetirementPaused {
 		return state.HerdrAttachment{}, fmt.Errorf("session %s retirement is %s; resume %s instead of attaching", session, sess.Retirement.Phase, sess.Retirement.Operation)
 	}
+	ctx = record.ConnectionContext(ctx)
+	if _, _, err := instanceTransport(ctx, record.IP, record.User); err != nil {
+		return state.HerdrAttachment{}, err
+	}
 	for _, attachment := range sess.Attachments {
 		if attachment.Kind == state.AttachmentWorkspace && attachment.Phase != state.AttachmentClosed {
 			return ensureWorkspaceAttachment(ctx, store, record, sess, attachment)
@@ -102,10 +106,6 @@ func EnsureSessionAttachment(ctx context.Context, store *state.Store, instance, 
 	}
 
 	if _, err := requireHerdrTool("herdr"); err != nil {
-		return state.HerdrAttachment{}, err
-	}
-	ctx = record.ConnectionContext(ctx)
-	if _, _, err := instanceTransport(ctx, record.IP, record.User); err != nil {
 		return state.HerdrAttachment{}, err
 	}
 	target, err := MachineTarget(ctx, record.IP, record.User)
