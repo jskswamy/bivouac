@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	"github.com/jskswamy/bivouac/internal/xdg"
-	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 const includeBegin = "# BEGIN bivouac managed SSH include\n"
@@ -217,9 +215,14 @@ func (s ProfileStore) checkUser(ctx context.Context, c Connection, user []byte) 
 			settings[name] = append(settings[name], strings.TrimSpace(value))
 		}
 	}
+	hostKeyAlias, err := hostKeyAliasFor(c)
+	if err != nil {
+		return err
+	}
 	if c.UseIAP {
 		for name, want := range map[string]string{
 			"user":           c.User,
+			"hostkeyalias":   hostKeyAlias,
 			"identitiesonly": "yes",
 			"proxycommand":   "bivouac proxy " + c.Name,
 		} {
@@ -236,7 +239,7 @@ func (s ProfileStore) checkUser(ctx context.Context, c Connection, user []byte) 
 			"hostname":       host,
 			"port":           port,
 			"user":           c.User,
-			"hostkeyalias":   knownhosts.Normalize(net.JoinHostPort(host, port)),
+			"hostkeyalias":   hostKeyAlias,
 			"identitiesonly": "yes",
 		} {
 			if got := settings[name]; len(got) != 1 || got[0] != want {

@@ -2,12 +2,14 @@ package state
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/testenv"
 )
 
@@ -337,5 +339,32 @@ func TestSessionWithoutBeadsOmitsKey(t *testing.T) {
 	}
 	if bytes.Contains(raw, []byte(`"beads"`)) {
 		t.Fatalf("unexpected beads key: %s", raw)
+	}
+}
+
+func TestRecord_ConnectionContextPreservesUseIAPWhenTailscaleJoined(t *testing.T) {
+	r := Record{
+		Name:            "jskswamy-skills",
+		Provider:        "gcloud",
+		Project:         "my-proj",
+		Region:          "asia-south1-a",
+		IP:              "10.160.0.9",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "jskswamy-skills",
+			PublicIP:      "10.160.0.9",
+			PreferredHost: "100.91.219.40",
+			UseIAP:        false,
+		},
+	}
+	c, ok := sshidentity.FromContext(r.ConnectionContext(context.Background()))
+	if !ok {
+		t.Fatal("FromContext ok = false, want true")
+	}
+	if !c.UseIAP {
+		t.Fatal("c.UseIAP = false, want true for private gcloud instance even when TailscaleJoined is true")
+	}
+	if c.PreferredHost != "100.91.219.40" {
+		t.Fatalf("c.PreferredHost = %q, want 100.91.219.40", c.PreferredHost)
 	}
 }

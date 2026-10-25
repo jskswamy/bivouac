@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,16 +55,28 @@ func (r Record) ConnectionContext(ctx context.Context) context.Context {
 		return sshidentity.WithoutConnection(ctx)
 	}
 	c := *r.SSH
+	if c.PublicIP == "" && r.IP != "" {
+		c.PublicIP = r.IP
+	}
 	if c.Project == "" && r.Project != "" {
 		c.Project = r.Project
 	}
 	if c.Zone == "" && r.Region != "" {
 		c.Zone = r.Region
 	}
-	if r.Provider == "gcloud" && !r.TailscaleJoined && (c.UseIAP || c.PreferredHost == c.PublicIP) {
+	if r.Provider == "gcloud" && (c.UseIAP || isPrivateHost(c.PublicIP) || (!r.TailscaleJoined && c.PreferredHost == c.PublicIP)) {
 		c.UseIAP = true
 	}
 	return sshidentity.WithConnection(ctx, c)
+}
+
+func isPrivateHost(addr string) bool {
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsPrivate()
 }
 
 // Session is one agent session on an instance. Name, LocalRepo and Base

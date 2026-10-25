@@ -3,12 +3,14 @@ package sshidentity
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jskswamy/bivouac/internal/sshkeys"
 )
@@ -336,5 +338,63 @@ func TestProfileUseIAP_RendersProxyCommand(t *testing.T) {
 	}
 	if err := store.Upsert(context.Background(), c); err != nil {
 		t.Fatalf("store.Upsert failed: %v", err)
+	}
+}
+
+func TestReconcile_IAPProfileIncludesHostKeyAliasAndUpdatesExistingFalseUseIAP(t *testing.T) {
+	store, c := profileFixture(t, "iapvm")
+	c.PublicIP = "10.160.0.9"
+	c.PreferredHost = "100.91.219.40"
+	c.UseIAP = false
+
+	if err := store.Upsert(context.Background(), c); err != nil {
+		t.Fatalf("initial Upsert failed: %v", err)
+	}
+
+	// Simulate ConnectionContext healing UseIAP back to true for a private GCE record.
+	c.UseIAP = true
+	if err := store.Upsert(context.Background(), c); err != nil {
+		t.Fatalf("second Upsert failed: %v", err)
+	}
+	raw, err := os.ReadFile(store.managedPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ProxyCommand bivouac proxy iapvm", "HostKeyAlias 10.160.0.9"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("managed ssh config missing %q:\n%s", want, raw)
+		}
+	}
+}
+
+func TestConnection_OverlayReachableCachesNegativeProbeWithinCommand(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	c := Connection{
+		Name:          "testvm",
+		PublicIP:      "10.160.0.9",
+		PreferredHost: addr,
+		UseIAP:        true,
+	}
+	if !c.HasOverlay() {
+		t.Fatal("HasOverlay() = false, want true")
+	}
+	if c.OverlayReachable() {
+		t.Fatal("OverlayReachable() = true on closed port, want false")
+	}
+	start := time.Now()
+	if c.OverlayReachable() {
+		t.Fatal("second OverlayReachable() = true, want false")
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("cached negative probe took %v, want < 100ms", elapsed)
+	}
+	if env := os.Getenv(negativeOverlayEnv); !strings.Contains(env, addr+"=") {
+		t.Fatalf("%s = %q, want %s recorded for child bivouac proxy processes", negativeOverlayEnv, env, addr)
 	}
 }

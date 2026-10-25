@@ -79,6 +79,18 @@ func identityPaths(c Connection) ([]string, error) {
 	return paths, nil
 }
 
+func hostKeyAliasFor(c Connection) (string, error) {
+	target := c.PublicIP
+	if target == "" {
+		target = c.PreferredHost
+	}
+	host, port, err := endpoint(target)
+	if err != nil {
+		return "", err
+	}
+	return knownhosts.Normalize(net.JoinHostPort(host, port)), nil
+}
+
 func renderProfile(c Connection) (string, error) {
 	alias, err := Alias(c.Name)
 	if err != nil {
@@ -96,13 +108,21 @@ func renderProfile(c Connection) (string, error) {
 	}
 	var b strings.Builder
 	if c.UseIAP {
-		fmt.Fprintf(&b, "Host %s\n  ProxyCommand bivouac proxy %s\n  User %s\n  IdentitiesOnly yes\n", alias, c.Name, c.User)
+		hostKeyAlias, err := hostKeyAliasFor(c)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "Host %s\n  ProxyCommand bivouac proxy %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, c.Name, c.User, hostKeyAlias)
 	} else {
 		host, port, err := endpoint(c.PreferredHost)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, knownhosts.Normalize(net.JoinHostPort(host, port)))
+		hostKeyAlias, err := hostKeyAliasFor(c)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "Host %s\n  HostName %s\n  Port %s\n  User %s\n  HostKeyAlias %s\n  IdentitiesOnly yes\n", alias, host, port, c.User, hostKeyAlias)
 	}
 	for _, path := range paths {
 		quoted, err := quoteSSH(path)
