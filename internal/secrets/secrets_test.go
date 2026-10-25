@@ -267,3 +267,143 @@ func TestDecrypt_ResultStaysZeroable(t *testing.T) {
 		}
 	}
 }
+
+func TestSet_NewKeyAndDecrypt(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	if err := Init(context.Background(), path, []string{recipient}); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	var suspended, resumed bool
+	ctx := provider.WithTerminalSuspend(context.Background(), func() (func() error, error) {
+		suspended = true
+		return func() error {
+			resumed = true
+			return nil
+		}, nil
+	})
+
+	if err := Set(ctx, path, "test_token", []byte("secret_value_123")); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if !suspended {
+		t.Error("Set() never suspended the terminal before running sops")
+	}
+	if !resumed {
+		t.Error("Set() never resumed the terminal after running sops")
+	}
+
+	keys, err := Keys(path)
+	if err != nil {
+		t.Fatalf("Keys() error = %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "test_token" {
+		t.Fatalf("Keys() = %v, want [test_token]", keys)
+	}
+
+	got, err := Decrypt(context.Background(), path, "test_token")
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(got) != "secret_value_123" {
+		t.Errorf("Decrypt() = %q, want %q", got, "secret_value_123")
+	}
+}
+
+func TestSet_OverwriteExistingKey(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	if err := Init(context.Background(), path, []string{recipient}); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	ctx := context.Background()
+	if err := Set(ctx, path, "my_key", []byte("initial_value")); err != nil {
+		t.Fatalf("first Set() error = %v", err)
+	}
+	if err := Set(ctx, path, "my_key", []byte("updated_value")); err != nil {
+		t.Fatalf("second Set() error = %v", err)
+	}
+
+	keys, err := Keys(path)
+	if err != nil {
+		t.Fatalf("Keys() error = %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "my_key" {
+		t.Fatalf("Keys() = %v, want [my_key]", keys)
+	}
+
+	got, err := Decrypt(ctx, path, "my_key")
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(got) != "updated_value" {
+		t.Errorf("Decrypt() = %q, want %q", got, "updated_value")
+	}
+}
+
+func TestSet_PreservesMultilineAndJSON(t *testing.T) {
+	recipient := setupSecretsTest(t)
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	if err := Init(context.Background(), path, []string{recipient}); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	payload := `{
+  "type": "service_account",
+  "project_id": "test-project-123",
+  "private_key_id": "abcdef123456",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3\n-----END PRIVATE KEY-----\n",
+  "client_email": "test@test-project-123.iam.gserviceaccount.com"
+}`
+
+	ctx := context.Background()
+	if err := Set(ctx, path, "gcloud_service_account_key", []byte(payload)); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	got, err := Decrypt(ctx, path, "gcloud_service_account_key")
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+	if string(got) != payload {
+		t.Errorf("Decrypt() = %q, want %q", string(got), payload)
+	}
+}
+
+func TestSet_RejectsInvalidKeyNames(t *testing.T) {
+	invalidKeys := []string{
+		"foo-bar",
+		"foo.bar",
+		"",
+		"sops",
+		"foo bar",
+		"foo:bar",
+		"foo/bar",
+	}
+
+	path := filepath.Join(t.TempDir(), "secrets.yaml")
+	for _, k := range invalidKeys {
+		err := Set(context.Background(), path, k, []byte("val"))
+		if err == nil {
+			t.Errorf("Set(key=%q) error = nil, want error", k)
+			continue
+		}
+		wantErr := `keys must match ^[A-Za-z0-9_]+$ and cannot be "sops"`
+		if !strings.Contains(err.Error(), wantErr) {
+			t.Errorf("Set(key=%q) error = %q, want it to contain %q", k, err.Error(), wantErr)
+		}
+	}
+}
+
+func TestSet_FailsWhenSecretsFileNotFound(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "no-such.yaml")
+	err := Set(context.Background(), missingPath, "valid_key", []byte("val"))
+	if err == nil {
+		t.Fatal("Set() error = nil, want error for missing secrets file")
+	}
+	if !strings.Contains(err.Error(), "doesn't exist yet (run `bivouac secrets init`)") {
+		t.Errorf("Set() error = %q, want it to explain secrets file doesn't exist yet", err.Error())
+	}
+}

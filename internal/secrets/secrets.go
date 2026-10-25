@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -134,6 +135,60 @@ func Keys(path string) ([]string, error) {
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+// Set stores key with value in the sops-encrypted YAML file at path.
+// The value is encoded as a JSON string scalar and written via sops
+// set --value-file so secret content is never exposed in process
+// arguments (visible to ps or /proc) while preserving cmd.Stdin for
+// hardware key (e.g. YubiKey) PIN prompts. Key names must match
+// ^[A-Za-z0-9_]+$ and cannot be the reserved "sops" metadata key.
+func Set(ctx context.Context, path, key string, value []byte) error {
+	m := topLevelKeyPattern.FindStringSubmatch(key + ":")
+	if key == "sops" || m == nil || m[1] != key {
+		return fmt.Errorf("invalid secret key %q: keys must match ^[A-Za-z0-9_]+$ and cannot be %q", key, "sops")
+	}
+	if _, err := tool.Require("sops"); err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("secrets file %s doesn't exist yet (run `bivouac secrets init`)", path)
+		}
+		return err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "bivouac-secret-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	encoded, err := json.Marshal(string(value))
+	if err != nil {
+		return fmt.Errorf("encoding secret value: %w", err)
+	}
+	defer Zero(encoded)
+
+	tmpPath := filepath.Join(tmpDir, "value.json")
+	if err := os.WriteFile(tmpPath, encoded, 0o600); err != nil {
+		return fmt.Errorf("writing secret value: %w", err)
+	}
+
+	// #nosec G204 -- argv-array exec.Command, no shell; path is
+	// bivouac's own fixed secrets path, key is validated against
+	// ^[A-Za-z0-9_]+$, and tmpPath is our own temporary file.
+	cmd := exec.CommandContext(ctx, "sops", "set", "--value-file", path, fmt.Sprintf(`["%s"]`, key), tmpPath)
+	cmd.Stdin = os.Stdin
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	resume := provider.SuspendTerminal(ctx)
+	err = cmd.Run()
+	_ = resume()
+	if err != nil {
+		return fmt.Errorf("sops set %q %s: %w\n%s", key, path, err, stderr.String())
+	}
+	return nil
 }
 
 // Init creates path as a fresh sops-encrypted secrets file with no
