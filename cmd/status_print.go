@@ -29,23 +29,29 @@ func printStatusJSON(cmd *cobra.Command, st lifecycle.InstanceStatus, record sta
 		liveErr = st.LiveErr.Error()
 	}
 	type instanceJSON struct {
-		Name       string `json:"name"`
-		Provider   string `json:"provider,omitempty"`
-		IP         string `json:"ip"`
-		Region     string `json:"region,omitempty"`
-		Size       string `json:"size,omitempty"`
-		Template   string `json:"template,omitempty"`
-		User       string `json:"user,omitempty"`
-		RepoPath   string `json:"repoPath,omitempty"`
-		ImageRef   string `json:"image_ref,omitempty"`
-		ImageID    string `json:"image_id,omitempty"`
-		LiveStatus string `json:"liveStatus"`
-		LiveError  string `json:"liveError,omitempty"`
+		Name       string                 `json:"name"`
+		Provider   string                 `json:"provider,omitempty"`
+		IP         string                 `json:"ip"`
+		Region     string                 `json:"region,omitempty"`
+		Size       string                 `json:"size,omitempty"`
+		Template   string                 `json:"template,omitempty"`
+		User       string                 `json:"user,omitempty"`
+		RepoPath   string                 `json:"repoPath,omitempty"`
+		ImageRef   string                 `json:"image_ref,omitempty"`
+		ImageID    string                 `json:"image_id,omitempty"`
+		LiveStatus string                 `json:"liveStatus"`
+		LiveError  string                 `json:"liveError,omitempty"`
+		Route      *lifecycle.RouteStatus `json:"route,omitempty"`
 	}
 	type sessionJSON struct {
 		Name     string `json:"name"`
 		Branch   string `json:"branch"`
 		RepoName string `json:"repoName,omitempty"`
+	}
+	var route *lifecycle.RouteStatus
+	if st.Route.Active != "" {
+		r := st.Route
+		route = &r
 	}
 	out := struct {
 		Instance instanceJSON  `json:"instance"`
@@ -64,6 +70,7 @@ func printStatusJSON(cmd *cobra.Command, st lifecycle.InstanceStatus, record sta
 			ImageID:    record.ImageID,
 			LiveStatus: live,
 			LiveError:  liveErr,
+			Route:      route,
 		},
 		Sessions: []sessionJSON{},
 	}
@@ -94,6 +101,9 @@ func printStatus(cmd *cobra.Command, st lifecycle.InstanceStatus) {
 	printPair(out, s, "Provider", r.Provider, "Region", r.Region)
 	printSize(out, s, st)
 	printPair(out, s, "User", r.User, "IP", r.IP)
+	if routeSummary := st.Route.Summary(); routeSummary != "" {
+		printField(out, s, "Route", routeSummary)
+	}
 
 	if st.LiveErr != nil {
 		printField(out, s, "Cost", fmt.Sprintf("unknown (%v)", st.LiveErr))

@@ -182,3 +182,50 @@ func TestPrintStatusJSON_IncludesTheImage(t *testing.T) {
 		t.Errorf("JSON = %s, want no image fields for an old record", out.String())
 	}
 }
+
+func TestPrintStatus_IncludesRouteLine(t *testing.T) {
+	c, out := bufferedCmd(t)
+	record := state.Record{
+		Name:            "myrepo",
+		Provider:        "gcloud",
+		IP:              "10.160.0.9",
+		TailscaleJoined: true,
+	}
+	st := lifecycle.InstanceStatus{
+		Record:     record,
+		LiveStatus: "RUNNING",
+		Route: lifecycle.RouteStatus{
+			Active:           "iap",
+			TailscaleAddress: "100.91.219.40",
+		},
+	}
+	printStatus(c, st)
+	if !strings.Contains(out.String(), "iap tunnel (tailscale 100.91.219.40 unreachable)") {
+		t.Fatalf("printStatus output missing Route line:\n%s", out.String())
+	}
+}
+
+func TestPrintStatusJSON_IncludesRouteObject(t *testing.T) {
+	c, out := bufferedCmd(t)
+	record := state.Record{
+		Name:     "myrepo",
+		Provider: "gcloud",
+		IP:       "10.160.0.9",
+	}
+	st := lifecycle.InstanceStatus{
+		Record:     record,
+		LiveStatus: "RUNNING",
+		Route: lifecycle.RouteStatus{
+			Active:           "iap",
+			TailscaleAddress: "100.91.219.40",
+		},
+	}
+	if err := printStatusJSON(c, st, record); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"route":`, `"active": "iap"`, `"tailscaleAddress": "100.91.219.40"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("JSON = %s, want %s", out.String(), want)
+		}
+	}
+}

@@ -3,10 +3,12 @@ package lifecycle
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/jskswamy/bivouac/internal/provider"
+	"github.com/jskswamy/bivouac/internal/sshidentity"
 	"github.com/jskswamy/bivouac/internal/state"
 )
 
@@ -101,5 +103,91 @@ func TestStatus_LiveSizeEmptyWhenLiveCheckFails(t *testing.T) {
 
 	if got.LiveSize != "" {
 		t.Errorf("LiveSize = %q, want empty -- there is no live data to report", got.LiveSize)
+	}
+}
+
+func TestResolveRoute_AllCombinations(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	reachableOverlay := ln.Addr().String()
+
+	// 1. Tailscale joined and reachable locally (private GCE)
+	r1 := ResolveRoute(state.Record{
+		Name:            "inst1",
+		Provider:        "gcloud",
+		IP:              "10.160.0.9",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "inst1",
+			PublicIP:      "10.160.0.9",
+			PreferredHost: reachableOverlay,
+			UseIAP:        true,
+		},
+	})
+	if r1.Active != "tailscale" || r1.Fallback != "iap" || r1.Summary() != "tailscale ("+reachableOverlay+")" {
+		t.Fatalf("r1 = %+v, Summary() = %q", r1, r1.Summary())
+	}
+
+	// 2. Tailscale joined and unreachable locally on private GCE
+	r2 := ResolveRoute(state.Record{
+		Name:            "inst2",
+		Provider:        "gcloud",
+		IP:              "10.160.0.9",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "inst2",
+			PublicIP:      "10.160.0.9",
+			PreferredHost: "127.0.0.1:1",
+			UseIAP:        true,
+		},
+	})
+	if r2.Active != "iap" || r2.TailscaleAddress != "127.0.0.1:1" || r2.Summary() != "iap tunnel (tailscale 127.0.0.1:1 unreachable)" {
+		t.Fatalf("r2 = %+v, Summary() = %q", r2, r2.Summary())
+	}
+
+	// 3. Tailscale joined and unreachable locally on public IP
+	r3 := ResolveRoute(state.Record{
+		Name:            "inst3",
+		Provider:        "digitalocean",
+		IP:              "203.0.113.5",
+		TailscaleJoined: true,
+		SSH: &sshidentity.Connection{
+			Name:          "inst3",
+			PublicIP:      "203.0.113.5",
+			PreferredHost: "127.0.0.1:1",
+			UseIAP:        false,
+		},
+	})
+	if r3.Active != "public_ip" || r3.Address != "203.0.113.5" || r3.Summary() != "public ip 203.0.113.5 (tailscale 127.0.0.1:1 unreachable)" {
+		t.Fatalf("r3 = %+v, Summary() = %q", r3, r3.Summary())
+	}
+
+	// 4. Tailscale not joined on private GCE
+	r4 := ResolveRoute(state.Record{
+		Name:     "inst4",
+		Provider: "gcloud",
+		IP:       "10.160.0.9",
+		SSH: &sshidentity.Connection{
+			Name:          "inst4",
+			PublicIP:      "10.160.0.9",
+			PreferredHost: "10.160.0.9",
+			UseIAP:        true,
+		},
+	})
+	if r4.Active != "iap" || r4.Summary() != "iap tunnel" {
+		t.Fatalf("r4 = %+v, Summary() = %q", r4, r4.Summary())
+	}
+
+	// 5. Tailscale not joined on public IP
+	r5 := ResolveRoute(state.Record{
+		Name:     "inst5",
+		Provider: "digitalocean",
+		IP:       "139.59.12.44",
+	})
+	if r5.Active != "public_ip" || r5.Address != "139.59.12.44" || r5.Summary() != "public ip (139.59.12.44)" {
+		t.Fatalf("r5 = %+v, Summary() = %q", r5, r5.Summary())
 	}
 }

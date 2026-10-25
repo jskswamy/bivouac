@@ -239,9 +239,10 @@ func runStatus(cmd *cobra.Command, name string, args []string) error {
 	// no key present. up and down still fail hard: neither can create or
 	// destroy a droplet without the API, so for them a missing token is
 	// not a degraded report but no work at all.
-	st := lifecycle.InstanceStatus{Record: record}
+	lifecycle.SyncSSHProfile(ctx, record)
+	var st lifecycle.InstanceStatus
 	if p, provErr := resolveProviderForRecord(ctx, record); provErr != nil {
-		st.LiveErr = provErr
+		st = lifecycle.InstanceStatus{Record: record, Route: lifecycle.ResolveRoute(record), LiveErr: provErr}
 	} else {
 		st = lifecycle.Status(ctx, p, record)
 	}

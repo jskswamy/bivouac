@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -46,7 +47,21 @@ func runSSH(cmd *cobra.Command, name string, args []string) error {
 			dir = lifecycle.RemoteRepoPath(record.User, sess.Name, sess.RepoNameOr(record.Name))
 		}
 	}
+	reportFallbackNotice(cmd, record)
 	return lifecycle.SSH(cmd.Context(), record.IP, record.User, dir, forwardAgent)
+}
+
+func reportFallbackNotice(cmd *cobra.Command, record state.Record) {
+	route := lifecycle.ResolveRoute(record)
+	if route.TailscaleAddress == "" {
+		return
+	}
+	switch route.Active {
+	case "iap":
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "→ tailscale (%s) unreachable; connecting via iap tunnel\n", route.TailscaleAddress)
+	case "public_ip":
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "→ tailscale (%s) unreachable; connecting via public ip %s\n", route.TailscaleAddress, route.Address)
+	}
 }
 
 // herdrTabsFor reads the tab layout to lay the session's workspace out
@@ -123,6 +138,7 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 		if session == "" {
 			return errors.New("no session resolved -- start one with `bivouac session start <name>`")
 		}
+		reportFallbackNotice(cmd, record)
 		attachment, err := lifecycle.EnsureSessionAttachment(ctx, store, record.Name, session)
 		if err != nil {
 			return err
@@ -147,12 +163,14 @@ func runHerdr(cmd *cobra.Command, name string, args []string) error {
 		return nil
 	}
 	if session == "" {
+		reportFallbackNotice(cmd, record)
 		return lifecycle.Herdr(ctx, record.IP, record.User, session)
 	}
 	attachment, err := lifecycle.BeginDirectSessionAttachment(ctx, store, record.Name, session)
 	if err != nil {
 		return err
 	}
+	reportFallbackNotice(cmd, record)
 	if err := lifecycle.Herdr(ctx, record.IP, record.User, session); err != nil {
 		return err
 	}
@@ -285,5 +303,6 @@ func runTmux(cmd *cobra.Command, name string, args []string) error {
 			session = sess.Name
 		}
 	}
+	reportFallbackNotice(cmd, record)
 	return lifecycle.Tmux(cmd.Context(), record.IP, record.User, session, forwardAgent)
 }
