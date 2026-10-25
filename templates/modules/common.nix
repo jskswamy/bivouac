@@ -47,6 +47,9 @@ in
     pkgs.gh
     pkgs.age
     beads
+    # The database beads stores its issues in. Required on PATH by bd for
+    # issue operations (e.g. bd update <id> --claim) and syncing.
+    pkgs.dolt
     # Renders markdown in the terminal -- specs and plans under
     # docs/superpowers are read this way rather than as raw text.
     pkgs.glow

@@ -216,6 +216,7 @@
               # worse than skipping.
               pkgs.sops
               pkgs.age
+              pkgs.dolt
               (pklFor system pkgs)
               direnv-instant.packages.${system}.default
             ]
