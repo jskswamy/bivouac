@@ -72,6 +72,9 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # Generate a JSON key file
 gcloud iam service-accounts keys create ~/bivouac-gcp-key.json \
   --iam-account="$SA_EMAIL"
+
+# Store in encrypted secrets
+bivouac secrets set gcloud_service_account_key --file ~/bivouac-gcp-key.json
 ```
 
 ### Credential Discovery Priority
@@ -80,7 +83,7 @@ Bivouac looks for GCP credentials in this order:
 
 1. **`GOOGLE_APPLICATION_CREDENTIALS`** environment variable pointing to a service account JSON file.
 2. **`GCLOUD_SERVICE_ACCOUNT_KEY`** environment variable (either a file path or raw JSON string).
-3. **`gcloud_service_account_key`** in `bivouac secrets edit` (encrypted at rest with SOPS/age).
+3. **`gcloud_service_account_key`** in `bivouac secrets` (encrypted at rest with SOPS/age, set via `bivouac secrets set`).
 4. **Application Default Credentials (ADC)** located at `~/.config/gcloud/application_default_credentials.json`.
 
 ---

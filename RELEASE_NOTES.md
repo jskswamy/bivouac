@@ -6,6 +6,9 @@
   ephemeral development VMs on Google Compute Engine with dedicated `gcloud`
   configuration blocks, service account credentials, native IAP tunneling,
   and custom Packer image builds.
+- `bivouac secrets set <key>` command to store encrypted credentials from
+  arguments, files (`--file`), `$EDITOR` (`--editor`), standard input, or
+  interactive prompts.
 
 ## v0.4.0
 
