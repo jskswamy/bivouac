@@ -83,15 +83,18 @@ type renderData struct {
 // agentPackages maps a config `agents` entry to its nixpkgs attribute
 // name. The indirection exists because the attribute is not guessable
 // from the tool's name: pi ships as pi-coding-agent, claude as
-// claude-code. Keep in step with Config.pkl's agents union, which is
-// what stops an unknown name reaching here in the first place.
+// claude-code, and antigravity (or its CLI name agy) as
+// antigravity-cli. Keep in step with Config.pkl's agents union, which
+// is what stops an unknown name reaching here in the first place.
 var agentPackages = map[string]string{
-	"claude":   "claude-code",
-	"codex":    "codex",
-	"copilot":  "github-copilot-cli",
-	"cursor":   "cursor-cli",
-	"opencode": "opencode",
-	"pi":       "pi-coding-agent",
+	"agy":         "antigravity-cli",
+	"antigravity": "antigravity-cli",
+	"claude":      "claude-code",
+	"codex":       "codex",
+	"copilot":     "github-copilot-cli",
+	"cursor":      "cursor-cli",
+	"opencode":    "opencode",
+	"pi":          "pi-coding-agent",
 }
 
 // unfreeAgentPackages lists the agentPackages values nixpkgs marks
@@ -99,6 +102,7 @@ var agentPackages = map[string]string{
 // by the same string lib.getName returns for that package, since that
 // is what the generated flake's allowUnfreePredicate compares against.
 var unfreeAgentPackages = map[string]bool{
+	"antigravity-cli":    true,
 	"claude-code":        true,
 	"cursor-cli":         true,
 	"github-copilot-cli": true,
@@ -120,12 +124,21 @@ func knownAgents() string {
 // rather than a silent omission: Pkl's union type already rejects one,
 // so reaching here means the schema and this map have drifted apart,
 // and dropping it would install nothing while reporting success.
+//
+// Resolved package names are deduplicated in declaration order so
+// aliases (such as "antigravity" in base.pkl and "agy" in bivouac.pkl)
+// emit and validate the underlying package once.
 func resolveAgents(agents []string) (pkgs, unfree []string, err error) {
+	seen := make(map[string]bool, len(agents))
 	for _, a := range agents {
 		name, ok := agentPackages[a]
 		if !ok {
 			return nil, nil, fmt.Errorf("unknown agent %q (known: %s)", a, knownAgents())
 		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
 		pkgs = append(pkgs, name)
 		if unfreeAgentPackages[name] {
 			unfree = append(unfree, name)

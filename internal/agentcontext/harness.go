@@ -14,11 +14,13 @@ package agentcontext
 // Keep in step with Config.pkl's agents union. A test reads the schema and
 // fails if the two sets drift.
 var globalPaths = map[string]string{
-	"claude":   ".claude/CLAUDE.md",
-	"codex":    ".codex/AGENTS.md",
-	"opencode": ".config/opencode/AGENTS.md",
-	"copilot":  ".copilot/copilot-instructions.md",
-	"pi":       ".pi/agent/AGENTS.md",
+	"agy":         ".gemini/GEMINI.md",
+	"antigravity": ".gemini/GEMINI.md",
+	"claude":      ".claude/CLAUDE.md",
+	"codex":       ".codex/AGENTS.md",
+	"opencode":    ".config/opencode/AGENTS.md",
+	"copilot":     ".copilot/copilot-instructions.md",
+	"pi":          ".pi/agent/AGENTS.md",
 }
 
 // unreachableHarnesses have no global instruction file to write.
@@ -36,10 +38,16 @@ var unreachableHarnesses = map[string]bool{
 //
 // Both results follow the caller's order rather than the map's, so a
 // rendered warning and a written file list read the way the config does.
+// Duplicate paths (for example when both "agy" and "antigravity" are
+// listed) are collapsed to the first occurrence.
 func GlobalPaths(agents []string) (paths []string, unreachable []string) {
+	seenPaths := make(map[string]bool, len(agents))
 	for _, a := range agents {
 		if p, ok := globalPaths[a]; ok {
-			paths = append(paths, p)
+			if !seenPaths[p] {
+				seenPaths[p] = true
+				paths = append(paths, p)
+			}
 			continue
 		}
 		if unreachableHarnesses[a] {

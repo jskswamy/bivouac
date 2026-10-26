@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -286,21 +287,37 @@ func TestNeedsRender_TrueForAgentsAlone(t *testing.T) {
 }
 
 // The nixpkgs attribute is not the tool's name: pi ships as
-// pi-coding-agent and claude as claude-code, which is the whole reason
-// agents is a curated list rather than free-form packages entries.
+// pi-coding-agent, claude as claude-code, and antigravity/agy as
+// antigravity-cli, which is the whole reason agents is a curated list
+// rather than free-form packages entries.
 func TestRender_Agents_MapToNixpkgsAttributeNames(t *testing.T) {
-	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "codex", "copilot", "cursor", "opencode", "pi"}}
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"antigravity", "agy", "claude", "codex", "copilot", "cursor", "opencode", "pi"}}
 	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	for _, want := range []string{`pkgs."claude-code"`, `pkgs."codex"`, `pkgs."github-copilot-cli"`, `pkgs."cursor-cli"`, `pkgs."opencode"`, `pkgs."pi-coding-agent"`} {
+	for _, want := range []string{`pkgs."antigravity-cli"`, `pkgs."claude-code"`, `pkgs."codex"`, `pkgs."github-copilot-cli"`, `pkgs."cursor-cli"`, `pkgs."opencode"`, `pkgs."pi-coding-agent"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %s:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, `pkgs."pi"`) || strings.Contains(out, `pkgs."claude"`) || strings.Contains(out, `pkgs."cursor"`) || strings.Contains(out, `pkgs."copilot"`) {
-		t.Errorf("output references a short name rather than the nixpkgs attribute:\n%s", out)
+	for _, short := range []string{`pkgs."antigravity"`, `pkgs."agy"`, `pkgs."pi"`, `pkgs."claude"`, `pkgs."cursor"`, `pkgs."copilot"`} {
+		if strings.Contains(out, short) {
+			t.Errorf("output references short name %s rather than the nixpkgs attribute:\n%s", short, out)
+		}
+	}
+}
+
+// Listing both "antigravity" and "agy" (for example, one in base.pkl and
+// the other in bivouac.pkl) must emit pkgs."antigravity-cli" once.
+func TestRender_Agents_DeduplicatesAliases(t *testing.T) {
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"antigravity", "claude", "agy"}}
+	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if got := strings.Count(out, `pkgs."antigravity-cli"`); got != 1 {
+		t.Errorf("pkgs.\"antigravity-cli\" count = %d, want 1:\n%s", got, out)
 	}
 }
 
@@ -342,16 +359,37 @@ func TestRender_UnknownAgent_Rejected(t *testing.T) {
 	}
 }
 
+// Every name Config.pkl accepts in `agents` must map to a nixpkgs
+// package in agentPackages so schema additions cannot fail at Render.
+func TestResolveAgents_CoversEveryAgentInTheSchema(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	path := filepath.Join(filepath.Dir(thisFile), "..", "config", "Config.pkl")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading Config.pkl: %v", err)
+	}
+	line := regexp.MustCompile(`(?m)^agents:.*$`).FindString(string(raw))
+	if i := strings.Index(line, "="); i >= 0 {
+		line = line[:i]
+	}
+	for _, m := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(line, -1) {
+		name := m[1]
+		if _, ok := agentPackages[name]; !ok {
+			t.Errorf("agent %q is in Config.pkl but missing from agentPackages", name)
+		}
+	}
+}
+
 // Several agents are unfree, and every one selected must be named in the
 // predicate -- a missing entry fails the build only once that package is
 // reached, long after render looked fine.
 func TestRender_MultipleUnfreeAgents_AllPermitted(t *testing.T) {
-	cfg := config.Config{Arch: "x86_64", Agents: []string{"claude", "cursor", "copilot", "codex"}}
+	cfg := config.Config{Arch: "x86_64", Agents: []string{"antigravity", "claude", "cursor", "copilot", "codex"}}
 	out, err := Render(cfg, "github:jskswamy/bivouac?dir=templates#docker-x86_64-linux")
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	for _, want := range []string{`"claude-code"`, `"cursor-cli"`, `"github-copilot-cli"`} {
+	for _, want := range []string{`"antigravity-cli"`, `"claude-code"`, `"cursor-cli"`, `"github-copilot-cli"`} {
 		if !strings.Contains(out, "getName pkg) [ ") || !strings.Contains(out, want) {
 			t.Errorf("unfree predicate does not permit %s:\n%s", want, out)
 		}

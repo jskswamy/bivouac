@@ -13,13 +13,28 @@ import (
 )
 
 func TestGlobalPaths_MapsEachHarnessToItsGlobalFile(t *testing.T) {
-	paths, unreachable := GlobalPaths([]string{"claude", "codex", "opencode", "copilot", "pi"})
+	paths, unreachable := GlobalPaths([]string{"antigravity", "claude", "codex", "opencode", "copilot", "pi"})
 	want := []string{
+		".gemini/GEMINI.md",
 		".claude/CLAUDE.md",
 		".codex/AGENTS.md",
 		".config/opencode/AGENTS.md",
 		".copilot/copilot-instructions.md",
 		".pi/agent/AGENTS.md",
+	}
+	if !reflect.DeepEqual(want, paths) {
+		t.Errorf("GlobalPaths() paths = %#v, want %#v", paths, want)
+	}
+	if len(unreachable) != 0 {
+		t.Errorf("GlobalPaths() unreachable = %v, want none", unreachable)
+	}
+}
+
+func TestGlobalPaths_DeduplicatesAliasedPaths(t *testing.T) {
+	paths, unreachable := GlobalPaths([]string{"agy", "claude", "antigravity"})
+	want := []string{
+		".gemini/GEMINI.md",
+		".claude/CLAUDE.md",
 	}
 	if !reflect.DeepEqual(want, paths) {
 		t.Errorf("GlobalPaths() paths = %#v, want %#v", paths, want)

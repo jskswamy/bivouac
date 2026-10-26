@@ -71,10 +71,11 @@ type Config struct {
 	// A curated list rather than free-form `packages` entries, because the
 	// nixpkgs attribute is not guessable from the tool's name -- pi ships
 	// as `pi-coding-agent`, claude as `claude-code`, copilot as
-	// `github-copilot-cli` -- and because several are unfree, which needs
-	// handling at the point nixpkgs is instantiated (a home-manager module
-	// cannot set it). Selecting them permits exactly those packages, not
-	// unfree software in general.
+	// `github-copilot-cli`, antigravity/agy as `antigravity-cli` -- and
+	// because several are unfree, which needs handling at the point
+	// nixpkgs is instantiated (a home-manager module cannot set it).
+	// Selecting them permits exactly those packages, not unfree software
+	// in general.
 	Agents []string `pkl:"agents"`
 
 	// Unfree packages to permit by name, as matched by `nixpkgs.lib.getName`

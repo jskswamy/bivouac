@@ -35,7 +35,7 @@ see "A note on trust" near the end of this doc.
 | `shell` | `"fish"\|"zsh"\|"bash"` | No | `"fish"` | The instance user's login shell, set once by cloud-init at creation and never changed afterwards. Can live in your base config — see [below](#shell). |
 | `sshKeys` | `Listing<String>?` | No | none | Public-key file paths. `bivouac init` selects them; `up` resolves account keys and registers missing public keys only after confirmation. See [SSH keys](#ssh-keys). |
 | `packages` | `Listing<String>` | No | empty | Nix packages to install on the instance. |
-| `agents` | `Listing<"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
+| `agents` | `Listing<"agy"\|"antigravity"\|"claude"\|"codex"\|"copilot"\|"cursor"\|"opencode"\|"pi">` | No | empty | Coding agent harnesses to install. A curated list rather than plain `packages` entries — see below. |
 | `allowUnfreePackages` | `Listing<String>` | No | empty | Unfree packages to permit by name, for ones that arrive through an imported module rather than `agents` — see [below](#allowunfreepackages). Merges additively like `packages`. |
 | `instructions` | `Listing<String>` | No | empty | Markdown files delivered to every configured coding agent on the instance. Paths are relative to the declaring file; merges additively like `packages`. |
 | `flakes` | `Listing<Flake>` (`{url, packages, modules}`) | No | empty | Nix flakes to install, each with its own package list and a `modules` listing naming dotted paths into that flake's `homeManagerModules` to pull (e.g. `"tools.git"` for one tool, `"git-tools"` for a top-level group). |
@@ -60,6 +60,7 @@ agents {
 
 | Name | Installs | Binary | Licence |
 |---|---|---|---|
+| `antigravity` / `agy` | `antigravity-cli` | `agy` | **unfree** |
 | `claude` | `claude-code` | `claude` | **unfree** |
 | `codex` | `codex` | `codex` | Apache-2.0 |
 | `copilot` | `github-copilot-cli` | `copilot` | **unfree** |
@@ -67,10 +68,11 @@ agents {
 | `opencode` | `opencode` | `opencode` | MIT |
 | `pi` | `pi-coding-agent` | `pi` | MIT |
 
-Note the binary is not always the name: `cursor` installs `cursor-cli`
-and gives you `cursor-agent`, `copilot` installs `github-copilot-cli`
-(not nixpkgs' `copilot-cli`, which is AWS Copilot and has since been
-removed from nixpkgs entirely).
+Note the binary is not always the name: `antigravity` (or `agy`)
+installs `antigravity-cli` and gives you `agy`, `cursor` installs
+`cursor-cli` and gives you `cursor-agent`, `copilot` installs
+`github-copilot-cli` (not nixpkgs' `copilot-cli`, which is AWS Copilot
+and has since been removed from nixpkgs entirely).
 
 These are a curated list rather than plain `packages` entries for two
 reasons. The nixpkgs attribute isn't guessable from the tool's name —

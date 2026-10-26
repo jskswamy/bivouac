@@ -267,14 +267,15 @@ is now used: `flakes[].modules` and `settings` are both implemented.
 
 ### Why `agents` is its own field
 
-Coding agent harnesses (`claude`, `codex`, `copilot`, `cursor`, `opencode`,
-`pi`) are a curated union in the Pkl schema rather than free-form `packages`
-entries, for two reasons. The nixpkgs attribute isn't guessable from the
-tool's name — `claude` ships as `claude-code`, `pi` as `pi-coding-agent`,
-`copilot` as `github-copilot-cli`. And several are unfree, which nixpkgs
-refuses to build unless permitted where nixpkgs is *instantiated*; a
-home-manager module can't set that, so `packages` alone could never install
-them.
+Coding agent harnesses (`antigravity` / `agy`, `claude`, `codex`,
+`copilot`, `cursor`, `opencode`, `pi`) are a curated union in the Pkl
+schema rather than free-form `packages` entries, for two reasons. The
+nixpkgs attribute isn't guessable from the tool's name — `antigravity`
+and `agy` ship as `antigravity-cli`, `claude` as `claude-code`, `pi` as
+`pi-coding-agent`, `copilot` as `github-copilot-cli`. And several are
+unfree, which nixpkgs refuses to build unless permitted where nixpkgs is
+*instantiated*; a home-manager module can't set that, so `packages`
+alone could never install them.
 
 The rendered flake instantiates nixpkgs with an `allowUnfreePredicate`
 naming **exactly** the unfree agents you selected. Unfree software is not

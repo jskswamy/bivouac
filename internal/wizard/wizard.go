@@ -299,7 +299,7 @@ func ProjectQuestions() []Question {
 			Kind:        MultiSelect,
 			// Mirrors Config.pkl's agents union. A wizard test reads
 			// the schema and fails if the two sets drift.
-			Options: []string{"claude", "codex", "copilot", "cursor", "opencode", "pi"},
+			Options: []string{"agy", "antigravity", "claude", "codex", "copilot", "cursor", "opencode", "pi"},
 		},
 		{
 			Field:       config.FieldPackages,

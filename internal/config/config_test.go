@@ -418,6 +418,30 @@ func TestMergeConfig_AgentsAreAdditiveBaseFirst(t *testing.T) {
 	}
 }
 
+func TestResolve_AgentsAcceptsAntigravityAndAgy(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+	path := filepath.Join(dir, "bivouac.pkl")
+	if err := os.WriteFile(path, []byte(`region = "blr1"
+size = "s-2vcpu-4gb"
+template = "python"
+agents {
+  "antigravity"
+  "agy"
+}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	want := []string{"antigravity", "agy"}
+	if !equalStrings(cfg.Agents, want) {
+		t.Errorf("Agents = %v, want %v", cfg.Agents, want)
+	}
+}
+
 func TestResolve_BeadsDefaultsToSession(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bivouac.pkl")
