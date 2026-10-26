@@ -283,7 +283,7 @@ func loadResolved(ctx context.Context, path string) (ret Config, declared map[st
 				shPath = "/bin/sh"
 			}
 			if _, statErr := os.Stat(shPath); statErr == nil {
-				pklCmd = []string{shPath, "-c", `exec "$1" "${@:3}" 2>> "$2"`, "sh", pklPath, logPath}
+				pklCmd = []string{shPath, "-c", `pkl="$1"; log="$2"; shift 2; exec "$pkl" "$@" 2>> "$log"`, "sh", pklPath, logPath}
 			}
 		}
 	}

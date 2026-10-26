@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -972,5 +973,50 @@ size = "s-1vcpu-1gb"
 	logPath := filepath.Join(logDir, "pkl.log")
 	if _, err := os.Stat(logPath); err != nil {
 		t.Errorf("expected log file at %s, got error: %v", logPath, err)
+	}
+}
+
+func TestResolve_PklWrapperUsesPOSIXShSyntax(t *testing.T) {
+	pklPath, err := exec.LookPath("pkl")
+	if err != nil {
+		t.Skip("pkl not installed")
+	}
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(pklPath, filepath.Join(binDir, "pkl")); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate dash / strict POSIX sh on Ubuntu where /bin/sh rejects
+	// bash-only parameter slicing such as "${@:3}".
+	fakeSh := `#!/bin/sh
+if [ "$1" = "-c" ]; then
+  case "$2" in
+    *'${@:'*|*'${*:'*)
+      echo "sh: 1: Bad substitution" >&2
+      exit 2
+      ;;
+  esac
+fi
+exec /bin/sh "$@"
+`
+	if err := os.WriteFile(filepath.Join(binDir, "sh"), []byte(fakeSh), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "no-such-config"))
+
+	project := filepath.Join(dir, "bivouac.pkl")
+	if err := os.WriteFile(project, []byte(`
+template = "minimal"
+region = "nyc3"
+size = "s-1vcpu-1gb"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(context.Background(), project); err != nil {
+		t.Fatalf("Resolve() under strict POSIX sh failed: %v", err)
 	}
 }
